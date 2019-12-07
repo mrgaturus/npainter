@@ -1,7 +1,8 @@
 import ../libs/egl
 import x11/xlib, x11/x
-import widget, state, context, container
+import widget, state, context, container, frame
 
+from os import sleep
 from builder import signal
 from ../libs/gl import glFinish, gladLoadGL
 from x11/keysym import XK_Tab, XK_ISO_Left_Tab
@@ -44,6 +45,9 @@ type
     ctx*: GUIContext
     state: GUIState
     gui*: GUIContainer
+    # Frames (subwindows)
+    frames: seq[GUIFrame]
+    focusedFrame: int
 
 signal WindowControl:
   Terminate
@@ -118,7 +122,8 @@ proc createEGL(win: var GUIWindow) =
   # Create Context and Window Surface
   eglCtx = eglCreateContext(eglDsp, eglCfg, EGL_NO_CONTEXT, cast[ptr EGLint](
       attCTX[0].unsafeAddr))
-  eglSur = eglCreateWindowSurface(eglDsp, eglCfg, win.xID, cast[ptr EGLint](attSUR[0].unsafeAddr))
+  eglSur = eglCreateWindowSurface(eglDsp, eglCfg, win.xID, cast[ptr EGLint](
+      attSUR[0].unsafeAddr))
   if eglCtx.pointer.isNil or eglSur.pointer.isNil: return
 
   # Make Current
@@ -199,8 +204,12 @@ proc add*(win: var GUIWindow, widget: GUIWidget) =
   win.ctx.createRegion(addr widget.rect)
   win.gui.add(widget)
 
-proc createFrame*(win: var GUIWindow, widget: GUIWidget) =
-  discard
+proc addFrame*(win: var GUIWindow, widget: GUIWidget): int =
+  win.frames.add(
+    newGUIFrame(win.ctx, widget)
+  )
+  # Return Index of the new Frame
+  return high(win.frames)
 
 # --------------------
 # WINDOW RUNNING PROCS
@@ -237,14 +246,16 @@ proc handleEvents*(win: var GUIWindow) =
           win.state.key == XK_ISO_Left_Tab):
         step(win.gui, win.state.key == XK_ISO_Left_Tab)
       else:
+        for frame in win.frames.mitems:
+          if event(frame, addr win.state):
+            return
         event(win.gui, addr win.state)
 
 proc handleTick*(win: var GUIWindow): bool =
   # Signal ID Handling
   for signal in signalQueue:
     case signal.id:
-    of NoSignalID:
-      discard
+    of NoSignalID: discard
     of WindowControlID:
       case WindowControlMsg(signal.message):
       of msgTerminate: return false
@@ -252,23 +263,33 @@ proc handleTick*(win: var GUIWindow): bool =
       of msgUnfocusIM: XUnsetICFocus(win.xic)
     else:
       trigger(win.gui, signal)
+      # Signal for frames
+      for frame in win.frames.mitems:
+        trigger(frame, signal)
   # Update -> Layout
   if testMask(win.gui.flags, wUpdate):
     update(win.gui)
   if anyMask(win.gui.flags, 0x000C):
     layout(win.gui)
     update(win.ctx)
+  # Update -> Layout for frames
+  for frame in win.frames.mitems:
+    update_layout(frame)
 
   return true
 
 proc render*(win: var GUIWindow) =
   # Draw hot/invalidated widgets
-  win.ctx.makeCurrent(nil)
+  makeCurrent(win.ctx, nil)
   if testMask(win.gui.flags, wDraw):
     draw(win.gui, addr win.ctx)
-  # Draw Regions and Frames
+  # Draw hot/invalidated frames
+  for frame in win.frames.mitems:
+    draw(frame, win.ctx)
+  # Render Textures (Regions and Frames)
   win.ctx.render()
   # Present to X11/EGL Window
   glFinish()
   discard eglSwapBuffers(win.eglDsp, win.eglSur)
   # TODO: FPS Strategy
+  sleep(16)

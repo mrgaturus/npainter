@@ -2,6 +2,15 @@ import libs/gl
 import gui/window, gui/context
 from gui/container import GUILayout
 
+proc region(tex: ptr CTXFrame, rect: ptr GUIRect) =
+  let verts = [
+    float32 rect.x, float32 rect.y,
+    float32(rect.x + rect.w), float32 rect.y,
+    float32 rect.x, float32(rect.y + rect.h),
+    float32(rect.x + rect.w), float32(rect.y + rect.h)
+  ]
+  region(tex, unsafeAddr verts[0])
+
 when isMainModule:
   var 
     win = newGUIWindow(1024, 600, new GUILayout)
@@ -10,11 +19,41 @@ when isMainModule:
     # Rects
     rect1 = GUIRect(x: 20, y: 20, w: 200, h: 100)
     rect2 = GUIRect(x: 20, y: 130, w: 100, h: 200)
+    rect3 = GUIRect(x: 400, y: 130, w: 500, h: 300)
+    rect4 = GUIRect(x: 20, y: 20, w: 40, h: 40)
+    rect5 = GUIRect(x: 80, y: 20, w: 40, h: 40)
     color1 = GUIColor(r: 0.5, g: 0.0, b: 0.5, a: 1.0)
     color2 = GUIColor(r: 0.0, g: 0.5, b: 0.0, a: 1.0)
+    frame = win.ctx.createFrame()
 
+  
   win.ctx.createRegion(addr rect1)
   win.ctx.createRegion(addr rect2)
+  frame.resize(rect3.w, rect3.h)
+  frame.region(addr rect3)
+  frame.visible = true
+
+  win.ctx.makeCurrent(nil)
+  addr(win.ctx).clip(addr rect1)
+  addr(win.ctx).color(addr color1)
+  addr(win.ctx).clear()
+  
+  addr(win.ctx).clip(addr rect2)
+  addr(win.ctx).color(addr color2)
+  addr(win.ctx).clear()
+
+  win.ctx.makeCurrent(frame)
+  addr(win.ctx).color(addr color2)
+  addr(win.ctx).clear()
+
+  addr(win.ctx).color(addr color1)
+  addr(win.ctx).clip(addr rect4)
+  addr(win.ctx).clear()
+
+  addr(win.ctx).color(addr color1)
+  addr(win.ctx).clip(addr rect5)
+  addr(win.ctx).clear()
+  glBindFramebuffer(GL_FRAMEBUFFER, 0)
 
   while running:
     win.handleEvents()
@@ -22,15 +61,6 @@ when isMainModule:
     
     glClearColor(0.5, 0.5, 0.5, 1.0)
     glClear(GL_COLOR_BUFFER_BIT or GL_DEPTH_BUFFER_BIT)
-
-    win.ctx.makeCurrent(nil)
-    addr(win.ctx).clip(addr rect1)
-    addr(win.ctx).color(addr color1)
-    addr(win.ctx).clear()
-    
-    addr(win.ctx).clip(addr rect2)
-    addr(win.ctx).color(addr color2)
-    addr(win.ctx).clear()
 
     win.render()
 

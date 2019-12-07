@@ -26,8 +26,9 @@ type
     # Frame viewport cache
     vCache: ptr float32
     vWidth, vHeight: int32
-    # Visible
+    # bools
     visible*: bool
+    needsTop*: bool
   # The Context
   GUIContext* = object
     # GUI Program and Uniforms
@@ -42,6 +43,8 @@ type
     # Frames & Levels
     frames: seq[CTXFrame]
     levels: seq[CTXLevel]
+    # Scissor Current Height
+    sHeight: int32
 
 # -------------------
 # CONTEXT CONST PROCS
@@ -115,12 +118,12 @@ proc intersect(ctx: ptr GUIContext, rect: ptr GUIRect): tuple[x, y, w, h: int32]
   result.h = abs(y2 - y1)
 
 proc update(region: ptr CTXRegion, w, h: int32) =
-  region.visible = w > 0 and h > 0
+  let rect = addr region.rect
+  region.visible = rect.w > 0 and rect.h > 0
   # if visible, update vbo
   if region.visible:
     glBindBuffer(GL_ARRAY_BUFFER, region.vboID)
     block:
-      let rect = addr region.rect
       let rectArray = [
         float32 rect.x, float32 rect.y,
         float32(rect.x + rect.w), float32 rect.y,
@@ -140,10 +143,10 @@ proc update(region: ptr CTXRegion, w, h: int32) =
 proc clip*(ctx: ptr GUIContext, rect: ptr GUIRect) =
   if ctx.levels.len > 0:
     let nclip = ctx.intersect(rect)
-    glScissor(nclip.x, ctx.vHeight - nclip.y - nclip.h, nclip.w, nclip.h)
+    glScissor(nclip.x, ctx.sHeight - nclip.y - nclip.h, nclip.w, nclip.h)
   else:
     glEnable(GL_SCISSOR_TEST)
-    glScissor(rect.x, ctx.vHeight - rect.y - rect.h, rect.w, rect.h)
+    glScissor(rect.x, ctx.sHeight - rect.y - rect.h, rect.w, rect.h)
 
 proc color*(ctx: ptr GUIContext, color: ptr GUIColor) =
   glClearColor(color.r, color.g, color.b, color.a)
@@ -157,7 +160,7 @@ proc reset*(ctx: ptr GUIContext) =
     let level = addr ctx.levels[^1]
     # Reset Scissor
     glEnable(GL_SCISSOR_TEST)
-    glScissor(level.x, ctx.vHeight - level.y - level.h, level.w, level.h)
+    glScissor(level.x, ctx.sHeight - level.y - level.h, level.w, level.h)
     # Reset Color
     glClearColor(level.r, level.g, level.b, level.a)
     glUniform4fv(cast[GLint](ctx.uCol), 1, addr level.r)
@@ -229,6 +232,9 @@ proc createFrame*(ctx: var GUIContext): ptr CTXFrame =
       pointer](0))
   glVertexAttribPointer(1, 2, cGL_FLOAT, false, 0, cast[
       pointer](vertSize))
+  # Enable Attribs
+  glEnableVertexAttribArray(0)
+  glEnableVertexAttribArray(1)
   # Unbind VBO and VAO
   glBindBuffer(GL_ARRAY_BUFFER, 0)
   glBindVertexArray(0)
@@ -246,7 +252,7 @@ proc createFrame*(ctx: var GUIContext): ptr CTXFrame =
       frame.texID, 0)
   glBindFramebuffer(GL_FRAMEBUFFER, 0)
   # Alloc uniform cache
-  result.vCache = cast[ptr float32](
+  frame.vCache = cast[ptr float32](
     alloc0(bufferSize)
   )
   # Add new region to root frame
@@ -267,8 +273,16 @@ proc resize*(ctx: var GUIContext, rect: ptr GUIRect) =
   ctx.vHeight = rect.h
 
 proc update*(ctx: var GUIContext) =
-  for region in ctx.regions:
+  for region in mitems(ctx.regions):
     update(unsafeAddr region, ctx.vWidth, ctx.vHeight)
+
+proc toTop*(ctx: var GUIContext, index: int): ptr CTXFrame =
+  # same as delete but moving to top only
+  let xl = ctx.frames.len
+  for j in index.int..xl-2: 
+    shallowCopy(ctx.frames[j], ctx.frames[j+1])
+  # returns new addr
+  return unsafeAddr(ctx.frames[^1])
 
 proc makeCurrent*(ctx: var GUIContext, frame: ptr CTXFrame) =
   # Clear levels
@@ -287,10 +301,14 @@ proc makeCurrent*(ctx: var GUIContext, frame: ptr CTXFrame) =
     glBindFramebuffer(GL_FRAMEBUFFER, ctx.fboID)
     glViewport(0, 0, ctx.vWidth, ctx.vHeight)
     glUniformMatrix4fv(ctx.uPro, 1, false, ctx.vCache)
+    # Scissor Height
+    ctx.sHeight = ctx.vHeight
   else: 
     glBindFramebuffer(GL_FRAMEBUFFER, frame.fboID)
     glViewport(0, 0, frame.vWidth, frame.vHeight)
     glUniformMatrix4fv(ctx.uPro, 1, false, frame.vCache)
+    # Scissor Height
+    ctx.sHeight = frame.vHeight
 
 proc render*(ctx: var GUIContext) =
   # Bind to Framebuffer Screen
@@ -303,17 +321,17 @@ proc render*(ctx: var GUIContext) =
   # Draw Regions
   glBindTexture(GL_TEXTURE_2D, ctx.texID)
   for region in ctx.regions:
-    if not region.visible: continue
     # Draw Region if is visible
-    glBindVertexArray(region.vaoID)
-    glDrawArrays(GL_TRIANGLE_STRIP, 0, 4)
+    if region.visible:
+      glBindVertexArray(region.vaoID)
+      glDrawArrays(GL_TRIANGLE_STRIP, 0, 4)
   # Draw Frames
   for frame in ctx.frames:
-    if not frame.visible: continue
     # Draw Frame if is visible
-    glBindVertexArray(frame.vaoID)
-    glBindTexture(GL_TEXTURE_2D, frame.texID)
-    glDrawArrays(GL_TRIANGLE_STRIP, 0, 4)
+    if frame.visible:
+      glBindVertexArray(frame.vaoID)
+      glBindTexture(GL_TEXTURE_2D, frame.texID)
+      glDrawArrays(GL_TRIANGLE_STRIP, 0, 4)
   # Set program to None program
   glBindTexture(GL_TEXTURE_2D, 0)
   glBindVertexArray(0)

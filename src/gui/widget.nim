@@ -1,7 +1,11 @@
+# Bitflags Procs
 from bitops import clearMask, setMask
+from ../extras import testMask, anyMask
+# GUI Objects
 from state import GUIState, GUISignal
 from context import GUIContext, GUIRect
-export clearMask, setMask
+# Export bitflags Procs
+export testMask, anyMask, clearMask, setMask
 
 const
   # Indicators
@@ -18,21 +22,14 @@ const
   wGrab* = 0x0100'u16
   # Signal-Enabled
   wSignal* = 0x0200'u16
+  # Combinations
+  wFocusCheck* = 0x0070'u16
 
 type
   GUIWidget* = ref object of RootObj
-    wNext*, wPrev*: GUIWidget
+    next*, prev*: GUIWidget
     flags*, id*: uint16
     rect*: GUIRect
-
-# WIDGET BITFLAGS EXTRAS
-proc testMask*[T: SomeInteger](v: T, mask: T): bool {.inline.} =
-  ## Returns true if the ``mask`` in ``v`` is set to 1
-  return (v and mask) == mask
-
-proc anyMask*[T: SomeInteger](v: T, mask: T): bool {.inline.} =
-  ## Returns true if at least one bit of the ``mask`` in ``v`` is set to 1
-  return (v and mask) != 0
 
 # WIDGET ABSTRACT METHODS - Single-Threaded
 {.pragma: guibase, base, locks: "unknown".}
@@ -55,7 +52,7 @@ method focusOut*(widget: GUIWidget) {.guibase.} =
     widget.flags.setMask(wDraw)
 
 # WIDGET RECT
-proc pointOnArea*(rect: GUIRect, x, y: int): bool =
+proc pointOnArea*(rect: var GUIRect, x, y: int): bool =
   result =
     x >= rect.x and
     x <= rect.x + rect.w and
