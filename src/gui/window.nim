@@ -204,12 +204,10 @@ proc add*(win: var GUIWindow, widget: GUIWidget) =
   win.ctx.createRegion(addr widget.rect)
   win.gui.add(widget)
 
-proc addFrame*(win: var GUIWindow, widget: GUIWidget): int =
+proc addFrame*(win: var GUIWindow, widget: GUIWidget) =
   win.frames.add(
     newGUIFrame(win.ctx, widget)
   )
-  # Return Index of the new Frame
-  return high(win.frames)
 
 # --------------------
 # WINDOW RUNNING PROCS
@@ -246,7 +244,7 @@ proc handleEvents*(win: var GUIWindow) =
           win.state.key == XK_ISO_Left_Tab):
         step(win.gui, win.state.key == XK_ISO_Left_Tab)
       else:
-        for frame in win.frames.mitems:
+        for frame in mitems(win.frames):
           if event(frame, addr win.state):
             return
         event(win.gui, addr win.state)
@@ -264,7 +262,7 @@ proc handleTick*(win: var GUIWindow): bool =
     else:
       trigger(win.gui, signal)
       # Signal for frames
-      for frame in win.frames.mitems:
+      for frame in mitems(win.frames):
         trigger(frame, signal)
   # Update -> Layout
   if testMask(win.gui.flags, wUpdate):
@@ -273,7 +271,7 @@ proc handleTick*(win: var GUIWindow): bool =
     layout(win.gui)
     update(win.ctx)
   # Update -> Layout for frames
-  for frame in win.frames.mitems:
+  for frame in mitems(win.frames):
     update_layout(frame)
 
   return true
@@ -289,7 +287,6 @@ proc render*(win: var GUIWindow) =
   # Render Textures (Regions and Frames)
   win.ctx.render()
   # Present to X11/EGL Window
-  glFinish()
   discard eglSwapBuffers(win.eglDsp, win.eglSur)
   # TODO: FPS Strategy
   sleep(16)

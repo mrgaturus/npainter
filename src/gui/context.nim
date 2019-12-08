@@ -1,3 +1,4 @@
+from ../extras import pitems
 from ../math import orthoProjection, uvNormalize
 from ../shader import newSimpleProgram
 
@@ -96,7 +97,7 @@ proc newGUIContext*(): GUIContext =
 
 proc disposeCache*(ctx: var GUIContext) =
   # Dealloc child cache
-  for frame in ctx.frames:
+  for frame in pitems(ctx.frames):
     dealloc(frame.vCache)
   # Dealloc root cache
   dealloc(ctx.vCache)
@@ -273,16 +274,8 @@ proc resize*(ctx: var GUIContext, rect: ptr GUIRect) =
   ctx.vHeight = rect.h
 
 proc update*(ctx: var GUIContext) =
-  for region in mitems(ctx.regions):
-    update(unsafeAddr region, ctx.vWidth, ctx.vHeight)
-
-proc toTop*(ctx: var GUIContext, index: int): ptr CTXFrame =
-  # same as delete but moving to top only
-  let xl = ctx.frames.len
-  for j in index.int..xl-2: 
-    shallowCopy(ctx.frames[j], ctx.frames[j+1])
-  # returns new addr
-  return unsafeAddr(ctx.frames[^1])
+  for region in pitems(ctx.regions):
+    update(region, ctx.vWidth, ctx.vHeight)
 
 proc makeCurrent*(ctx: var GUIContext, frame: ptr CTXFrame) =
   # Clear levels
@@ -320,13 +313,13 @@ proc render*(ctx: var GUIContext) =
   glActiveTexture(GL_TEXTURE0)
   # Draw Regions
   glBindTexture(GL_TEXTURE_2D, ctx.texID)
-  for region in ctx.regions:
+  for region in pitems(ctx.regions):
     # Draw Region if is visible
     if region.visible:
       glBindVertexArray(region.vaoID)
       glDrawArrays(GL_TRIANGLE_STRIP, 0, 4)
   # Draw Frames
-  for frame in ctx.frames:
+  for frame in pitems(ctx.frames):
     # Draw Frame if is visible
     if frame.visible:
       glBindVertexArray(frame.vaoID)
