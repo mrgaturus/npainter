@@ -134,7 +134,6 @@ proc update(region: ptr CTXRegion, w, h: int32) =
       glBufferSubData(GL_ARRAY_BUFFER, 0, vertSize, rectArray[0].unsafeAddr)
       uvNormalize(rectArray[0].unsafeAddr, float32 w, float32 h)
       glBufferSubData(GL_ARRAY_BUFFER, vertSize, vertSize, rectArray[0].unsafeAddr)
-      echo rectArray
     glBindBuffer(GL_ARRAY_BUFFER, 0)
 
 # -------------------

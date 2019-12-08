@@ -1,6 +1,6 @@
 import ../libs/egl
 import x11/xlib, x11/x
-import widget, state, context, container, frame
+import widget, event, context, container, frame
 
 from os import sleep
 from builder import signal
@@ -49,7 +49,7 @@ type
     frames: seq[GUIFrame]
     focusedFrame: int
 
-signal WindowControl:
+signal Window:
   Terminate
   FocusIM
   UnfocusIM
@@ -160,21 +160,21 @@ proc newGUIWindow*(w, h: int32, layout: GUILayout): GUIWindow =
   result.xID = createXWindow(result.display, uint32 w, uint32 h)
   result.createXIM()
   # Alloc a 32 byte UTF8Buffer
-  result.state.allocUTF8Buffer(32)
+  result.state.utf8buffer(32)
   # Initialize EGL and GL
   result.createEGL()
   result.ctx = newGUIContext()
   # Create new root container
   block:
     var gui = newContainer(layout)
-    gui.id = WindowControlID
+    gui.id = WindowID
     gui.rect.w = w
     gui.rect.h = h
     # Resize context to initial gui size
     result.ctx.resize(addr gui.rect)
     result.gui = gui
   # Alloc Global GUIQueue
-  signalQueue = newGUIQueue()
+  allocQueue()
 
 proc exec*(win: var GUIWindow): bool =
   # Shows the win on the screen
@@ -182,19 +182,21 @@ proc exec*(win: var GUIWindow): bool =
   discard XSync(win.display, 0)
 
 proc exit*(win: var GUIWindow) =
+  # Dispose Queue
+  disposeQueue()
   # Dispose UTF8Buffer
-  win.state.utf8str.dealloc()
+  dealloc(win.state.utf8str)
   # Dispose Viewport Cache
-  win.ctx.disposeCache()
+  disposeCache(win.ctx)
+  # Dispose EGL
+  discard eglDestroySurface(win.eglDsp, win.eglSur)
+  discard eglDestroyContext(win.eglDsp, win.eglCtx)
+  discard eglTerminate(win.eglDsp)
   # Dispose all X Stuff
   XDestroyIC(win.xic)
   discard XCloseIM(win.xim)
   discard XDestroyWindow(win.display, win.xID)
   discard XCloseDisplay(win.display)
-  # Dispose EGL
-  discard eglDestroySurface(win.eglDsp, win.eglSur)
-  discard eglDestroyContext(win.eglDsp, win.eglCtx)
-  discard eglTerminate(win.eglDsp)
 
 # --------------------
 # WINDOW GUI PROCS
@@ -251,14 +253,18 @@ proc handleEvents*(win: var GUIWindow) =
 
 proc handleTick*(win: var GUIWindow): bool =
   # Signal ID Handling
-  for signal in signalQueue:
+  for signal in pollSignals():
     case signal.id:
     of NoSignalID: discard
-    of WindowControlID:
-      case WindowControlMsg(signal.message):
+    of WindowID:
+      case WindowMsg(signal.msg):
       of msgTerminate: return false
       of msgFocusIM: XSetICFocus(win.xic)
       of msgUnfocusIM: XUnsetICFocus(win.xic)
+    of FrameID:
+      for frame in mitems(win.frames):
+        if receive(frame, unsafeAddr signal): 
+          break
     else:
       trigger(win.gui, signal)
       # Signal for frames

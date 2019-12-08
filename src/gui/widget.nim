@@ -2,7 +2,7 @@
 from bitops import clearMask, setMask
 from ../extras import testMask, anyMask
 # GUI Objects
-from state import GUIState, GUISignal
+from event import GUIState, GUISignal
 from context import GUIContext, GUIRect
 # Export bitflags Procs
 export testMask, anyMask, clearMask, setMask

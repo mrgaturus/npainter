@@ -1,9 +1,21 @@
-import context, widget, state
+from builder import signal
+import context, widget, event
+
+signal Frame:
+  Move
+  Resize
+  Show
+  Hide
+  Enter
 
 type
   GUIFrame* = object
     gui: GUIWidget
     tex: ptr CTXFrame
+    id*: uint16
+  FrameData* = object
+    id: uint16
+    x, y, w, h: int32
 
 # -------------------
 # GUIFRAME CREATION PROCS
@@ -30,30 +42,21 @@ proc region(tex: ptr CTXFrame, rect: ptr GUIRect) =
 # GUIFRAME CONTROL PROCS
 # -------------------
 
-proc focus*(frame: var GUIFrame, f: bool) =
-  if testMask(frame.gui.flags, wEnabled or wVisible):
-    setMask(frame.gui.flags, wFocus or wDraw)
+proc leave*(frame: var GUIFrame) =
+  if testMask(frame.gui.flags, wFocus):
+    focusOut(frame.gui)
+    clearMask(frame.gui.flags, wFocus)
 
-proc visible*(frame: var GUIFrame, v: bool) =
-  frame.tex.visible = v
-  if v:
+proc visible*(frame: var GUIFrame, status: bool) =
+  frame.tex.visible = status
+  if status:
     setMask(frame.gui.flags, wVisible)
-    if testMask(frame.gui.flags, wEnabled):
-      setMask(frame.gui.flags, wFocus or wDraw)
   else:
     if testMask(frame.gui.flags, wFocus):
       focusOut(frame.gui)
     clearMask(frame.gui.flags, wVisible or wFocus)
 
-proc move*(frame: var GUIFrame) =
-  region(frame.tex, addr frame.gui.rect)
 
-proc resize*(frame: var GUIFrame) =
-  let rect = addr frame.gui.rect
-  resize(frame.tex, rect.w, rect.h)
-  region(frame.tex, rect)
-  # Mark as dirty
-  setMask(frame.gui.flags, wDirty)
 
 # -------------------
 # GUIFRAME RUNNING PROCS
@@ -79,12 +82,41 @@ proc trigger*(frame: var GUIFrame, signal: GUISignal) =
   if signal.id == frame.gui.id:
     trigger(frame.gui, signal)
 
+proc receive*(frame: var GUIFrame, signal: ptr GUISignal): bool =
+  if signal.id != frame.id: 
+    return false
+  case FrameMsg(signal.msg)
+  of msgMove, msgResize:
+    let 
+      data = cast[ptr FrameData](signal.data)
+      rect = addr frame.gui.rect
+    rect.x = data.x
+    rect.y = data.y
+    if FrameMsg(signal.msg) == msgResize:
+      rect.w = data.w
+      rect.h = data.h
+      resize(frame.tex, rect.w, rect.h)
+      setMask(frame.gui.flags, wDirty)
+    region(frame.tex, rect)
+  of msgShow:
+    frame.tex.visible = true
+    setMask(frame.gui.flags, wVisible)
+  of msgHide:
+    frame.tex.visible = false
+    if testMask(frame.gui.flags, wFocus):
+      focusOut(frame.gui)
+    clearMask(frame.gui.flags, wVisible or wFocus)
+  of msgEnter: discard
+
+  return true
+
 proc update_layout*(frame: var GUIFrame) =
   # Update -> Layout
-  if testMask(frame.gui.flags, wUpdate):
-    update(frame.gui)
-  if anyMask(frame.gui.flags, 0x000C):
-    layout(frame.gui)
+  if anyMask(frame.gui.flags, wUpdate or 0x000C):
+    if testMask(frame.gui.flags, wUpdate):
+      update(frame.gui)
+    if anyMask(frame.gui.flags, 0x000C):
+      layout(frame.gui)
 
 proc draw*(frame: var GUIFrame, ctx: var GUIContext) =
   if testMask(frame.gui.flags, wDraw):

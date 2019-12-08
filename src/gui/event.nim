@@ -1,10 +1,6 @@
 import x11/xlib, x11/x
 
 const
-  GUIQueueSize = 16
-  GUIQueueEmpty = -1
-
-const
   # No Signal
   NoSignalID* = 0'u16
   # Mouse Buttons
@@ -43,13 +39,17 @@ type
     utf8str*: cstring
     # Modifiers for Both
     mods*: uint16
-  GUISignal* = object
-    id*, message*: uint16
+  # GUI Signal Queue
+  SignalData* = object
+  Signal = object
+    next: GUISignal
+    id*, msg*: uint16
+    data*: SignalData
+  GUISignal* = ptr Signal
   GUIQueue* = object
-    front, back: int16
-    signals: array[GUIQueueSize, GUISignal]
+    back, front: GUISignal
 
-proc allocUTF8Buffer*(state: var GUIState, cap: int32) =
+proc utf8buffer*(state: var GUIState, cap: int32) =
   if state.utf8str.isNil:
     state.utf8str = cast[cstring](alloc(cap))
   else:
@@ -74,7 +74,7 @@ proc translateXEvent*(state: var GUIState, display: PDisplay, event: PXEvent, xi
           state.utf8cap, state.key.addr, state.utf8state.addr)
     # Check is buffer size is not enough
     if state.utf8state == XBufferOverflow:
-      state.allocUTF8Buffer(state.utf8size)
+      utf8buffer(state, state.utf8size)
       state.utf8cap = state.utf8size
       state.utf8size =
         Xutf8LookupString(xic, cast[PXKeyPressedEvent](event), state.utf8str,
@@ -100,44 +100,53 @@ proc translateXEvent*(state: var GUIState, display: PDisplay, event: PXEvent, xi
   else:
     discard
 
-# Signal ID Queue
-proc newGUIQueue*(): GUIQueue =
-  zeroMem(result.addr, sizeof(GUIQueue))
-  result.front = GUIQueueEmpty
-  result.back = GUIQueueEmpty
+# ------------
+# SIGNAL QUEUE
+# ------------
 
-proc pushSignal*(queue: var GUIQueue, id: uint16, message: enum): bool =
-  if id == NoSignalID or
-      queue.front == 0 and queue.back == GUIQueueSize - 1 or
-      queue.back == queue.front - 1:
-    return false
+var queue: ptr GUIQueue = nil
+proc allocQueue*() =
+  if queue.isNil:
+    queue = cast[ptr GUIQueue](
+      alloc0(sizeof(GUIQueue))
+    )
 
-  if queue.front == GUIQueueEmpty:
-    zeroMem(queue.addr, sizeof(GUIQueue))
+proc disposeQueue*() =
+  var signal = queue.back
+  while signal != nil:
+    # Use back as prev
+    queue.back = signal
+    signal = signal.next
+    # dealloc prev
+    dealloc(queue.back)
+  dealloc(queue)
+
+proc pushSignal*(id, msg: enum, data: pointer, size: Natural) =
+  # Allocs new signal
+  let nsignal = cast[GUISignal](
+    alloc(sizeof(Signal) + size)
+  )
+  nsignal.next = nil
+  # Assign Attribs
+  nsignal.id = id
+  nsignal.msg = msg
+  copyMem(addr nsignal.data, data, size)
+  # Add new signal to Front
+  if queue.front.isNil:
+    queue.back = nsignal
+    queue.front = nsignal
   else:
-    queue.back = (queue.back + 1) mod GUIQueueSize
+    queue.front.next = nsignal
+    queue.front = nsignal
 
-  queue.signals[queue.back] =
-    GUISignal(id: id, message: message.uint16)
-  return true
-
-proc popSignal(queue: var GUIQueue): GUISignal =
-  let front = queue.front
-  if front == GUIQueueEmpty:
-    zeroMem(result.addr, GUISignal.sizeof)
-  else:
-    if front == queue.back:
-      queue.front = GUIQueueEmpty
-      queue.back = GUIQueueEmpty
-    else:
-      queue.front = (front + 1) mod GUIQueueSize
-    result = queue.signals[front]
-
-iterator items*(queue: var GUIQueue): GUISignal =
-  var signal: GUISignal
-  while true:
-    signal = queue.popSignal()
-    if signal.id == NoSignalID:
-      break
-
+iterator pollSignals*(): GUISignal = 
+  var signal = queue.back
+  while signal != nil:
     yield signal
+    # Use back as prev
+    queue.back = signal
+    signal = signal.next
+    # dealloc prev
+    dealloc(queue.back)
+  queue.back = nil
+  queue.front = nil

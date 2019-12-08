@@ -1,4 +1,4 @@
-from state import GUIState, GUIEvent, GUISignal
+from event import GUIState, GUIEvent, GUISignal
 import widget, context
 
 const
@@ -78,18 +78,18 @@ proc checkFocus(container: GUIContainer) =
 method draw(container: GUIContainer, ctx: ptr GUIContext) =
   var count = 0;
 
-  # Make Decorator current
+  # Push Clipping and Color Level
   ctx.push(addr container.rect, addr container.color)
   # Clear color if it was dirty
   if testMask(container.flags, wDrawDirty):
-    container.flags.clearMask(wDrawDirty)
     ctx.clear()
+    clearMask(container.flags, wDrawDirty)
   # Draw Widgets
   for widget in container:
     if (widget.flags and wDraw) == wDraw:
       widget.draw(ctx)
       inc(count)
-  # Unmake Decorator current
+  # Pop Clipping and Color Level
   ctx.pop()
 
   if count == 0:

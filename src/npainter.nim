@@ -13,7 +13,7 @@ proc region(tex: ptr CTXFrame, rect: ptr GUIRect) =
 
 when isMainModule:
   var 
-    win = newGUIWindow(1024, 600, new GUILayout)
+    win = newGUIWindow(1280, 720, new GUILayout)
     running = win.exec()
     # pixel: tuple[r,g,b,a: byte]
     # Rects
