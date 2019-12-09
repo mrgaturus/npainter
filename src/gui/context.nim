@@ -29,7 +29,6 @@ type
     vWidth, vHeight: int32
     # bools
     visible*: bool
-    needsTop*: bool
   # The Context
   GUIContext* = object
     # GUI Program and Uniforms

@@ -11,12 +11,11 @@ type
   GUIContainer* = ref object of GUIWidget
     first, last: GUIWidget  # Iterating / Inserting
     focus, hover: GUIWidget # Cache Pointers
-    # Layout and Color
     layout: GUILayout
     color: GUIColor
 
 # LAYOUT ABSTRACT METHOD
-method layout*(layout: GUILayout, container: GUIContainer) {.base.} = discard
+method layout*(self: GUILayout, container: GUIContainer) {.base.} = discard
 
 # CONTAINER PROCS
 proc newContainer*(layout: GUILayout): GUIContainer =
@@ -33,59 +32,59 @@ proc newContainer*(layout: GUILayout): GUIContainer =
   # Initialize Rect with zeros
   zeroMem(addr result.rect, sizeof GUIRect)
 
-proc add*(container: GUIContainer, widget: GUIWidget) =
-  if container.first.isNil:
-    container.first = widget
-    container.last = widget
+proc add*(self: GUIContainer, widget: GUIWidget) =
+  if self.first.isNil:
+    self.first = widget
+    self.last = widget
   else:
-    widget.prev = container.last
-    container.last.next = widget
+    widget.prev = self.last
+    self.last.next = widget
 
-  container.last = widget
+  self.last = widget
 
 # CONTAINER PROCS PRIVATE
-iterator items(container: GUIContainer): GUIWidget =
-  var current: GUIWidget = container.first
+iterator items(self: GUIContainer): GUIWidget =
+  var current: GUIWidget = self.first
   while current != nil:
     yield current
     current = current.next
 
-proc stepWidget(container: GUIContainer, back: bool): bool =
+proc stepWidget(self: GUIContainer, back: bool): bool =
   if back:
-    if container.focus.isNil:
-      container.focus = container.last
+    if self.focus.isNil:
+      self.focus = self.last
     else:
-      container.focus = container.focus.prev
+      self.focus = self.focus.prev
   else:
-    if container.focus.isNil:
-      container.focus = container.first
+    if self.focus.isNil:
+      self.focus = self.first
     else:
-      container.focus = container.focus.next
+      self.focus = self.focus.next
 
-  result = not container.focus.isNil
+  result = not self.focus.isNil
 
-proc checkFocus(container: GUIContainer) =
-  var aux: GUIWidget = container.focus
+proc checkFocus(self: GUIContainer) =
+  var aux: GUIWidget = self.focus
   if aux != nil and (aux.flags and wFocusCheck) != wFocusCheck:
     aux.focusOut()
     aux.flags.clearMask(wFocus)
 
-    container.flags =
-      (container.flags and not wFocus.uint16) or (aux.flags and wReactive)
-    container.focus = nil
+    self.flags =
+      (self.flags and not wFocus.uint16) or (aux.flags and wReactive)
+    self.focus = nil
 
 # CONTAINER METHODS
-method draw(container: GUIContainer, ctx: ptr GUIContext) =
+method draw(self: GUIContainer, ctx: ptr GUIContext) =
   var count = 0;
 
   # Push Clipping and Color Level
-  ctx.push(addr container.rect, addr container.color)
+  ctx.push(addr self.rect, addr self.color)
   # Clear color if it was dirty
-  if testMask(container.flags, wDrawDirty):
+  if testMask(self.flags, wDrawDirty):
     ctx.clear()
-    clearMask(container.flags, wDrawDirty)
+    clearMask(self.flags, wDrawDirty)
   # Draw Widgets
-  for widget in container:
+  for widget in self:
     if (widget.flags and wDraw) == wDraw:
       widget.draw(ctx)
       inc(count)
@@ -93,70 +92,70 @@ method draw(container: GUIContainer, ctx: ptr GUIContext) =
   ctx.pop()
 
   if count == 0:
-    container.flags.clearMask(wDraw)
+    self.flags.clearMask(wDraw)
 
-method update(container: GUIContainer) =
+method update(self: GUIContainer) =
   var count = 0;
 
-  for widget in container:
+  for widget in self:
     if (widget.flags and wUpdate) == wUpdate:
       widget.update()
       inc(count)
 
-  container.checkFocus()
+  self.checkFocus()
 
   if count == 0:
-    container.flags.clearMask(wUpdate)
+    self.flags.clearMask(wUpdate)
 
-method event(container: GUIContainer, state: ptr GUIState) =
+method event(self: GUIContainer, state: ptr GUIState) =
   var aux: GUIWidget = nil
 
   case state.eventType
   of evMouseMove, evMouseClick, evMouseUnclick, evMouseAxis:
-    aux = container.hover
+    aux = self.hover
 
-    if (container.flags and wGrab) == wGrab:
+    if (self.flags and wGrab) == wGrab:
       if aux != nil and (aux.flags and wGrab) == wGrab:
-        if container.rect.pointOnArea(state.mx, state.my):
+        if self.rect.pointOnArea(state.mx, state.my):
           aux.flags.setMask(wHover)
         else:
           aux.flags.clearMask(wHover)
       else:
-        container.flags.clearMask(wGrab)
+        self.flags.clearMask(wGrab)
     elif aux.isNil or not aux.rect.pointOnArea(state.mx, state.my):
       if aux != nil:
         aux.hoverOut()
         aux.flags.clearMask(wHover)
-        container.flags.setMask(aux.flags and wReactive)
+        self.flags.setMask(aux.flags and wReactive)
 
       aux = nil
-      for widget in container:
+      for widget in self:
         if (widget.flags and wVisible) == wVisible and
             widget.rect.pointOnArea(state.mx, state.my):
           widget.flags.setMask(wHover)
-          container.flags.setMask(wHover)
+          self.flags.setMask(wHover)
 
           aux = widget
           break
 
       if aux.isNil:
-        container.flags.clearMask(wHover)
+        self.flags.clearMask(wHover)
 
-      container.hover = aux
+      self.hover = aux
 
       if state.eventType == evMouseClick:
-        container.flags.setMask(wGrab)
+        self.flags.setMask(wGrab)
   of evKeyDown, evKeyUp:
-    if (container.flags and wFocus) == wFocus:
-      aux = container.focus
+    if (self.flags and wFocus) == wFocus:
+      aux = self.focus
 
   if aux != nil:
     aux.event(state)
     if state.eventType < evKeyDown:
-      container.flags = (container.flags and not wGrab.uint16) or (
+      self.flags = (self.flags and not wGrab.uint16) or (
           aux.flags and wGrab)
 
-    var focusAux: GUIWidget = container.focus
+    var focusAux: GUIWidget = self.focus
     let focusCheck = (aux.flags and wFocusCheck) xor 0x0030'u16
 
     if focusCheck == wFocus:
@@ -164,24 +163,24 @@ method event(container: GUIContainer, state: ptr GUIState) =
         focusAux.focusOut()
         focusAux.flags.clearMask(wFocus)
 
-        container.flags.setMask(aux.flags and wReactive)
-        container.focus = container.hover
+        self.flags.setMask(aux.flags and wReactive)
+        self.focus = self.hover
       elif focusAux.isNil:
-        container.focus = container.hover
-        container.flags.setMask(wFocus)
+        self.focus = self.hover
+        self.flags.setMask(wFocus)
     elif (focusCheck and wFocus) == wFocus or aux != focusAux:
       aux.focusOut()
       aux.flags.clearMask(wFocus)
 
       if (aux == focusAux):
-        container.focus = nil
-        container.flags.clearMask(wFocus)
+        self.focus = nil
+        self.flags.clearMask(wFocus)
 
-    container.flags.setMask(aux.flags and wReactive)
+    self.flags.setMask(aux.flags and wReactive)
 
-method trigger(container: GUIContainer, signal: GUISignal) =
-  var focusAux = container.focus
-  for widget in container:
+method trigger(self: GUIContainer, signal: GUISignal) =
+  var focusAux = self.focus
+  for widget in self:
     if (widget.flags and wSignal) == wSignal and
         (widget.id == signal.id or widget.id == 0):
       widget.trigger(signal)
@@ -193,54 +192,54 @@ method trigger(container: GUIContainer, signal: GUISignal) =
             focusAux.focusOut()
             focusAux.flags.clearMask(wFocus)
 
-            container.flags.setMask(focusAux.flags and wReactive)
+            self.flags.setMask(focusAux.flags and wReactive)
           focusAux = widget
         else:
           widget.focusOut()
           widget.flags.clearMask(wFocus)
 
-      container.flags.setMask(widget.flags and wReactive)
+      self.flags.setMask(widget.flags and wReactive)
 
-  if focusAux != container.focus:
-    container.focus = focusAux
-    container.flags.setMask(wFocus)
+  if focusAux != self.focus:
+    self.focus = focusAux
+    self.flags.setMask(wFocus)
   else:
-    container.checkFocus()
+    self.checkFocus()
 
-method step(container: GUIContainer, back: bool) =
-  var widget: GUIWidget = container.focus
+method step(self: GUIContainer, back: bool) =
+  var widget: GUIWidget = self.focus
 
   if widget != nil:
     widget.step(back)
-    container.flags.setMask(widget.flags and wReactive)
+    self.flags.setMask(widget.flags and wReactive)
 
     if (widget.flags and wFocusCheck) == wFocusCheck: return
     else:
       widget.focusOut()
       widget.flags.clearMask(wFocus)
 
-      container.flags.setMask(widget.flags and wReactive)
+      self.flags.setMask(widget.flags and wReactive)
 
-  while container.stepWidget(back):
-    widget = container.focus
+  while self.stepWidget(back):
+    widget = self.focus
     if (widget.flags and 0x0030) == 0x0030:
       widget.step(back)
-      container.flags.setMask(widget.flags and wReactive)
+      self.flags.setMask(widget.flags and wReactive)
 
       if (widget.flags and wFocus) == wFocus:
-        container.flags.setMask(wFocus)
+        self.flags.setMask(wFocus)
         return
 
-  container.focus = nil
-  container.flags.clearMask(wFocus)
+  self.focus = nil
+  self.flags.clearMask(wFocus)
 
-method layout(container: GUIContainer) =
-  if (container.flags and wDirty) == wDirty:
-    container.layout.layout(container)
-    container.flags.setMask(wDrawDirty)
+method layout(self: GUIContainer) =
+  if (self.flags and wDirty) == wDirty:
+    self.layout.layout(self)
+    self.flags.setMask(wDrawDirty)
 
-  for widget in container:
-    widget.flags.setMask(container.flags and wDirty)
+  for widget in self:
+    widget.flags.setMask(self.flags and wDirty)
     if (widget.flags and 0x000C) != 0:
       widget.layout()
       widget.flags.clearMask(0x000D)
@@ -250,32 +249,32 @@ method layout(container: GUIContainer) =
       else:
         zeroMem(addr widget.rect, sizeof(GUIRect))
 
-      container.flags.setMask(widget.flags and wReactive)
+      self.flags.setMask(widget.flags and wReactive)
 
-  container.checkFocus()
-  container.flags.clearMask(0x000C)
+  self.checkFocus()
+  self.flags.clearMask(0x000C)
 
-method hoverOut(container: GUIContainer) =
-  var aux: GUIWidget = container.hover
+method hoverOut(self: GUIContainer) =
+  var aux: GUIWidget = self.hover
   if aux != nil:
     aux.hoverOut()
     aux.flags.clearMask(wHover)
     # if is focused check focus
-    if aux == container.focus and
+    if aux == self.focus and
         (aux.flags and wFocusCheck) != wFocusCheck:
       aux.focusOut()
       aux.flags.clearMask(wFocus)
-      container.focus = nil
+      self.focus = nil
 
-    container.hover = nil
-    container.flags.setMask(aux.flags and wReactive)
+    self.hover = nil
+    self.flags.setMask(aux.flags and wReactive)
 
 
-method focusOut(container: GUIContainer) =
-  var aux: GUIWidget = container.focus
+method focusOut(self: GUIContainer) =
+  var aux: GUIWidget = self.focus
   if aux != nil:
     aux.focusOut()
     aux.flags.clearMask(wFocus)
 
-    container.focus = nil
-    container.flags.setMask(aux.flags and wReactive)
+    self.focus = nil
+    self.flags.setMask(aux.flags and wReactive)
