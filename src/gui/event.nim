@@ -49,6 +49,7 @@ type
   GUIQueue* = object
     back, front: GUISignal
 
+# UTF8Buffer allocation/reallocation
 proc utf8buffer*(state: var GUIState, cap: int32) =
   if state.utf8str.isNil:
     state.utf8str = cast[cstring](alloc(cap))
@@ -121,25 +122,7 @@ proc disposeQueue*() =
     dealloc(queue.back)
   dealloc(queue)
 
-proc pushSignal*(id, msg: enum, data: pointer, size: Natural) =
-  # Allocs new signal
-  let nsignal = cast[GUISignal](
-    alloc(sizeof(Signal) + size)
-  )
-  nsignal.next = nil
-  # Assign Attribs
-  nsignal.id = id
-  nsignal.msg = msg
-  copyMem(addr nsignal.data, data, size)
-  # Add new signal to Front
-  if queue.front.isNil:
-    queue.back = nsignal
-    queue.front = nsignal
-  else:
-    queue.front.next = nsignal
-    queue.front = nsignal
-
-iterator pollSignals*(): GUISignal = 
+iterator pollQueue*(): GUISignal =
   var signal = queue.back
   while signal != nil:
     yield signal
@@ -150,3 +133,28 @@ iterator pollSignals*(): GUISignal =
     dealloc(queue.back)
   queue.back = nil
   queue.front = nil
+
+# ------------
+# SIGNAL PUSHER
+# ------------
+
+proc pushSignal*(id: uint16, msg: enum, data: pointer, size: Natural) =
+  # Allocs new signal
+  let nsignal = cast[GUISignal](
+    alloc(sizeof(Signal) + size)
+  )
+  nsignal.next = nil
+  # Assign Attribs
+  nsignal.id = id
+  nsignal.msg = uint16(msg)
+  copyMem(addr nsignal.data, data, size)
+  # Add new signal to Front
+  if queue.front.isNil:
+    queue.back = nsignal
+    queue.front = nsignal
+  else:
+    queue.front.next = nsignal
+    queue.front = nsignal
+
+template convert*(data: var SignalData, t: type): untyped =
+  cast[ptr t](data)

@@ -13,9 +13,9 @@ type
     gui: GUIWidget
     tex: ptr CTXFrame
     id*: uint16
-  FrameData* = object
-    id: uint16
+  FrameSData* = object
     x, y, w, h: int32
+    id: uint16
 
 # -------------------
 # GUIFRAME CREATION PROCS
@@ -56,8 +56,6 @@ proc visible*(frame: var GUIFrame, status: bool) =
       focusOut(frame.gui)
     clearMask(frame.gui.flags, wVisible or wFocus)
 
-
-
 # -------------------
 # GUIFRAME RUNNING PROCS
 # -------------------
@@ -82,13 +80,13 @@ proc trigger*(frame: var GUIFrame, signal: GUISignal) =
   if signal.id == frame.gui.id:
     trigger(frame.gui, signal)
 
-proc receive*(frame: var GUIFrame, signal: ptr GUISignal): bool =
+proc receive*(frame: var GUIFrame, signal: GUISignal): bool =
   if signal.id != frame.id: 
     return false
   case FrameMsg(signal.msg)
   of msgMove, msgResize:
     let 
-      data = cast[ptr FrameData](signal.data)
+      data = convert(signal.data, FrameSData)
       rect = addr frame.gui.rect
     rect.x = data.x
     rect.y = data.y

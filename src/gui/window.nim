@@ -253,7 +253,7 @@ proc handleEvents*(win: var GUIWindow) =
 
 proc handleTick*(win: var GUIWindow): bool =
   # Signal ID Handling
-  for signal in pollSignals():
+  for signal in pollQueue():
     case signal.id:
     of NoSignalID: discard
     of WindowID:
@@ -263,7 +263,7 @@ proc handleTick*(win: var GUIWindow): bool =
       of msgUnfocusIM: XUnsetICFocus(win.xic)
     of FrameID:
       for frame in mitems(win.frames):
-        if receive(frame, unsafeAddr signal): 
+        if receive(frame, signal):
           break
     else:
       trigger(win.gui, signal)
