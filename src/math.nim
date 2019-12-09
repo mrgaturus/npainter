@@ -13,7 +13,8 @@ void uv_normalize(float* r, float w, float h) {
 }
 """.}
 
-proc uvNormalize*(buffer: ptr float32, w, h: float32) {.importc: "uv_normalize".}
+proc uvNormalize*(buffer: ptr float32, w, h: float32)
+  {.importc: "uv_normalize".}
 
 # -------------------
 # Transforms
@@ -37,4 +38,5 @@ void mat4_ortho(float* r, float left, float right, float bottom, float top) {
 }
 """.}
 
-proc orthoProjection*(mat: ptr float32, left, right, bottom, top: float32) {.importc: "mat4_ortho".}
+proc orthoProjection*(mat: ptr array[16, float32], left, right, bottom,
+    top: float32) {.importc: "mat4_ortho".}

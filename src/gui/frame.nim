@@ -1,22 +1,28 @@
 from builder import signal
-import context, widget, event
+import context, widget, container
 
 signal Frame:
   Move
   Resize
   Show
   Hide
-  Enter
 
 type
-  GUIFrame* = object
-    gui: GUIWidget
-    tex: ptr CTXFrame
-    id*: uint16
-  FrameSData* = object
+  GUIFrame* = ref object of GUIContainer
+    ctx: CTXFrame
+  FrameRegion* = object
+    frame: GUIFrame
     x, y, w, h: int32
-    id: uint16
 
+proc render*(frame: GUIFrame, ctx: var GUIContext) =
+  if testMask(frame.flags, wDraw):
+    makeCurrent(ctx, frame.ctx)
+    draw(frame, addr ctx)
+    clearCurrent(ctx)
+  # Render Frame Texture
+  render(frame.ctx)
+
+discard """
 # -------------------
 # GUIFRAME CREATION PROCS
 # -------------------
@@ -59,6 +65,7 @@ proc visible*(frame: var GUIFrame, status: bool) =
 # -------------------
 # GUIFRAME RUNNING PROCS
 # -------------------
+
 
 proc event*(frame: var GUIFrame, state: ptr GUIState): bool =
   case state.eventType:
@@ -120,3 +127,4 @@ proc draw*(frame: var GUIFrame, ctx: var GUIContext) =
   if testMask(frame.gui.flags, wDraw):
     makeCurrent(ctx, frame.tex)
     draw(frame.gui, addr ctx)
+"""

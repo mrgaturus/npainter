@@ -44,10 +44,10 @@ proc add*(self: GUIContainer, widget: GUIWidget) =
 
 # CONTAINER PROCS PRIVATE
 iterator items(self: GUIContainer): GUIWidget =
-  var current: GUIWidget = self.first
-  while current != nil:
-    yield current
-    current = current.next
+  var widget: GUIWidget = self.first
+  while widget != nil:
+    yield widget
+    widget = widget.next
 
 proc stepWidget(self: GUIContainer, back: bool): bool =
   if back:

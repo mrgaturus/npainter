@@ -2,7 +2,7 @@ import libs/gl
 import gui/window, gui/context
 from gui/container import GUILayout
 
-proc region(tex: ptr CTXFrame, rect: ptr GUIRect) =
+proc region(tex: var CTXFrame, rect: ptr GUIRect) =
   let verts = [
     float32 rect.x, float32 rect.y,
     float32(rect.x + rect.w), float32 rect.y,
@@ -30,9 +30,10 @@ when isMainModule:
   win.ctx.createRegion(addr rect2)
   frame.resize(rect3.w, rect3.h)
   frame.region(addr rect3)
-  frame.visible = true
 
-  win.ctx.makeCurrent(nil)
+  start(win.ctx)
+
+  win.ctx.makeCurrent()
   addr(win.ctx).clip(addr rect1)
   addr(win.ctx).color(addr color1)
   addr(win.ctx).clear()
@@ -52,7 +53,9 @@ when isMainModule:
   addr(win.ctx).color(addr color1)
   addr(win.ctx).clip(addr rect5)
   addr(win.ctx).clear()
-  glBindFramebuffer(GL_FRAMEBUFFER, 0)
+  win.ctx.clearCurrent()
+
+  #finish(win.ctx)
 
   while running:
     win.handleEvents()
@@ -61,7 +64,10 @@ when isMainModule:
     glClearColor(0.5, 0.5, 0.5, 1.0)
     glClear(GL_COLOR_BUFFER_BIT or GL_DEPTH_BUFFER_BIT)
 
+    render(win.ctx)
+    render(frame)
     win.render()
+    #finish(win.ctx)
 
   win.exit()
 

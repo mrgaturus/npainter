@@ -2,7 +2,6 @@ import ../libs/egl
 import x11/xlib, x11/x
 import widget, event, context, container, frame
 
-from os import sleep
 from builder import signal
 from ../libs/gl import glFinish, gladLoadGL
 from x11/keysym import XK_Tab, XK_ISO_Left_Tab
@@ -186,8 +185,6 @@ proc exit*(win: var GUIWindow) =
   disposeQueue()
   # Dispose UTF8Buffer
   dealloc(win.state.utf8str)
-  # Dispose Viewport Cache
-  disposeCache(win.ctx)
   # Dispose EGL
   discard eglDestroySurface(win.eglDsp, win.eglSur)
   discard eglDestroyContext(win.eglDsp, win.eglCtx)
@@ -205,11 +202,6 @@ proc exit*(win: var GUIWindow) =
 proc add*(win: var GUIWindow, widget: GUIWidget) =
   win.ctx.createRegion(addr widget.rect)
   win.gui.add(widget)
-
-proc addFrame*(win: var GUIWindow, widget: GUIWidget) =
-  win.frames.add(
-    newGUIFrame(win.ctx, widget)
-  )
 
 # --------------------
 # WINDOW RUNNING PROCS
@@ -246,9 +238,6 @@ proc handleEvents*(win: var GUIWindow) =
           win.state.key == XK_ISO_Left_Tab):
         step(win.gui, win.state.key == XK_ISO_Left_Tab)
       else:
-        for frame in mitems(win.frames):
-          if event(frame, addr win.state):
-            return
         event(win.gui, addr win.state)
 
 proc handleTick*(win: var GUIWindow): bool =
@@ -261,10 +250,6 @@ proc handleTick*(win: var GUIWindow): bool =
       of msgTerminate: return false
       of msgFocusIM: XSetICFocus(win.xic)
       of msgUnfocusIM: XUnsetICFocus(win.xic)
-    of FrameID:
-      for frame in mitems(win.frames):
-        if receive(frame, signal):
-          break
     else:
       trigger(win.gui, signal)
       # Signal for frames
@@ -276,23 +261,18 @@ proc handleTick*(win: var GUIWindow): bool =
   if anyMask(win.gui.flags, 0x000C):
     layout(win.gui)
     update(win.ctx)
-  # Update -> Layout for frames
-  for frame in mitems(win.frames):
-    update_layout(frame)
 
   return true
 
 proc render*(win: var GUIWindow) =
   # Draw hot/invalidated widgets
-  makeCurrent(win.ctx, nil)
-  if testMask(win.gui.flags, wDraw):
-    draw(win.gui, addr win.ctx)
-  # Draw hot/invalidated frames
-  for frame in win.frames.mitems:
-    draw(frame, win.ctx)
-  # Render Textures (Regions and Frames)
-  win.ctx.render()
+  #start(win.ctx)
+  #if testMask(win.gui.flags, wDraw):
+  #  makeCurrent(win.ctx)
+  #  draw(win.gui, addr win.ctx)
+  #  clearCurrent(win.ctx)
+  # Draw Root
+  #win.ctx.render()
   # Present to X11/EGL Window
   discard eglSwapBuffers(win.eglDsp, win.eglSur)
-  # TODO: FPS Strategy
-  sleep(16)
+  #finish(win.ctx)
