@@ -4,7 +4,6 @@ import widget, event, context, container, frame
 
 from builder import signal
 from ../libs/gl import glFinish, gladLoadGL
-from x11/keysym import XK_Tab, XK_ISO_Left_Tab
 
 let
   # NPainter EGL Configurations
@@ -202,7 +201,8 @@ proc addWidget*(win: var GUIWindow, widget: GUIWidget, region: bool = true) =
     win.ctx.createRegion(addr widget.rect)
   win.root.add(widget)
 
-proc addFrame*(win: var GUIWindow, layout: GUILayout, color: GUIColor): GUIFrame =
+proc addFrame*(win: var GUIWindow, layout: GUILayout,
+    color: GUIColor): GUIFrame =
   result = newGUIFrame(layout, color)
   if win.root.prev == nil:
     win.root.prev = result
@@ -222,7 +222,7 @@ proc elevateFrame*(root: GUIWidget, frame: GUIFrame) =
   # Remove frame from it's position
   frame.prev.next = frame.next
   if frame.next == nil: # Prev to root
-    root.prev = frame.prev 
+    root.prev = frame.prev
   else: # Somewhere
     frame.next.prev = frame.prev
   # Prev is always nil
@@ -255,7 +255,6 @@ proc handleEvents*(win: var GUIWindow) =
     discard XNextEvent(win.display, event.addr)
     if XFilterEvent(addr event, 0) != 0:
       continue
-
     case event.theType:
     of Expose: echo "look why use exposed"
     of ConfigureNotify: # Resize
@@ -272,14 +271,17 @@ proc handleEvents*(win: var GUIWindow) =
         # Relayout and Redraw GUI
         setMask(win.root.flags, wDirty)
     else:
-      translateXEvent(win.state, win.display, addr event, win.xic)
-      # Check if tab is pressed for step focus
-      if win.state.eventType == evKeyDown and
-          (win.state.key == XK_Tab or
-          win.state.key == XK_ISO_Left_Tab):
-        step(win.root, win.state.key == XK_ISO_Left_Tab)
-      else:
-        event(win.root, addr win.state)
+      if translateXEvent(win.state, win.display, addr event, win.xic):
+        let tabbed =
+          win.state.eventType == evKeyDown and
+          (win.state.key == RightTab or
+          win.state.key == LeftTab)
+        # Handle on any of the frames
+        for frame in forward(win.root):
+          if handleEvent(frame, addr win.state, tabbed): return
+        # Handle event on root if is not handled by a frame
+        if tabbed: step(win.root, win.state.key == LeftTab)
+        else: event(win.root, addr win.state)
 
 proc handleTick*(win: var GUIWindow): bool =
   # Signal ID Handling
@@ -292,13 +294,13 @@ proc handleTick*(win: var GUIWindow): bool =
       of msgFocusIM: XSetICFocus(win.xic)
       of msgUnfocusIM: XUnsetICFocus(win.xic)
     of FrameID:
-      let data = convert(signal.data, FrameBounds)
+      let data = convert(signal.data, SFrame)
       for frame in forward(win.root):
         if frame.fID == data.fID:
           case FrameMsg(signal.msg):
           of msgMove: frame.boundaries(data, false)
           of msgResize: frame.boundaries(data, true)
-          of msgShow: 
+          of msgShow:
             setMask(frame.flags, wVisible)
             elevateFrame(win.root, frame)
           of msgHide: clearMask(frame.flags, wVisible)
@@ -307,25 +309,25 @@ proc handleTick*(win: var GUIWindow): bool =
       # Send signal to frames
       for frame in forward(win.root):
         trigger(frame, signal)
-  # Update -> Layout Frames
-  for frame in forward(win.root):
-    handleTick(frame)
   # Update -> Layout Root
   if testMask(win.root.flags, wUpdate):
     update(win.root)
   if anyMask(win.root.flags, 0x000C):
     layout(win.root)
     update(win.ctx)
-
+  # Update -> Layout Frames
+  for frame in forward(win.root):
+    handleTick(frame)
+  # The loop isn't terminated
   return true
 
 proc render*(win: var GUIWindow) =
   start(win.ctx)
   # Draw hot/invalidated widgets
   if testMask(win.root.flags, wDraw):
-    win.ctx.makeCurrent()
+    makeCurrent(win.ctx)
     draw(win.root, addr win.ctx)
-    win.ctx.clearCurrent()
+    clearCurrent(win.ctx)
   # Draw Root Regions
   render(win.ctx)
   # Render floating frames

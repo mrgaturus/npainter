@@ -3,7 +3,9 @@ import widget, context
 
 const
   wDrawDirty = 0x0400'u16
+  # Combinations
   wReactive = 0x000F'u16
+  wFocusCheck* = 0x0070'u16
 
 type
   # GUIContainer, GUILayout and Decorator
@@ -105,18 +107,18 @@ method event(self: GUIContainer, state: ptr GUIState) =
   var aux: GUIWidget = nil
 
   case state.eventType
-  of evMouseMove, evMouseClick, evMouseUnclick, evMouseAxis:
+  of evMouseMove, evMouseClick, evMouseRelease, evMouseAxis:
     aux = self.hover
 
     if (self.flags and wGrab) == wGrab:
       if aux != nil and (aux.flags and wGrab) == wGrab:
-        if self.rect.pointOnArea(state.mx, state.my):
+        if pointOnArea(self.rect, state.mx, state.my):
           aux.flags.setMask(wHover)
         else:
           aux.flags.clearMask(wHover)
       else:
         self.flags.clearMask(wGrab)
-    elif aux.isNil or not aux.rect.pointOnArea(state.mx, state.my):
+    elif aux.isNil or not pointOnArea(aux.rect, state.mx, state.my):
       if aux != nil:
         aux.hoverOut()
         aux.flags.clearMask(wHover)

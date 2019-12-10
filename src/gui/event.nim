@@ -1,4 +1,5 @@
 import x11/xlib, x11/x
+from x11/keysym import XK_Tab, XK_ISO_Left_Tab
 
 const
   # No Signal
@@ -9,6 +10,9 @@ const
   RightButton* = Button3
   WheelUp* = Button4
   WheelDown* = Button5
+  # Tab Buttons
+  RightTab* = XK_Tab
+  LeftTab* = XK_ISO_Left_Tab
   # Modifiers
   ShiftMod* = ShiftMask
   CtrlMod* = ControlMask
@@ -24,7 +28,7 @@ type
     evKeyDown
     evKeyUp
     evMouseClick
-    evMouseUnclick
+    evMouseRelease
     evMouseMove
     evMouseAxis
   GUIState* = object
@@ -58,7 +62,8 @@ proc utf8buffer*(state: var GUIState, cap: int32) =
   state.utf8cap = cap
 
 # X11 to GUIState translation
-proc translateXEvent*(state: var GUIState, display: PDisplay, event: PXEvent, xic: TXIC) =
+proc translateXEvent*(state: var GUIState, display: PDisplay, event: PXEvent,
+    xic: TXIC): bool =
   state.eventType = cast[GUIEvent](event.theType - 2)
   case event.theType
   of ButtonPress, ButtonRelease:
@@ -90,7 +95,7 @@ proc translateXEvent*(state: var GUIState, display: PDisplay, event: PXEvent, xi
       if nEvent.theType == KeyPress and
           nEvent.xkey.time == event.xkey.time and
           nEvent.xkey.keycode == event.xkey.keycode:
-        return
+        return false
 
     let mods: cint = cast[cint](event.xkey.state)
     # Ignoring UTF8Chars when key releasing
@@ -98,8 +103,9 @@ proc translateXEvent*(state: var GUIState, display: PDisplay, event: PXEvent, xi
       XLookupKeysym(cast[PXKeyEvent](event), (mods and ShiftMask) or (mods and LockMask))
     state.utf8state = UTF8Nothing
     state.mods = cast[uint16](mods and 0x0D)
-  else:
-    discard
+  else: return false
+  # The event was translated
+  return true
 
 # ------------
 # SIGNAL QUEUE

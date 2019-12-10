@@ -22,8 +22,7 @@ const
   wGrab* = 0x0100'u16
   # Signal-Enabled
   wSignal* = 0x0200'u16
-  # Combinations
-  wFocusCheck* = 0x0070'u16
+
 
 type
   GUIWidget* = ref object of RootObj
