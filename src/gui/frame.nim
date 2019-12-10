@@ -10,32 +10,26 @@ signal Frame:
 type
   GUIFrame* = ref object of GUIContainer
     ctx: CTXFrame
-  FrameRegion* = object
-    frame: GUIFrame
+    fID*: uint16
+  FrameBounds* = object
+    fID*: uint16
     x, y, w, h: int32
 
-proc render*(frame: GUIFrame, ctx: var GUIContext) =
-  if testMask(frame.flags, wDraw):
-    makeCurrent(ctx, frame.ctx)
-    draw(frame, addr ctx)
-    clearCurrent(ctx)
-  # Render Frame Texture
-  render(frame.ctx)
+proc newGUIFrame*(layout: GUILayout, color: GUIColor): GUIFrame =
+  new result
+  # GUILayout
+  result.layout = layout
+  result.color = color
+  # GUIWidget Default Flags
+  result.flags = 0x0638
+  # Render Frame
+  result.ctx = createFrame()
 
-discard """
-# -------------------
-# GUIFRAME CREATION PROCS
-# -------------------
+# ---------
+# FRAME HELPER PROCS
+# ---------
 
-proc newGUIFrame*(ctx: var GUIContext, widget: GUIWidget): GUIFrame =
-  result.gui = widget
-  result.tex = ctx.createFrame()
-
-# -------------------
-# GUIFRAME HELPER PROCS
-# -------------------
-
-proc region(tex: ptr CTXFrame, rect: ptr GUIRect) =
+proc region(tex: var CTXFrame, rect: ptr GUIRect) =
   let verts = [
     float32 rect.x, float32 rect.y,
     float32(rect.x + rect.w), float32 rect.y,
@@ -44,87 +38,33 @@ proc region(tex: ptr CTXFrame, rect: ptr GUIRect) =
   ]
   region(tex, unsafeAddr verts[0])
 
-# -------------------
-# GUIFRAME CONTROL PROCS
-# -------------------
+# ---------
+# FRAME RUNNING PROCS
+# ---------
 
-proc leave*(frame: var GUIFrame) =
-  if testMask(frame.gui.flags, wFocus):
-    focusOut(frame.gui)
-    clearMask(frame.gui.flags, wFocus)
+proc boundaries*(frame: GUIFrame, bounds: ptr FrameBounds, resize: bool) =
+  # Resize Texture
+  if resize:
+    copyMem(addr frame.rect.w, addr bounds.w, sizeof(int32)*2)
+    resize(frame.ctx, bounds.w, bounds.h)
+    setMask(frame.flags, wDirty)
+  # Move
+  copyMem(addr frame.rect, addr bounds.x, sizeof(int32)*2)
+  # Update Region
+  region(frame.ctx, addr frame.rect)
 
-proc visible*(frame: var GUIFrame, status: bool) =
-  frame.tex.visible = status
-  if status:
-    setMask(frame.gui.flags, wVisible)
-  else:
-    if testMask(frame.gui.flags, wFocus):
-      focusOut(frame.gui)
-    clearMask(frame.gui.flags, wVisible or wFocus)
+proc handleTick*(frame: GUIFrame) =
+  if anyMask(frame.flags, wUpdate or wLayout or wDirty):
+    if testMask(frame.flags, wUpdate):
+      update(frame)
+    if anyMask(frame.flags, 0x000C):
+      layout(frame)
 
-# -------------------
-# GUIFRAME RUNNING PROCS
-# -------------------
-
-
-proc event*(frame: var GUIFrame, state: ptr GUIState): bool =
-  case state.eventType:
-  of evMouseMove, evMouseClick, evMouseUnclick, evMouseAxis:
-    result = 
-      testMask(frame.gui.flags, wVisible) and
-      pointOnArea(frame.gui.rect, state.mx, state.my)
-    if result:
-      setMask(frame.gui.flags, wHover)
-    elif testMask(frame.gui.flags, wHover):
-      hoverOut(frame.gui)
-  of evKeyDown, evKeyUp:
-    result = testMask(frame.gui.flags, wFocusCheck)
-  
-  if result:
-    event(frame.gui, state)
-
-proc trigger*(frame: var GUIFrame, signal: GUISignal) =
-  if signal.id == frame.gui.id:
-    trigger(frame.gui, signal)
-
-proc receive*(frame: var GUIFrame, signal: GUISignal): bool =
-  if signal.id != frame.id: 
-    return false
-  case FrameMsg(signal.msg)
-  of msgMove, msgResize:
-    let 
-      data = convert(signal.data, FrameSData)
-      rect = addr frame.gui.rect
-    rect.x = data.x
-    rect.y = data.y
-    if FrameMsg(signal.msg) == msgResize:
-      rect.w = data.w
-      rect.h = data.h
-      resize(frame.tex, rect.w, rect.h)
-      setMask(frame.gui.flags, wDirty)
-    region(frame.tex, rect)
-  of msgShow:
-    frame.tex.visible = true
-    setMask(frame.gui.flags, wVisible)
-  of msgHide:
-    frame.tex.visible = false
-    if testMask(frame.gui.flags, wFocus):
-      focusOut(frame.gui)
-    clearMask(frame.gui.flags, wVisible or wFocus)
-  of msgEnter: discard
-
-  return true
-
-proc update_layout*(frame: var GUIFrame) =
-  # Update -> Layout
-  if anyMask(frame.gui.flags, wUpdate or 0x000C):
-    if testMask(frame.gui.flags, wUpdate):
-      update(frame.gui)
-    if anyMask(frame.gui.flags, 0x000C):
-      layout(frame.gui)
-
-proc draw*(frame: var GUIFrame, ctx: var GUIContext) =
-  if testMask(frame.gui.flags, wDraw):
-    makeCurrent(ctx, frame.tex)
-    draw(frame.gui, addr ctx)
-"""
+proc render*(frame: GUIFrame, ctx: var GUIContext) =
+  if testMask(frame.flags, wVisible):
+    if testMask(frame.flags, wDraw):
+      makeCurrent(ctx, frame.ctx)
+      draw(frame, addr ctx)
+      clearCurrent(ctx)
+    # Render Frame Texture
+    render(frame.ctx)

@@ -202,7 +202,7 @@ proc createRegion*(ctx: var GUIContext, rect: ptr GUIRect) =
   # Add new region to root frame
   ctx.regions.add(region)
 
-proc createFrame*(ctx: var GUIContext): CTXFrame =
+proc createFrame*(): CTXFrame =
   # Create New VAO
   glGenVertexArrays(1, addr result.vaoID)
   glBindVertexArray(result.vaoID)

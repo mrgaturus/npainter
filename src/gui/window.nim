@@ -43,10 +43,7 @@ type
     # Itself
     ctx*: GUIContext
     state: GUIState
-    gui*: GUIContainer
-    # Frames (subwindows)
-    frames: seq[GUIFrame]
-    focusedFrame: int
+    root*: GUIContainer
 
 signal Window:
   Terminate
@@ -165,13 +162,14 @@ proc newGUIWindow*(w, h: int32, layout: GUILayout): GUIWindow =
   result.ctx = newGUIContext()
   # Create new root container
   block:
-    var gui = newContainer(layout)
-    gui.id = WindowID
-    gui.rect.w = w
-    gui.rect.h = h
+    let color = GUIColor(r: 0, g: 0, b: 0, a: 1)
+    var root = newGUIContainer(layout, color)
+    root.id = WindowID
+    root.rect.w = w
+    root.rect.h = h
     # Resize context to initial gui size
-    result.ctx.resize(addr gui.rect)
-    result.gui = gui
+    result.ctx.resize(addr root.rect)
+    result.root = root
   # Alloc Global GUIQueue
   allocQueue()
 
@@ -199,9 +197,52 @@ proc exit*(win: var GUIWindow) =
 # WINDOW GUI PROCS
 # --------------------
 
-proc add*(win: var GUIWindow, widget: GUIWidget) =
-  win.ctx.createRegion(addr widget.rect)
-  win.gui.add(widget)
+proc addWidget*(win: var GUIWindow, widget: GUIWidget, region: bool = true) =
+  if region:
+    win.ctx.createRegion(addr widget.rect)
+  win.root.add(widget)
+
+proc addFrame*(win: var GUIWindow, layout: GUILayout, color: GUIColor): GUIFrame =
+  result = newGUIFrame(layout, color)
+  if win.root.prev == nil:
+    win.root.prev = result
+  # Change Next Prev
+  if win.root.next != nil:
+    win.root.next.prev = result
+  # Change Next
+  result.next = win.root.next
+  win.root.next = result
+
+# --------------------
+# WINDOW PRIVATE PROCS
+# --------------------
+
+proc elevateFrame*(root: GUIWidget, frame: GUIFrame) =
+  if cast[GUIWidget](frame) == root.next: return
+  # Remove frame from it's position
+  frame.prev.next = frame.next
+  if frame.next == nil: # Prev to root
+    root.prev = frame.prev 
+  else: # Somewhere
+    frame.next.prev = frame.prev
+  # Prev is always nil
+  frame.prev = nil
+  # Move frame next to root
+  frame.next = root.next
+  frame.next.prev = frame
+  root.next = frame
+
+iterator forward*(gui: GUIWidget): GUIFrame =
+  var frame = gui.next
+  while frame != nil:
+    yield cast[GUIFrame](frame)
+    frame = frame.next
+
+iterator reverse*(gui: GUIWidget): GUIFrame =
+  var frame = gui.prev
+  while frame != nil:
+    yield cast[GUIFrame](frame)
+    frame = frame.prev
 
 # --------------------
 # WINDOW RUNNING PROCS
@@ -216,29 +257,29 @@ proc handleEvents*(win: var GUIWindow) =
       continue
 
     case event.theType:
-    of Expose: setMask(win.gui.flags, wDirty)
+    of Expose: echo "look why use exposed"
     of ConfigureNotify: # Resize
       let
-        w = win.gui.rect.w
-        h = win.gui.rect.h
+        w = win.root.rect.w
+        h = win.root.rect.h
       if event.xconfigure.window == win.xID and
           (event.xconfigure.width != w or
           event.xconfigure.height != h):
-        win.gui.rect.w = event.xconfigure.width
-        win.gui.rect.h = event.xconfigure.height
+        win.root.rect.w = event.xconfigure.width
+        win.root.rect.h = event.xconfigure.height
         # Resize CTX Root
-        win.ctx.resize(addr win.gui.rect)
+        resize(win.ctx, addr win.root.rect)
         # Relayout and Redraw GUI
-        setMask(win.gui.flags, wDirty)
+        setMask(win.root.flags, wDirty)
     else:
       translateXEvent(win.state, win.display, addr event, win.xic)
       # Check if tab is pressed for step focus
       if win.state.eventType == evKeyDown and
           (win.state.key == XK_Tab or
           win.state.key == XK_ISO_Left_Tab):
-        step(win.gui, win.state.key == XK_ISO_Left_Tab)
+        step(win.root, win.state.key == XK_ISO_Left_Tab)
       else:
-        event(win.gui, addr win.state)
+        event(win.root, addr win.state)
 
 proc handleTick*(win: var GUIWindow): bool =
   # Signal ID Handling
@@ -250,29 +291,46 @@ proc handleTick*(win: var GUIWindow): bool =
       of msgTerminate: return false
       of msgFocusIM: XSetICFocus(win.xic)
       of msgUnfocusIM: XUnsetICFocus(win.xic)
+    of FrameID:
+      let data = convert(signal.data, FrameBounds)
+      for frame in forward(win.root):
+        if frame.fID == data.fID:
+          case FrameMsg(signal.msg):
+          of msgMove: frame.boundaries(data, false)
+          of msgResize: frame.boundaries(data, true)
+          of msgShow: 
+            setMask(frame.flags, wVisible)
+            elevateFrame(win.root, frame)
+          of msgHide: clearMask(frame.flags, wVisible)
     else:
-      trigger(win.gui, signal)
-      # Signal for frames
-      for frame in mitems(win.frames):
+      trigger(win.root, signal)
+      # Send signal to frames
+      for frame in forward(win.root):
         trigger(frame, signal)
-  # Update -> Layout
-  if testMask(win.gui.flags, wUpdate):
-    update(win.gui)
-  if anyMask(win.gui.flags, 0x000C):
-    layout(win.gui)
+  # Update -> Layout Frames
+  for frame in forward(win.root):
+    handleTick(frame)
+  # Update -> Layout Root
+  if testMask(win.root.flags, wUpdate):
+    update(win.root)
+  if anyMask(win.root.flags, 0x000C):
+    layout(win.root)
     update(win.ctx)
 
   return true
 
 proc render*(win: var GUIWindow) =
+  start(win.ctx)
   # Draw hot/invalidated widgets
-  #start(win.ctx)
-  #if testMask(win.gui.flags, wDraw):
-  #  makeCurrent(win.ctx)
-  #  draw(win.gui, addr win.ctx)
-  #  clearCurrent(win.ctx)
-  # Draw Root
-  #win.ctx.render()
+  if testMask(win.root.flags, wDraw):
+    win.ctx.makeCurrent()
+    draw(win.root, addr win.ctx)
+    win.ctx.clearCurrent()
+  # Draw Root Regions
+  render(win.ctx)
+  # Render floating frames
+  for frame in reverse(win.root):
+    render(frame, win.ctx)
   # Present to X11/EGL Window
+  finish(win.ctx)
   discard eglSwapBuffers(win.eglDsp, win.eglSur)
-  #finish(win.ctx)

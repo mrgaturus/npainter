@@ -9,8 +9,11 @@ macro signal*(name: untyped, messages: untyped): untyped =
   result.add(
     newNimNode(nnkConstSection).add(
       newNimNode(nnkConstDef).add(
-        newNimNode(nnkPostfix).add(newIdentNode("*"), newIdentNode(name.strVal & "ID")),
-        newEmptyNode(),
+        newNimNode(nnkPostfix).add(
+          newIdentNode("*"), 
+          newIdentNode(name.strVal & "ID")
+        ), 
+        newEmptyNode(), 
         newLit(lastID)
       )
     )
@@ -26,12 +29,14 @@ macro signal*(name: untyped, messages: untyped): untyped =
       msgNode.add(
         newIdentNode("msg" & m.strVal)
       )
-    
     # Create Type Enum Node
     result.add(
       newNimNode(nnkTypeSection).add(
         newNimNode(nnkTypeDef).add(
-          newNimNode(nnkPostfix).add(newIdentNode("*"), newIdentNode(name.strVal & "Msg")),
+          newNimNode(nnkPostfix).add(
+            newIdentNode("*"),
+            newIdentNode(name.strVal & "Msg")
+          ),
           newEmptyNode(),
           msgNode
         )

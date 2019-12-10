@@ -11,26 +11,20 @@ type
   GUIContainer* = ref object of GUIWidget
     first, last: GUIWidget  # Iterating / Inserting
     focus, hover: GUIWidget # Cache Pointers
-    layout: GUILayout
-    color: GUIColor
+    layout*: GUILayout
+    color*: GUIColor
 
 # LAYOUT ABSTRACT METHOD
 method layout*(self: GUILayout, container: GUIContainer) {.base.} = discard
 
 # CONTAINER PROCS
-proc newContainer*(layout: GUILayout): GUIContainer =
+proc newGUIContainer*(layout: GUILayout, color: GUIColor): GUIContainer =
   new result
   # GUILayout
   result.layout = layout
-  # GUIWidget Handlers
-  result.first = nil
-  result.last = nil
-  result.hover = nil
-  result.focus = nil
+  result.color = color
   # GUIWidget Default Flags
   result.flags = 0x0638
-  # Initialize Rect with zeros
-  zeroMem(addr result.rect, sizeof GUIRect)
 
 proc add*(self: GUIContainer, widget: GUIWidget) =
   if self.first.isNil:
@@ -81,7 +75,7 @@ method draw(self: GUIContainer, ctx: ptr GUIContext) =
   ctx.push(addr self.rect, addr self.color)
   # Clear color if it was dirty
   if testMask(self.flags, wDrawDirty):
-    ctx.clear()
+    clear(ctx)
     clearMask(self.flags, wDrawDirty)
   # Draw Widgets
   for widget in self:
@@ -131,7 +125,7 @@ method event(self: GUIContainer, state: ptr GUIState) =
       aux = nil
       for widget in self:
         if (widget.flags and wVisible) == wVisible and
-            widget.rect.pointOnArea(state.mx, state.my):
+            pointOnArea(widget.rect, state.mx, state.my):
           widget.flags.setMask(wHover)
           self.flags.setMask(wHover)
 
