@@ -24,8 +24,6 @@ let
     EGL_NONE
   ]
 
-var
-  signalQueue*: GUIQueue
 type
   GUIWindow* = object
     # X11 Display & Window
@@ -348,9 +346,9 @@ proc handleTick*(win: var GUIWindow): bool =
           case FrameMsg(signal.msg):
           of msgMove: frame.boundaries(data, false)
           of msgResize: frame.boundaries(data, true)
-          of msgShow:
-            setMask(frame.flags, wVisible)
+          of msgShow: setMask(frame.flags, wVisible)
           of msgHide: clearMask(frame.flags, wVisible)
+          break
     else:
       trigger(win.root, signal)
       # Send signal to frames

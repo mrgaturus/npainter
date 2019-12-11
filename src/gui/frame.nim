@@ -27,6 +27,17 @@ proc newGUIFrame*(layout: GUILayout, color: GUIColor): GUIFrame =
   result.ctx = createFrame()
 
 # ---------
+# FRAME INIT PROCS
+# ---------
+
+proc boundaries*(frame: GUIFrame) {.inline.} =
+  # Put them in new region
+  region(frame.ctx, addr frame.rect)
+  # Ensure x,y rect be always in 0
+  copyMem(addr frame.x, addr frame.rect, sizeof(int32)*2)
+  zeroMem(addr frame.rect, sizeof(int32)*2)
+
+# ---------
 # FRAME HELPER PROCS
 # ---------
 
@@ -43,13 +54,6 @@ proc relative*(frame: GUIFrame, state: var GUIState) {.inline.} =
 # ---------
 # FRAME RUNNING PROCS
 # ---------
-
-proc boundaries*(frame: GUIFrame) {.inline.} =
-  # Put them in new region
-  region(frame.ctx, addr frame.rect)
-  # Ensure x,y rect be always in 0
-  copyMem(addr frame.x, addr frame.rect, sizeof(int32)*2)
-  zeroMem(addr frame.rect, sizeof(int32)*2)
 
 proc boundaries*(frame: GUIFrame, bounds: ptr SFrame, resize: bool) =
   # Resize Texture
