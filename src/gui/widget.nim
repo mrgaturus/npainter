@@ -1,11 +1,11 @@
 # Bitflags Procs
 from bitops import clearMask, setMask
-from ../extras import testMask, anyMask
+from ../extras import testMask, popMask, anyMask
 # GUI Objects
 from event import GUIState, GUISignal
 from context import GUIContext, GUIRect
 # Export bitflags Procs
-export testMask, anyMask, clearMask, setMask
+export testMask, popMask, anyMask, clearMask, setMask
 
 const
   # Indicators
@@ -22,7 +22,6 @@ const
   wGrab* = 0x0100'u16
   # Signal-Enabled
   wSignal* = 0x0200'u16
-
 
 type
   GUIWidget* = ref object of RootObj

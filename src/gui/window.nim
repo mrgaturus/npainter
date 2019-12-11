@@ -3,7 +3,7 @@ import x11/xlib, x11/x
 import widget, event, context, container, frame
 
 from builder import signal
-from ../libs/gl import glFinish, gladLoadGL
+from ../libs/gl import gladLoadGL
 
 let
   # NPainter EGL Configurations
@@ -40,9 +40,9 @@ type
     eglCtx: EGLContext
     eglSur: EGLSurface
     # Itself
-    ctx*: GUIContext
+    ctx: GUIContext
     state: GUIState
-    root*: GUIContainer
+    root: GUIContainer
 
 signal Window:
   Terminate
@@ -166,34 +166,13 @@ proc newGUIWindow*(w, h: int32, layout: GUILayout): GUIWindow =
     root.id = WindowID
     root.rect.w = w
     root.rect.h = h
-    # Resize context to initial gui size
-    result.ctx.resize(addr root.rect)
+    # Set the new root with initial sizes
     result.root = root
   # Alloc Global GUIQueue
   allocQueue()
 
-proc exec*(win: var GUIWindow): bool =
-  # Shows the win on the screen
-  result = XMapWindow(win.display, win.xID) != BadWindow
-  discard XSync(win.display, 0)
-
-proc exit*(win: var GUIWindow) =
-  # Dispose Queue
-  disposeQueue()
-  # Dispose UTF8Buffer
-  dealloc(win.state.utf8str)
-  # Dispose EGL
-  discard eglDestroySurface(win.eglDsp, win.eglSur)
-  discard eglDestroyContext(win.eglDsp, win.eglCtx)
-  discard eglTerminate(win.eglDsp)
-  # Dispose all X Stuff
-  XDestroyIC(win.xic)
-  discard XCloseIM(win.xim)
-  discard XDestroyWindow(win.display, win.xID)
-  discard XCloseDisplay(win.display)
-
 # --------------------
-# WINDOW GUI PROCS
+# WINDOW GUI CREATION PROCS
 # --------------------
 
 proc addWidget*(win: var GUIWindow, widget: GUIWidget, region: bool = true) =
@@ -213,36 +192,69 @@ proc addFrame*(win: var GUIWindow, layout: GUILayout,
   result.next = win.root.next
   win.root.next = result
 
-# --------------------
-# WINDOW PRIVATE PROCS
-# --------------------
+# --------------
+# WINDOW FRAME ITERATORS
+# --------------
 
-proc elevateFrame*(root: GUIWidget, frame: GUIFrame) =
-  if cast[GUIWidget](frame) == root.next: return
-  # Remove frame from it's position
-  frame.prev.next = frame.next
-  if frame.next == nil: # Prev to root
-    root.prev = frame.prev
-  else: # Somewhere
-    frame.next.prev = frame.prev
-  # Prev is always nil
-  frame.prev = nil
-  # Move frame next to root
-  frame.next = root.next
-  frame.next.prev = frame
-  root.next = frame
-
-iterator forward*(gui: GUIWidget): GUIFrame =
+iterator forward(gui: GUIWidget): GUIFrame =
   var frame = gui.next
   while frame != nil:
     yield cast[GUIFrame](frame)
     frame = frame.next
 
-iterator reverse*(gui: GUIWidget): GUIFrame =
+iterator reverse(gui: GUIWidget): GUIFrame =
   var frame = gui.prev
   while frame != nil:
     yield cast[GUIFrame](frame)
     frame = frame.prev
+
+# --------------
+# WINDOW EXEC/EXIT
+# --------------
+
+proc exec*(win: var GUIWindow): bool =
+  # Shows the win on the screen
+  result = XMapWindow(win.display, win.xID) != BadWindow
+  discard XSync(win.display, 0)
+  # Resize Root FBO
+  resize(win.ctx, addr win.root.rect)
+  # Resize Frames FBO
+  for frame in reverse(win.root):
+    boundaries(frame)
+
+proc exit*(win: var GUIWindow) =
+  # Dispose Queue
+  disposeQueue()
+  # Dispose UTF8Buffer
+  dealloc(win.state.utf8str)
+  # Dispose EGL
+  discard eglDestroySurface(win.eglDsp, win.eglSur)
+  discard eglDestroyContext(win.eglDsp, win.eglCtx)
+  discard eglTerminate(win.eglDsp)
+  # Dispose all X Stuff
+  XDestroyIC(win.xic)
+  discard XCloseIM(win.xim)
+  discard XDestroyWindow(win.display, win.xID)
+  discard XCloseDisplay(win.display)
+
+# --------------------
+# WINDOW PRIVATE PROCS
+# --------------------
+
+proc elevateFrame*(root: GUIWidget, frame: GUIFrame) =
+  if frame.prev != nil:
+    # Remove frame from it's position
+    frame.prev.next = frame.next
+    if frame.next == nil: # Prev to root
+      root.prev = frame.prev
+    else: # Somewhere
+      frame.next.prev = frame.prev
+    # Prev is always nil
+    frame.prev = nil
+    # Move frame next to root
+    frame.next = root.next
+    frame.next.prev = frame
+    root.next = frame
 
 # --------------------
 # WINDOW RUNNING PROCS
@@ -277,11 +289,17 @@ proc handleEvents*(win: var GUIWindow) =
           (win.state.key == RightTab or
           win.state.key == LeftTab)
         # Handle on any of the frames
+        var onRoot = true
         for frame in forward(win.root):
-          if handleEvent(frame, addr win.state, tabbed): return
+          if handleEvent(frame, addr win.state, tabbed):
+            if event.theType == ButtonPress:
+              elevateFrame(win.root, frame)
+            onRoot = false
+            break
         # Handle event on root if is not handled by a frame
-        if tabbed: step(win.root, win.state.key == LeftTab)
-        else: event(win.root, addr win.state)
+        if onRoot:
+          if tabbed: step(win.root, win.state.key == LeftTab)
+          else: event(win.root, addr win.state)
 
 proc handleTick*(win: var GUIWindow): bool =
   # Signal ID Handling

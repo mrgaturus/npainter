@@ -6,6 +6,11 @@ proc testMask*[T: SomeInteger](v: T, mask: T): bool {.inline.} =
   ## Returns true if the ``mask`` in ``v`` is set to 1
   return (v and mask) == mask
 
+proc popMask*[T: SomeInteger](v: var T, mask: T): bool {.inline.} =
+  ## Returns true if the ``mask`` in ``v`` is set to 1 and set to 0
+  result = (v and mask) == mask
+  v = v and not mask
+
 proc anyMask*[T: SomeInteger](v: T, mask: T): bool {.inline.} =
   ## Returns true if at least one bit of the ``mask`` in ``v`` is set to 1
   return (v and mask) != 0

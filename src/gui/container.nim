@@ -2,10 +2,10 @@ from event import GUIState, GUIEvent, GUISignal
 import widget, context
 
 const
-  wDrawDirty = 0x0400'u16
+  wDrawDirty* = 0x0400'u16
   # Combinations
-  wReactive = 0x000F'u16
   wFocusCheck* = 0x0070'u16
+  wReactive = 0x000F'u16
 
 type
   # GUIContainer, GUILayout and Decorator
@@ -26,7 +26,7 @@ proc newGUIContainer*(layout: GUILayout, color: GUIColor): GUIContainer =
   result.layout = layout
   result.color = color
   # GUIWidget Default Flags
-  result.flags = 0x0638
+  result.flags = wVisible or wSignal or wDirty
 
 proc add*(self: GUIContainer, widget: GUIWidget) =
   if self.first.isNil:
@@ -39,7 +39,7 @@ proc add*(self: GUIContainer, widget: GUIWidget) =
   self.last = widget
 
 # CONTAINER PROCS PRIVATE
-iterator items(self: GUIContainer): GUIWidget =
+iterator items*(self: GUIContainer): GUIWidget =
   var widget: GUIWidget = self.first
   while widget != nil:
     yield widget
@@ -76,9 +76,8 @@ method draw(self: GUIContainer, ctx: ptr GUIContext) =
   # Push Clipping and Color Level
   ctx.push(addr self.rect, addr self.color)
   # Clear color if it was dirty
-  if testMask(self.flags, wDrawDirty):
+  if popMask(self.flags, wDrawDirty):
     clear(ctx)
-    clearMask(self.flags, wDrawDirty)
   # Draw Widgets
   for widget in self:
     if (widget.flags and wDraw) == wDraw:

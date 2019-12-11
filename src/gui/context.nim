@@ -281,7 +281,7 @@ proc makeCurrent*(ctx: var GUIContext, frame: var CTXFrame) =
   # Bind Frame's FBO
   glBindFramebuffer(GL_FRAMEBUFFER, frame.fboID)
   glViewport(0, 0, frame.vWidth, frame.vHeight)
-  glUniformMatrix4fv(ctx.uPro, 1, false, 
+  glUniformMatrix4fv(ctx.uPro, 1, false,
     cast[ptr float32](addr frame.vCache)
   )
   # Scissor Height
@@ -293,7 +293,7 @@ proc makeCurrent*(ctx: var GUIContext) =
   # Bind Root FBO & Use Viewport
   glBindFramebuffer(GL_FRAMEBUFFER, ctx.fboID)
   glViewport(0, 0, ctx.vWidth, ctx.vHeight)
-  glUniformMatrix4fv(ctx.uPro, 1, false, 
+  glUniformMatrix4fv(ctx.uPro, 1, false,
     cast[ptr float32](addr ctx.vCache)
   )
   # Scissor Height
@@ -307,7 +307,7 @@ proc clearCurrent*(ctx: var GUIContext) =
   glUniform4f(cast[GLint](ctx.uCol), 1.0, 1.0, 1.0, 1.0)
   # Set Viewport to root
   glViewport(0, 0, ctx.vWidth, ctx.vHeight)
-  glUniformMatrix4fv(ctx.uPro, 1, false, 
+  glUniformMatrix4fv(ctx.uPro, 1, false,
     cast[ptr float32](addr ctx.vCache)
   )
 
@@ -335,23 +335,32 @@ proc finish*(ctx: var GUIContext) =
 # CONTEXT FRAME PROCS
 # -------------------
 
-proc resize*(frame: var CTXFrame, w, h: int32) =
-  # Bind Texture
-  glBindTexture(GL_TEXTURE_2D, frame.texID)
-  # Resize Texture
-  glTexImage2D(GL_TEXTURE_2D, 0, cast[int32](GL_RGBA8), w, h, 0,
-      GL_RGBA, GL_UNSIGNED_BYTE, nil)
-  # Unbind Texture
-  glBindTexture(GL_TEXTURE_2D, 0)
-  # Resize Viewport
-  orthoProjection(addr frame.vCache, 0, float32 w, float32 h, 0)
-  frame.vWidth = w
-  frame.vHeight = h
-
-proc region*(frame: var CTXFrame, verts: ptr float32) =
+proc region*(frame: var CTXFrame, rect: ptr GUIRect) =
+  let
+    w = rect.w
+    h = rect.h
+  if frame.vWidth != w and frame.vHeight != h:
+    # Bind Texture
+    glBindTexture(GL_TEXTURE_2D, frame.texID)
+    # Resize Texture
+    glTexImage2D(GL_TEXTURE_2D, 0, cast[int32](GL_RGBA8), w, h, 0,
+        GL_RGBA, GL_UNSIGNED_BYTE, nil)
+    # Unbind Texture
+    glBindTexture(GL_TEXTURE_2D, 0)
+    # Resize Viewport
+    orthoProjection(addr frame.vCache, 0, float32 w, float32 h, 0)
+    frame.vWidth = w
+    frame.vHeight = h
+  # Replace VBO with new rect
+  let verts = [
+    float32 rect.x, float32 rect.y,
+    float32(rect.x + w), float32 rect.y,
+    float32 rect.x, float32(rect.y + h),
+    float32(rect.x + w), float32(rect.y + h)
+  ]
   # Bind VBO
   glBindBuffer(GL_ARRAY_BUFFER, frame.vboID)
   # Replace Vertex
-  glBufferSubData(GL_ARRAY_BUFFER, 0, vertSize, verts)
+  glBufferSubData(GL_ARRAY_BUFFER, 0, vertSize, unsafeAddr verts[0])
   # Unbind VBO
   glBindBuffer(GL_ARRAY_BUFFER, 0)

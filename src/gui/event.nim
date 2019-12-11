@@ -104,7 +104,7 @@ proc translateXEvent*(state: var GUIState, display: PDisplay, event: PXEvent,
     state.utf8state = UTF8Nothing
     state.mods = cast[uint16](mods and 0x0D)
   else: return false
-  # The event was translated
+  # Event is valid
   return true
 
 # ------------

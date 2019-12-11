@@ -9,8 +9,9 @@ signal Frame:
 
 type
   GUIFrame* = ref object of GUIContainer
-    ctx: CTXFrame
     fID*: uint16
+    x, y: int32
+    ctx: CTXFrame
   SFrame* = object
     fID*: uint16
     x, y, w, h: int32
@@ -21,42 +22,39 @@ proc newGUIFrame*(layout: GUILayout, color: GUIColor): GUIFrame =
   result.layout = layout
   result.color = color
   # GUIWidget Default Flags
-  result.flags = 0x0638
+  result.flags = wVisible or wSignal or wDirty
   # Render Frame
   result.ctx = createFrame()
-
-# ---------
-# FRAME HELPER PROCS
-# ---------
-
-proc region(tex: var CTXFrame, rect: ptr GUIRect) =
-  let verts = [
-    float32 rect.x, float32 rect.y,
-    float32(rect.x + rect.w), float32 rect.y,
-    float32 rect.x, float32(rect.y + rect.h),
-    float32(rect.x + rect.w), float32(rect.y + rect.h)
-  ]
-  region(tex, unsafeAddr verts[0])
 
 # ---------
 # FRAME RUNNING PROCS
 # ---------
 
+proc boundaries*(frame: GUIFrame) {.inline.} =
+  # Put them in new region
+  region(frame.ctx, addr frame.rect)
+  # Ensure x,y rect be always in 0
+  copyMem(addr frame.x, addr frame.rect, sizeof(int32)*2)
+  zeroMem(addr frame.rect, sizeof(int32)*2)
+
 proc boundaries*(frame: GUIFrame, bounds: ptr SFrame, resize: bool) =
   # Resize Texture
   if resize:
     copyMem(addr frame.rect.w, addr bounds.w, sizeof(int32)*2)
-    resize(frame.ctx, bounds.w, bounds.h)
     setMask(frame.flags, wDirty)
   # Move
-  copyMem(addr frame.rect, addr bounds.x, sizeof(int32)*2)
+  copyMem(addr frame.x, addr bounds.x, sizeof(int32)*2)
   # Update Region
   region(frame.ctx, addr frame.rect)
 
 proc handleEvent*(frame: GUIFrame, state: ptr GUIState, tab: bool): bool =
+  # Make cursor relative
+  let
+    x = state.mx - frame.x
+    y = state.my - frame.y
   case state.eventType:
   of evMouseClick, evMouseRelease, evMouseMove, evMouseAxis:
-    result = pointOnArea(frame.rect, state.mx, state.my)
+    result = pointOnArea(frame.rect, x, y)
   of evKeyDown, evKeyUp:
     result = testMask(frame.flags, wFocusCheck)
   # if event can be done in that frame, procced
@@ -68,8 +66,12 @@ proc handleTick*(frame: GUIFrame) =
   if anyMask(frame.flags, wUpdate or wLayout or wDirty):
     if testMask(frame.flags, wUpdate):
       update(frame)
-    if anyMask(frame.flags, 0x000C):
+    if anyMask(frame.flags, wUpdate or wDirty):
       layout(frame)
+
+# ---------
+# FRAME RENDERING PROCS
+# ---------
 
 proc render*(frame: GUIFrame, ctx: var GUIContext) =
   if testMask(frame.flags, wVisible):
