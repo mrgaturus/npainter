@@ -31,7 +31,8 @@ proc newGUIFrame*(layout: GUILayout, color: GUIColor): GUIFrame =
 # ---------
 
 proc pointOnArea*(frame: GUIFrame, x, y: int32): bool {.inline.} =
-  result =
+  result = 
+    testMask(frame.flags, wVisible) and
     x >= frame.x and x <= frame.x + frame.rect.w and
     y >= frame.y and y <= frame.y + frame.rect.h
 

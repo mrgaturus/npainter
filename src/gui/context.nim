@@ -203,7 +203,7 @@ proc createRegion*(ctx: var GUIContext, rect: ptr GUIRect) =
   ctx.regions.add(region)
 
 proc createFrame*(): CTXFrame =
-  # Create New VAO
+  # -- Gen VAO
   glGenVertexArrays(1, addr result.vaoID)
   glBindVertexArray(result.vaoID)
   # Alloc new Buffer (VVVVCCCC) with fixed texture coods
@@ -222,7 +222,7 @@ proc createFrame*(): CTXFrame =
   # Unbind VBO and VAO
   glBindBuffer(GL_ARRAY_BUFFER, 0)
   glBindVertexArray(0)
-  # Gen Framebuffer
+  # -- Gen Framebuffer
   glGenTextures(1, addr result.texID)
   glGenFramebuffers(1, addr result.fboID)
   # Bind Texture and Framebuffer
@@ -234,6 +234,8 @@ proc createFrame*(): CTXFrame =
   # Attach Texture
   glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D,
       result.texID, 0)
+  # Unbind Texture and Framebuffer
+  glBindTexture(GL_TEXTURE_2D, 0)
   glBindFramebuffer(GL_FRAMEBUFFER, 0)
 
 proc resize*(ctx: var GUIContext, rect: ptr GUIRect) =
@@ -339,7 +341,7 @@ proc region*(frame: var CTXFrame, rect: ptr GUIRect) =
   let
     w = rect.w
     h = rect.h
-  if frame.vWidth != w and frame.vHeight != h:
+  if w != frame.vWidth and h != frame.vHeight:
     # Bind Texture
     glBindTexture(GL_TEXTURE_2D, frame.texID)
     # Resize Texture
