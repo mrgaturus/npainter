@@ -43,6 +43,9 @@ type
     ctx: GUIContext
     state: GUIState
     root: GUIContainer
+    # Cache
+    focus: GUIFrame
+    hover: GUIFrame
 
 signal Window:
   Terminate
@@ -260,11 +263,46 @@ proc elevateFrame*(root: GUIWidget, frame: GUIFrame) =
 # WINDOW RUNNING PROCS
 # --------------------
 
+proc notFramed*(win: var GUIWindow, tab: bool): bool =
+  var
+    found: GUIFrame
+    state = addr win.state
+  case state.eventType
+  of evMouseMove, evMouseClick, evMouseRelease, evMouseAxis:
+    for frame in forward(win.root):
+      if pointOnArea(frame, state.mx, state.my):
+        if state.eventType == evMouseClick:
+          elevateFrame(win.root, frame)
+        # A frame was hovered
+        found = frame
+        break
+    # Unhover root
+    if found != nil and win.hover == nil:
+      hoverOut(win.root)
+    # Unhover prev frame
+    if win.hover != found:
+      if win.hover != nil:
+        hoverOut(win.hover)
+      # Set hover current
+      win.hover = found
+  of evKeyDown, evKeyUp:
+    found = win.focus
+  # Check if was framed
+  if found != nil:
+    if tab: step(win.focus, state.key == LeftTab)
+    else:
+      relative(found, win.state)
+      event(found, addr win.state)
+    # Event is framed
+    return false
+  # Event is not framed
+  return true
+
 proc handleEvents*(win: var GUIWindow) =
   var event: TXEvent
   # Input Event Handing
   while XPending(win.display) != 0:
-    discard XNextEvent(win.display, event.addr)
+    discard XNextEvent(win.display, addr event)
     if XFilterEvent(addr event, 0) != 0:
       continue
     case event.theType:
@@ -289,15 +327,7 @@ proc handleEvents*(win: var GUIWindow) =
           (win.state.key == RightTab or
           win.state.key == LeftTab)
         # Handle on any of the frames
-        var onRoot = true
-        for frame in forward(win.root):
-          if handleEvent(frame, addr win.state, tabbed):
-            if event.theType == ButtonPress:
-              elevateFrame(win.root, frame)
-            onRoot = false
-            break
-        # Handle event on root if is not handled by a frame
-        if onRoot:
+        if notFramed(win, tabbed):
           if tabbed: step(win.root, win.state.key == LeftTab)
           else: event(win.root, addr win.state)
 
@@ -320,7 +350,6 @@ proc handleTick*(win: var GUIWindow): bool =
           of msgResize: frame.boundaries(data, true)
           of msgShow:
             setMask(frame.flags, wVisible)
-            elevateFrame(win.root, frame)
           of msgHide: clearMask(frame.flags, wVisible)
     else:
       trigger(win.root, signal)

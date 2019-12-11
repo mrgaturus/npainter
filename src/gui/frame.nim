@@ -27,6 +27,19 @@ proc newGUIFrame*(layout: GUILayout, color: GUIColor): GUIFrame =
   result.ctx = createFrame()
 
 # ---------
+# FRAME HELPER PROCS
+# ---------
+
+proc pointOnArea*(frame: GUIFrame, x, y: int32): bool {.inline.} =
+  result =
+    x >= frame.x and x <= frame.x + frame.rect.w and
+    y >= frame.y and y <= frame.y + frame.rect.h
+
+proc relative*(frame: GUIFrame, state: var GUIState) {.inline.} =
+  state.mx -= frame.x
+  state.my -= frame.y
+
+# ---------
 # FRAME RUNNING PROCS
 # ---------
 
@@ -46,21 +59,6 @@ proc boundaries*(frame: GUIFrame, bounds: ptr SFrame, resize: bool) =
   copyMem(addr frame.x, addr bounds.x, sizeof(int32)*2)
   # Update Region
   region(frame.ctx, addr frame.rect)
-
-proc handleEvent*(frame: GUIFrame, state: ptr GUIState, tab: bool): bool =
-  # Make cursor relative
-  let
-    x = state.mx - frame.x
-    y = state.my - frame.y
-  case state.eventType:
-  of evMouseClick, evMouseRelease, evMouseMove, evMouseAxis:
-    result = pointOnArea(frame.rect, x, y)
-  of evKeyDown, evKeyUp:
-    result = testMask(frame.flags, wFocusCheck)
-  # if event can be done in that frame, procced
-  if result:
-    if tab: step(frame, state.key == LeftTab)
-    else: event(frame, state)
 
 proc handleTick*(frame: GUIFrame) =
   if anyMask(frame.flags, wUpdate or wLayout or wDirty):
