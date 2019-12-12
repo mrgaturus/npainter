@@ -9,9 +9,9 @@ type
 
 method draw*(widget: GUIBlank, ctx: ptr GUIContext) =
   clip(ctx, addr widget.rect)
-  if testMask(widget.flags, wHover):
+  if widget.test(wHover):
     color(ctx, addr widget.color)
-  elif testMask(widget.flags, wFocus):
+  elif widget.test(wFocus):
     color(ctx, addr widget.colorf)
   else:
     color(ctx, addr widget.colorn)

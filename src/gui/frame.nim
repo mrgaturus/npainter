@@ -43,7 +43,7 @@ proc boundaries*(frame: GUIFrame) {.inline.} =
 
 proc pointOnArea*(frame: GUIFrame, x, y: int32): bool {.inline.} =
   result = 
-    testMask(frame.flags, wVisible) and
+    frame.test(wVisible) and
     x >= frame.x and x <= frame.x + frame.rect.w and
     y >= frame.y and y <= frame.y + frame.rect.h
 
@@ -59,17 +59,17 @@ proc boundaries*(frame: GUIFrame, bounds: ptr SFrame, resize: bool) =
   # Resize Texture
   if resize:
     copyMem(addr frame.rect.w, addr bounds.w, sizeof(int32)*2)
-    setMask(frame.flags, wDirty)
+    frame.set(wDirty)
   # Move
   copyMem(addr frame.x, addr bounds.x, sizeof(int32)*2)
   # Update Region
   region(frame.ctx, addr frame.rect)
 
 proc handleTick*(frame: GUIFrame) =
-  if anyMask(frame.flags, wUpdate or wLayout or wDirty):
-    if testMask(frame.flags, wUpdate):
+  if frame.any(wUpdate or wLayout or wDirty):
+    if frame.test(wUpdate):
       update(frame)
-    if anyMask(frame.flags, wUpdate or wDirty):
+    if frame.any(wUpdate or wDirty):
       layout(frame)
 
 # ---------
@@ -77,8 +77,8 @@ proc handleTick*(frame: GUIFrame) =
 # ---------
 
 proc render*(frame: GUIFrame, ctx: var GUIContext) =
-  if testMask(frame.flags, wVisible):
-    if testMask(frame.flags, wDraw):
+  if frame.test(wVisible):
+    if frame.test(wDraw):
       makeCurrent(ctx, frame.ctx)
       draw(frame, addr ctx)
       clearCurrent(ctx)

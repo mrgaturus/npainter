@@ -1,11 +1,6 @@
-# Bitflags Procs
-from bitops import clearMask, setMask
-from ../extras import testMask, popMask, anyMask
 # GUI Objects
 from event import GUIState, GUISignal
 from context import GUIContext, GUIRect
-# Export bitflags Procs
-export testMask, popMask, anyMask, clearMask, setMask
 
 const
   # Indicators
@@ -29,11 +24,34 @@ type
     flags*, id*: uint16
     rect*: GUIRect
 
+# WIDGET FLAGS
+proc set*(self: GUIWidget, mask: uint16) {.inline.} =
+  self.flags = self.flags or mask
+
+proc clear*(self: GUIWidget, mask: uint16) {.inline.} =
+  self.flags = self.flags and not mask
+
+proc any*(self: GUIWidget, mask: uint16): bool {.inline.} =
+  return (self.flags and mask) != 0
+
+proc test*(self: GUIWidget, mask: uint16): bool {.inline.} =
+  return (self.flags and mask) == mask
+
+proc testClear*(self: GUIWidget, mask: uint16): bool {.inline.} =
+  result = (self.flags and mask) == mask
+  self.flags = self.flags and not mask
+
+# WIDGET RECT
+proc pointOnArea*(rect: var GUIRect, x, y: int): bool =
+  result =
+    x >= rect.x and x <= rect.x + rect.w and
+    y >= rect.y and y <= rect.y + rect.h
+
 # WIDGET ABSTRACT METHODS - Single-Threaded
 {.pragma: guibase, base, locks: "unknown".}
 
 method draw*(widget: GUIWidget, ctx: ptr GUIContext) {.guibase.} = 
-  widget.flags.clearMask(wDraw)
+  widget.clear(wDraw)
 method update*(widget: GUIWidget) {.guibase.} = discard
 method event*(widget: GUIWidget, state: ptr GUIState) {.guibase.} = discard
 method layout*(widget: GUIWidget) {.guibase.} = discard
@@ -42,15 +60,9 @@ method step*(widget: GUIWidget, back: bool) {.guibase.} =
   widget.flags = (widget.flags xor wFocus) or wDraw
 
 method hoverOut*(widget: GUIWidget) {.guibase.} =
-  if widget.flags.testMask(wVisible):
-    widget.flags.setMask(wDraw)
+  if widget.test(wVisible):
+    widget.set(wDraw)
 
 method focusOut*(widget: GUIWidget) {.guibase.} =
-  if widget.flags.testMask(wVisible):
-    widget.flags.setMask(wDraw)
-
-# WIDGET RECT
-proc pointOnArea*(rect: var GUIRect, x, y: int): bool =
-  result =
-    x >= rect.x and x <= rect.x + rect.w and
-    y >= rect.y and y <= rect.y + rect.h
+  if widget.test(wVisible):
+    widget.set(wDraw)

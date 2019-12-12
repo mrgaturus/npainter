@@ -1,4 +1,3 @@
-from ../extras import pitems
 from ../math import orthoProjection, uvNormalize
 from ../shader import newSimpleProgram
 
@@ -102,7 +101,7 @@ proc intersect(ctx: ptr GUIContext, rect: ptr GUIRect): tuple[x, y, w, h: int32]
   result.w = abs(x2 - x1)
   result.h = abs(y2 - y1)
 
-proc update(region: ptr CTXRegion, w, h: int32) =
+proc update(region: var CTXRegion, w, h: int32) =
   let rect = addr region.rect
   region.visible = rect.w > 0 and rect.h > 0
   # if visible, update vbo
@@ -252,7 +251,7 @@ proc resize*(ctx: var GUIContext, rect: ptr GUIRect) =
   ctx.vHeight = rect.h
 
 proc update*(ctx: var GUIContext) =
-  for region in pitems(ctx.regions):
+  for region in mitems(ctx.regions):
     update(region, ctx.vWidth, ctx.vHeight)
 
 # -------------------
@@ -316,7 +315,7 @@ proc clearCurrent*(ctx: var GUIContext) =
 proc render*(ctx: var GUIContext) =
   # Draw Regions
   glBindTexture(GL_TEXTURE_2D, ctx.texID)
-  for region in pitems(ctx.regions):
+  for region in mitems(ctx.regions):
     # Draw Region if is visible
     if region.visible:
       glBindVertexArray(region.vaoID)

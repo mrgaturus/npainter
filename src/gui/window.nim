@@ -267,8 +267,8 @@ proc notFramed*(win: var GUIWindow, tab: bool): bool =
     state = addr win.state
   case state.eventType
   of evMouseMove, evMouseClick, evMouseRelease, evMouseAxis:
-    if testMask(win.root.flags, wGrab): return true
-    elif win.hover != nil and testMask(win.hover.flags, wGrab):
+    if win.root.test(wGrab): return true
+    elif win.hover != nil and win.hover.test(wGrab):
       found = win.hover
     else: # Hover on other frames
       for frame in forward(win.root):
@@ -294,13 +294,13 @@ proc notFramed*(win: var GUIWindow, tab: bool): bool =
       relative(found, win.state)
       event(found, addr win.state)
     # Change focused
-    if testMask(found.flags, wFocus):
+    if found.test(wFocus):
       if found != win.focus:
-        if popMask(win.root.flags, wFocus):
+        if win.root.testClear(wFocus):
           focusOut(win.root)
         elif win.focus != nil: 
           focusOut(win.focus)
-          win.focus.flags.clearMask(wFocus)
+          win.focus.clear(wFocus)
         win.focus = found
     elif found == win.focus:
       win.focus = nil
@@ -330,7 +330,7 @@ proc handleEvents*(win: var GUIWindow) =
         # Resize CTX Root
         resize(win.ctx, addr win.root.rect)
         # Relayout and Redraw GUI
-        setMask(win.root.flags, wDirty)
+        win.root.set(wDirty)
     else:
       if translateXEvent(win.state, win.display, addr event, win.xic):
         let tabbed =
@@ -339,7 +339,7 @@ proc handleEvents*(win: var GUIWindow) =
           win.state.key == LeftTab)
         # Handle on any of the frames
         if notFramed(win, tabbed):
-          if tabbed and testMask(win.root.flags, wFocus): 
+          if tabbed and test(win.root, wFocus): 
             step(win.root, win.state.key == LeftTab)
           else: event(win.root, addr win.state)
 
@@ -360,8 +360,8 @@ proc handleTick*(win: var GUIWindow): bool =
           case FrameMsg(signal.msg):
           of msgMove: frame.boundaries(data, false)
           of msgResize: frame.boundaries(data, true)
-          of msgShow: setMask(frame.flags, wVisible)
-          of msgHide: clearMask(frame.flags, wVisible or wGrab)
+          of msgShow: frame.set(wVisible)
+          of msgHide: frame.clear(wVisible or wGrab)
           break
     else:
       trigger(win.root, signal)
@@ -369,9 +369,9 @@ proc handleTick*(win: var GUIWindow): bool =
       for frame in forward(win.root):
         trigger(frame, signal)
   # Update -> Layout Root
-  if testMask(win.root.flags, wUpdate):
+  if test(win.root, wUpdate):
     update(win.root)
-  if anyMask(win.root.flags, 0x000C):
+  if any(win.root, 0x000C):
     layout(win.root)
     update(win.ctx)
   # Update -> Layout Frames
@@ -383,7 +383,7 @@ proc handleTick*(win: var GUIWindow): bool =
 proc render*(win: var GUIWindow) =
   start(win.ctx)
   # Draw hot/invalidated widgets
-  if testMask(win.root.flags, wDraw):
+  if test(win.root, wDraw):
     makeCurrent(win.ctx)
     draw(win.root, addr win.ctx)
     clearCurrent(win.ctx)
