@@ -115,7 +115,7 @@ method event(self: GUIContainer, state: ptr GUIState) =
           aux.flags.setMask(wHover)
         else:
           aux.flags.clearMask(wHover)
-      else:
+      elif state.eventType == evMouseRelease:
         self.flags.clearMask(wGrab)
     elif aux.isNil or not pointOnArea(aux.rect, state.mx, state.my):
       if aux != nil:
@@ -135,11 +135,10 @@ method event(self: GUIContainer, state: ptr GUIState) =
 
       if aux.isNil:
         self.flags.clearMask(wHover)
+        if state.eventType == evMouseClick:
+          self.flags.setMask(wGrab)
 
       self.hover = aux
-
-      if state.eventType == evMouseClick:
-        self.flags.setMask(wGrab)
   of evKeyDown, evKeyUp:
     if (self.flags and wFocus) == wFocus:
       aux = self.focus

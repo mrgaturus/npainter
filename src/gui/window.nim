@@ -267,30 +267,43 @@ proc notFramed*(win: var GUIWindow, tab: bool): bool =
     state = addr win.state
   case state.eventType
   of evMouseMove, evMouseClick, evMouseRelease, evMouseAxis:
-    for frame in forward(win.root):
-      if pointOnArea(frame, state.mx, state.my):
-        if state.eventType == evMouseClick:
-          elevateFrame(win.root, frame)
-        # A frame was hovered
-        found = frame
-        break
-    # Unhover root
-    if found != nil and win.hover == nil:
-      hoverOut(win.root)
-    # Unhover prev frame
-    if win.hover != found:
-      if win.hover != nil:
-        hoverOut(win.hover)
-      # Set hover current
-      win.hover = found
+    if testMask(win.root.flags, wGrab): return true
+    elif win.hover != nil and testMask(win.hover.flags, wGrab):
+      found = win.hover
+    else: # Hover on other frames
+      for frame in forward(win.root):
+        if pointOnArea(frame, state.mx, state.my):
+          if state.eventType == evMouseClick:
+            elevateFrame(win.root, frame)
+          # A frame was hovered
+          found = frame
+          break
+      # Unhover prev frame
+      if found != win.hover:
+        if win.hover == nil:
+          hoverOut(win.root)
+        else: hoverOut(win.hover)
+        # Set hover current
+        win.hover = found
   of evKeyDown, evKeyUp:
     found = win.focus
   # Check if was framed
   if found != nil:
-    if tab: step(win.focus, state.key == LeftTab)
+    if tab: step(found, state.key == LeftTab)
     else:
       relative(found, win.state)
       event(found, addr win.state)
+    # Change focused
+    if testMask(found.flags, wFocus):
+      if found != win.focus:
+        if popMask(win.root.flags, wFocus):
+          focusOut(win.root)
+        elif win.focus != nil: 
+          focusOut(win.focus)
+          win.focus.flags.clearMask(wFocus)
+        win.focus = found
+    elif found == win.focus:
+      win.focus = nil
     # Event is framed
     return false
   # Event is not framed
@@ -326,7 +339,8 @@ proc handleEvents*(win: var GUIWindow) =
           win.state.key == LeftTab)
         # Handle on any of the frames
         if notFramed(win, tabbed):
-          if tabbed: step(win.root, win.state.key == LeftTab)
+          if tabbed and testMask(win.root.flags, wFocus): 
+            step(win.root, win.state.key == LeftTab)
           else: event(win.root, addr win.state)
 
 proc handleTick*(win: var GUIWindow): bool =
@@ -347,7 +361,7 @@ proc handleTick*(win: var GUIWindow): bool =
           of msgMove: frame.boundaries(data, false)
           of msgResize: frame.boundaries(data, true)
           of msgShow: setMask(frame.flags, wVisible)
-          of msgHide: clearMask(frame.flags, wVisible)
+          of msgHide: clearMask(frame.flags, wVisible or wGrab)
           break
     else:
       trigger(win.root, signal)

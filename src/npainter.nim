@@ -5,11 +5,14 @@ type
   GUIBlank = ref object of GUIWidget
     color: GUIColor
     colorn: GUIColor
+    colorf: GUIColor
 
 method draw*(widget: GUIBlank, ctx: ptr GUIContext) =
   clip(ctx, addr widget.rect)
   if testMask(widget.flags, wHover):
     color(ctx, addr widget.color)
+  elif testMask(widget.flags, wFocus):
+    color(ctx, addr widget.colorf)
   else:
     color(ctx, addr widget.colorn)
   clear(ctx)
@@ -27,13 +30,28 @@ when isMainModule:
     blank.rect = GUIRect(x: 20, y: 20, w: 50, h: 60)
     blank.color = GUIColor(r: 1.0, g: 0.0, b: 1.0, a: 1.0)
     blank.colorn = GUIColor(r: 1.0, g: 1.0, b: 1.0, a: 1.0)
-    blank.flags = wVisible
+    blank.colorf = GUIColor(r: 1.0, g: 1.0, b: 0.0, a: 1.0)
+    blank.flags = wVisible or wEnabled
     win.addWidget(blank)
     # A Frame
+    blank = new GUIBlank
+    blank.rect = GUIRect(x: 20, y: 20, w: 50, h: 60)
+    blank.color = GUIColor(r: 1.0, g: 0.0, b: 1.0, a: 1.0)
+    blank.colorn = GUIColor(r: 1.0, g: 1.0, b: 1.0, a: 1.0)
+    blank.colorf = GUIColor(r: 1.0, g: 1.0, b: 0.0, a: 1.0)
+    blank.flags = wVisible or wEnabled
+
     var frame = win.addFrame(layout, GUIColor(r: 0.0, g: 1.0, b: 1.0, a: 1.0))
     frame.rect = GUIRect(x: 110, y: 150, w: 100, h: 100)
     frame.add(blank)
     # A Frame
+    blank = new GUIBlank
+    blank.rect = GUIRect(x: 20, y: 20, w: 50, h: 60)
+    blank.color = GUIColor(r: 1.0, g: 0.0, b: 1.0, a: 1.0)
+    blank.colorn = GUIColor(r: 1.0, g: 1.0, b: 1.0, a: 1.0)
+    blank.colorf = GUIColor(r: 1.0, g: 1.0, b: 0.0, a: 1.0)
+    blank.flags = wVisible or wEnabled
+    
     frame = win.addFrame(layout, GUIColor(r: 1.0, g: 1.0, b: 0.0, a: 1.0))
     frame.rect = GUIRect(x: 60, y: 100, w: 100, h: 100)
     frame.add(blank)
