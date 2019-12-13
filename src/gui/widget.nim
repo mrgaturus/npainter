@@ -24,7 +24,10 @@ type
     flags*, id*: uint16
     rect*: GUIRect
 
+# ------------
 # WIDGET FLAGS
+# ------------
+
 proc set*(self: GUIWidget, mask: uint16) {.inline.} =
   self.flags = self.flags or mask
 
@@ -37,32 +40,33 @@ proc any*(self: GUIWidget, mask: uint16): bool {.inline.} =
 proc test*(self: GUIWidget, mask: uint16): bool {.inline.} =
   return (self.flags and mask) == mask
 
-proc testClear*(self: GUIWidget, mask: uint16): bool {.inline.} =
-  result = (self.flags and mask) == mask
-  self.flags = self.flags and not mask
-
+# -----------
 # WIDGET RECT
+# -----------
+
 proc pointOnArea*(rect: var GUIRect, x, y: int): bool =
   result =
     x >= rect.x and x <= rect.x + rect.w and
     y >= rect.y and y <= rect.y + rect.h
 
+# ------------
 # WIDGET ABSTRACT METHODS - Single-Threaded
-{.pragma: guibase, base, locks: "unknown".}
+# ------------
 
-method draw*(widget: GUIWidget, ctx: ptr GUIContext) {.guibase.} = 
-  widget.clear(wDraw)
-method update*(widget: GUIWidget) {.guibase.} = discard
-method event*(widget: GUIWidget, state: ptr GUIState) {.guibase.} = discard
-method layout*(widget: GUIWidget) {.guibase.} = discard
-method trigger*(widget: GUIWidget, signal: GUISignal) {.guibase.} = discard
-method step*(widget: GUIWidget, back: bool) {.guibase.} =
+# 1 -- Event Methods
+method event*(widget: GUIWidget, state: ptr GUIState) {.base.} = discard
+method step*(widget: GUIWidget, back: bool) {.base.} =
   widget.flags = (widget.flags xor wFocus) or wDraw
+# 2 -- Tick Methods
+method trigger*(widget: GUIWidget, signal: GUISignal) {.base.} = discard
+method update*(widget: GUIWidget) {.base.} = discard
+method layout*(widget: GUIWidget) {.base.} = discard
+# 3 -- Draw Method
+method draw*(widget: GUIWidget, ctx: ptr GUIContext) {.base.} =
+  widget.clear(wDraw)
 
-method hoverOut*(widget: GUIWidget) {.guibase.} =
-  if widget.test(wVisible):
-    widget.set(wDraw)
-
-method focusOut*(widget: GUIWidget) {.guibase.} =
-  if widget.test(wVisible):
-    widget.set(wDraw)
+# 1 -- 2 Out Handler Methods
+method hoverOut*(widget: GUIWidget) {.base.} =
+  if widget.test(wVisible): widget.set(wDraw)
+method focusOut*(widget: GUIWidget) {.base.} =
+  if widget.test(wVisible): widget.set(wDraw)

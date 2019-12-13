@@ -1,5 +1,5 @@
 import libs/gl
-import gui/[window, widget, context, container]
+import gui/[window, widget, context, container, event]
 
 type
   GUIBlank = ref object of GUIWidget
@@ -9,14 +9,18 @@ type
 
 method draw*(widget: GUIBlank, ctx: ptr GUIContext) =
   clip(ctx, addr widget.rect)
-  if widget.test(wHover):
+  if widget.any(wHover or wGrab):
     color(ctx, addr widget.color)
   elif widget.test(wFocus):
     color(ctx, addr widget.colorf)
   else:
     color(ctx, addr widget.colorn)
   clear(ctx)
-  #clearMask(widget.flags, wDraw)
+  widget.clear(wDraw)
+
+method event*(widget: GUIBlank, state: ptr GUIState) =
+  if state.eventType == evMouseClick: widget.set(wGrab)
+  elif state.eventType == evMouseRelease: widget.clear(wGrab)
 
 when isMainModule:
   # Create a new Window
@@ -41,7 +45,7 @@ when isMainModule:
     blank.colorf = GUIColor(r: 1.0, g: 1.0, b: 0.0, a: 1.0)
     blank.flags = wVisible or wEnabled
 
-    var frame = win.addFrame(layout, GUIColor(r: 0.0, g: 1.0, b: 1.0, a: 1.0))
+    var frame = win.addFrame(layout, GUIColor(r: 0.0, g: 1.0, b: 1.0, a: 0.5))
     frame.rect = GUIRect(x: 110, y: 150, w: 100, h: 100)
     frame.add(blank)
     # A Frame
@@ -52,7 +56,7 @@ when isMainModule:
     blank.colorf = GUIColor(r: 1.0, g: 1.0, b: 0.0, a: 1.0)
     blank.flags = wVisible or wEnabled
     
-    frame = win.addFrame(layout, GUIColor(r: 1.0, g: 1.0, b: 0.0, a: 1.0))
+    frame = win.addFrame(layout, GUIColor(r: 1.0, g: 1.0, b: 0.0, a: 0.5))
     frame.rect = GUIRect(x: 60, y: 100, w: 100, h: 100)
     frame.add(blank)
 

@@ -70,14 +70,16 @@ proc checkFocus(self: GUIContainer) =
     self.focus = nil
 
 # CONTAINER METHODS
+{.warning[LockLevel]:off.} # TODO: change everything to var
 method draw(self: GUIContainer, ctx: ptr GUIContext) =
   var count = 0;
 
   # Push Clipping and Color Level
   ctx.push(addr self.rect, addr self.color)
   # Clear color if it was dirty
-  if self.testClear(wDrawDirty):
-    clear(ctx)
+  if self.test(wDrawDirty):
+    self.clear(wDrawDirty)
+    ctx.clear()
   # Draw Widgets
   for widget in self:
     if (widget.flags and wDraw) == wDraw:
@@ -115,8 +117,6 @@ method event(self: GUIContainer, state: ptr GUIState) =
           aux.set(wHover)
         else:
           aux.clear(wHover)
-      elif state.eventType == evMouseRelease:
-        self.clear(wGrab)
     elif aux.isNil or not pointOnArea(aux.rect, state.mx, state.my):
       if aux != nil:
         aux.hoverOut()
@@ -132,11 +132,8 @@ method event(self: GUIContainer, state: ptr GUIState) =
 
           aux = widget
           break
-
       if aux.isNil:
         self.clear(wHover)
-        if state.eventType == evMouseClick:
-          self.set(wGrab)
 
       self.hover = aux
   of evKeyDown, evKeyUp:
@@ -145,7 +142,7 @@ method event(self: GUIContainer, state: ptr GUIState) =
 
   if aux != nil:
     aux.event(state)
-    if state.eventType < evKeyDown:
+    if state.eventType > evKeyDown:
       self.flags = (self.flags and not wGrab.uint16) or (
           aux.flags and wGrab)
 

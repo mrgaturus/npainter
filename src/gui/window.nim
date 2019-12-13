@@ -242,7 +242,7 @@ proc exit*(win: var GUIWindow) =
 # WINDOW PRIVATE PROCS
 # --------------------
 
-proc elevateFrame*(root: GUIWidget, frame: GUIFrame) =
+proc elevateFrame(root: GUIWidget, frame: GUIFrame) =
   if frame.prev != nil:
     # Remove frame from it's position
     frame.prev.next = frame.next
@@ -257,6 +257,14 @@ proc elevateFrame*(root: GUIWidget, frame: GUIFrame) =
     frame.next.prev = frame
     root.next = frame
 
+proc grab(win: var GUIWindow, evtype: int32) =
+  if evtype == ButtonPress:
+    discard XGrabPointer(win.display, win.xID, 0, 
+        ButtonPressMask or ButtonReleaseMask or PointerMotionMask,
+        GrabModeAsync, GrabModeAsync, None, None, CurrentTime)
+  elif evtype == ButtonRelease:
+    discard XUngrabPointer(win.display, CurrentTime)
+
 # --------------------
 # WINDOW RUNNING PROCS
 # --------------------
@@ -267,8 +275,8 @@ proc notFramed*(win: var GUIWindow, tab: bool): bool =
     state = addr win.state
   case state.eventType
   of evMouseMove, evMouseClick, evMouseRelease, evMouseAxis:
-    if win.root.test(wGrab): return true
-    elif win.hover != nil and win.hover.test(wGrab):
+    if test(win.root, wGrab): return true
+    elif win.hover != nil and test(win.hover, wGrab):
       found = win.hover
     else: # Hover on other frames
       for frame in forward(win.root):
@@ -296,11 +304,12 @@ proc notFramed*(win: var GUIWindow, tab: bool): bool =
     # Change focused
     if found.test(wFocus):
       if found != win.focus:
-        if win.root.testClear(wFocus):
+        if test(win.root, wFocus):
+          clear(win.root, wFocus)
           focusOut(win.root)
-        elif win.focus != nil: 
+        elif win.focus != nil:
           focusOut(win.focus)
-          win.focus.clear(wFocus)
+          clear(win.root, wFocus)
         win.focus = found
     elif found == win.focus:
       win.focus = nil
@@ -332,6 +341,9 @@ proc handleEvents*(win: var GUIWindow) =
         # Relayout and Redraw GUI
         win.root.set(wDirty)
     else:
+      # Grab/UnGrab X11 Window
+      win.grab(event.theType)
+      # Handle Event if was translated
       if translateXEvent(win.state, win.display, addr event, win.xic):
         let tabbed =
           win.state.eventType == evKeyDown and
@@ -339,7 +351,7 @@ proc handleEvents*(win: var GUIWindow) =
           win.state.key == LeftTab)
         # Handle on any of the frames
         if notFramed(win, tabbed):
-          if tabbed and test(win.root, wFocus): 
+          if tabbed and test(win.root, wFocus):
             step(win.root, win.state.key == LeftTab)
           else: event(win.root, addr win.state)
 
