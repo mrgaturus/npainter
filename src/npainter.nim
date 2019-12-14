@@ -1,5 +1,5 @@
 import libs/gl
-import gui/[window, widget, context, container, event]
+import gui/[window, widget, render, container, event]
 
 type
   GUIBlank = ref object of GUIWidget
@@ -7,14 +7,14 @@ type
     colorn: GUIColor
     colorf: GUIColor
 
-method draw*(widget: GUIBlank, ctx: ptr GUIContext) =
-  clip(ctx, addr widget.rect)
+method draw*(widget: GUIBlank, ctx: ptr GUIRender) =
+  clip(ctx, widget.rect)
   if widget.any(wHover or wGrab):
-    color(ctx, addr widget.color)
+    color(ctx, widget.color)
   elif widget.test(wFocus):
-    color(ctx, addr widget.colorf)
+    color(ctx, widget.colorf)
   else:
-    color(ctx, addr widget.colorn)
+    color(ctx, widget.colorn)
   clear(ctx)
   widget.clear(wDraw)
 

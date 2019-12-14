@@ -7,9 +7,6 @@ license       = "GPL-3.0"
 srcDir        = "src"
 bin           = @["npainter"]
 
-
-
 # Dependencies
-
-requires "nim >= 1.0.0"
+requires "nim >= 1.0.4"
 requires "x11"

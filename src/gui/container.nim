@@ -1,5 +1,5 @@
 from event import GUIState, GUIEvent, GUISignal
-import widget, context
+import widget, render
 
 const
   wDrawDirty* = 0x0400'u16
@@ -70,12 +70,11 @@ proc checkFocus(self: GUIContainer) =
     self.focus = nil
 
 # CONTAINER METHODS
-{.warning[LockLevel]:off.} # TODO: change everything to var
-method draw(self: GUIContainer, ctx: ptr GUIContext) =
+method draw(self: GUIContainer, ctx: ptr GUIRender) =
   var count = 0;
 
   # Push Clipping and Color Level
-  ctx.push(addr self.rect, addr self.color)
+  ctx.push(self.rect, self.color)
   # Clear color if it was dirty
   if self.test(wDrawDirty):
     self.clear(wDrawDirty)

@@ -1,6 +1,6 @@
 import ../libs/egl
 import x11/xlib, x11/x
-import widget, event, context, container, frame
+import widget, event, context, render, container, frame
 
 from builder import signal
 from ../libs/gl import gladLoadGL
@@ -397,7 +397,7 @@ proc render*(win: var GUIWindow) =
   # Draw hot/invalidated widgets
   if test(win.root, wDraw):
     makeCurrent(win.ctx)
-    draw(win.root, addr win.ctx)
+    draw(win.root, win.ctx[])
     clearCurrent(win.ctx)
   # Draw Root Regions
   render(win.ctx)

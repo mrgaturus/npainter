@@ -1,5 +1,5 @@
 from builder import signal
-import context, widget, container, event
+import context, render, widget, container, event
 
 signal Frame:
   Move
@@ -80,7 +80,7 @@ proc render*(frame: GUIFrame, ctx: var GUIContext) =
   if frame.test(wVisible):
     if frame.test(wDraw):
       makeCurrent(ctx, frame.ctx)
-      draw(frame, addr ctx)
+      draw(frame, ctx[])
       clearCurrent(ctx)
     # Render Frame Texture
     render(frame.ctx)

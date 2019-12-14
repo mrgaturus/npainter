@@ -2,17 +2,9 @@ from ../math import orthoProjection, uvNormalize
 from ../shader import newSimpleProgram
 
 import ../libs/gl
+import render
 
 type
-  # GUI Rect and Color
-  GUIRect* = object
-    x*, y*, w*, h*: int32
-  GUIColor* = object
-    r*, g*, b*, a*: float32
-  # Context Private
-  CTXLevel = object
-    x, y, w, h: int32
-    r, g, b, a: float32
   # Root Frame Regions
   CTXRegion = object
     vaoID, vboID: GLuint
@@ -28,18 +20,17 @@ type
     vCache: array[16, float32]
   # The Context
   GUIContext* = object
-    # GUI Program and Uniforms
+    # GUI Program and Projection
     program: GLuint
-    uPro, uCol: GLint
+    uPro: GLint
     # GUI viewport cache
     vWidth, vHeight: int32
     vCache: array[16, float32]
     # Root Frame
     texID, fboID: GLuint
     regions: seq[CTXRegion]
-    levels: seq[CTXLevel]
-    # Scissor Current Height
-    sHeight: int32
+    # GUI render
+    render*: GUIRender
 
 # -------------------
 # CONTEXT CONST PROCS
@@ -62,9 +53,11 @@ let texCORDS = [
 proc newGUIContext*(): GUIContext =
   # Initialize GUI Program
   result.program = newSimpleProgram("shaders/gui.vert", "shaders/gui.frag")
-  result.uCol = glGetUniformLocation(result.program, "uCol")
   result.uPro = glGetUniformLocation(result.program, "uPro")
-
+  # Initialize GUI Render
+  result.render = newGUIRender(
+    glGetUniformLocation(result.program, "uCol")
+  )
   # Initialize Root Frame
   glGenTextures(1, addr result.texID)
   glGenFramebuffers(1, addr result.fboID)
@@ -89,18 +82,6 @@ proc newGUIContext*(): GUIContext =
 # CONTEXT HELPER PROCS
 # -------------------
 
-proc intersect(ctx: ptr GUIContext, rect: ptr GUIRect): tuple[x, y, w, h: int32] =
-  let
-    prev = addr ctx.levels[^1]
-    x1 = clamp(rect.x, prev.x, prev.x + prev.w)
-    y1 = clamp(rect.y, prev.y, prev.y + prev.h)
-    x2 = clamp(prev.x + prev.w, rect.x, rect.x + rect.w)
-    y2 = clamp(prev.y + prev.h, rect.y, rect.y + rect.h)
-  result.x = x1
-  result.y = y1
-  result.w = abs(x2 - x1)
-  result.h = abs(y2 - y1)
-
 proc update(region: var CTXRegion, w, h: int32) =
   let rect = addr region.rect
   region.visible = rect.w > 0 and rect.h > 0
@@ -118,58 +99,6 @@ proc update(region: var CTXRegion, w, h: int32) =
       uvNormalize(rectArray[0].unsafeAddr, float32 w, float32 h)
       glBufferSubData(GL_ARRAY_BUFFER, vertSize, vertSize, rectArray[0].unsafeAddr)
     glBindBuffer(GL_ARRAY_BUFFER, 0)
-
-# -------------------
-# CONTEXT RUNNING PROCS
-# -------------------
-
-proc clip*(ctx: ptr GUIContext, rect: ptr GUIRect) =
-  if ctx.levels.len > 0:
-    let nclip = ctx.intersect(rect)
-    glScissor(nclip.x, ctx.sHeight - nclip.y - nclip.h, nclip.w, nclip.h)
-  else:
-    glEnable(GL_SCISSOR_TEST)
-    glScissor(rect.x, ctx.sHeight - rect.y - rect.h, rect.w, rect.h)
-
-proc color*(ctx: ptr GUIContext, color: ptr GUIColor) =
-  glClearColor(color.r, color.g, color.b, color.a)
-  glUniform4f(cast[GLint](ctx.uCol), color.r, color.g, color.b, color.a)
-
-proc clear*(ctx: ptr GUIContext) {.inline.} =
-  glClear(GL_COLOR_BUFFER_BIT)
-
-proc reset*(ctx: ptr GUIContext) =
-  if ctx.levels.len > 0:
-    let level = addr ctx.levels[^1]
-    # Reset Scissor
-    glEnable(GL_SCISSOR_TEST)
-    glScissor(level.x, ctx.sHeight - level.y - level.h, level.w, level.h)
-    # Reset Color
-    glClearColor(level.r, level.g, level.b, level.a)
-    glUniform4fv(cast[GLint](ctx.uCol), 1, addr level.r)
-  else:
-    glDisable(GL_SCISSOR_TEST)
-    glClearColor(0.0, 0.0, 0.0, 1.0)
-    glUniform4f(cast[GLint](ctx.uCol), 0.0, 0.0, 0.0, 1.0)
-
-proc push*(ctx: ptr GUIContext, rect: ptr GUIRect, color: ptr GUIColor) =
-  var level: CTXLevel
-  # Copy Color
-  if not color.isNil:
-    copyMem(addr level.r, color, sizeof(GUIColor))
-  # Get Frame Intersection
-  if ctx.levels.len > 0:
-    var nclip = ctx.intersect(rect)
-    copyMem(addr level, addr nclip, 4 * sizeof(int32))
-  else:
-    copyMem(addr level, rect, 4 * sizeof(int32))
-  # Add Level and Reset
-  ctx.levels.add(level)
-  ctx.reset()
-
-proc pop*(ctx: ptr GUIContext) =
-  ctx.levels.setLen(ctx.levels.len - 1)
-  ctx.reset()
 
 # -------------------
 # CONTEXT WINDOW PROCS
@@ -255,6 +184,13 @@ proc update*(ctx: var GUIContext) =
     update(region, ctx.vWidth, ctx.vHeight)
 
 # -------------------
+# CONTEXT RENDER PROC
+# -------------------
+
+proc `[]`*(ctx: var GUIContext): ptr GUIRender {.inline.} =
+  return addr(ctx.render)
+
+# -------------------
 # CONTEXT RENDER PROCS
 # -------------------
 
@@ -267,45 +203,31 @@ proc start*(ctx: var GUIContext) =
   # Modify Only Texture 0
   glActiveTexture(GL_TEXTURE0)
 
-proc clearLevels(ctx: var GUIContext) =
-  # Clear levels
-  ctx.levels.setLen(0)
-  # Disable Scissor Test
-  glDisable(GL_SCISSOR_TEST)
-  # Set Default Color (Black)
-  glClearColor(0.0, 0.0, 0.0, 1.0)
-  glUniform4f(cast[GLint](ctx.uCol), 0.0, 0.0, 0.0, 1.0)
-
 proc makeCurrent*(ctx: var GUIContext, frame: var CTXFrame) =
   # Clear Levels
-  clearLevels(ctx)
+  reset(ctx.render, frame.vHeight)
   # Bind Frame's FBO
   glBindFramebuffer(GL_FRAMEBUFFER, frame.fboID)
   glViewport(0, 0, frame.vWidth, frame.vHeight)
   glUniformMatrix4fv(ctx.uPro, 1, false,
     cast[ptr float32](addr frame.vCache)
   )
-  # Scissor Height
-  ctx.sHeight = frame.vHeight
 
 proc makeCurrent*(ctx: var GUIContext) =
   # Clear Levels
-  clearLevels(ctx)
+  reset(ctx.render, ctx.vHeight)
   # Bind Root FBO & Use Viewport
   glBindFramebuffer(GL_FRAMEBUFFER, ctx.fboID)
   glViewport(0, 0, ctx.vWidth, ctx.vHeight)
   glUniformMatrix4fv(ctx.uPro, 1, false,
     cast[ptr float32](addr ctx.vCache)
   )
-  # Scissor Height
-  ctx.sHeight = ctx.vHeight
 
 proc clearCurrent*(ctx: var GUIContext) =
   # Bind to Framebuffer Screen
   glBindFramebuffer(GL_FRAMEBUFFER, 0)
   # Set To White Pixel
-  glDisable(GL_SCISSOR_TEST)
-  glUniform4f(cast[GLint](ctx.uCol), 1.0, 1.0, 1.0, 1.0)
+  reset(ctx.render)
   # Set Viewport to root
   glViewport(0, 0, ctx.vWidth, ctx.vHeight)
   glUniformMatrix4fv(ctx.uPro, 1, false,
