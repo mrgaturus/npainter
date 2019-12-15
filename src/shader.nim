@@ -1,6 +1,6 @@
 import libs/gl
 
-proc newSimpleProgram*(vert, frag: string): GLuint =
+proc newProgram*(vert, frag: string): GLuint =
   var
     vertShader = glCreateShader(GL_VERTEX_SHADER)
     fragShader = glCreateShader(GL_FRAGMENT_SHADER)
@@ -42,6 +42,3 @@ proc newSimpleProgram*(vert, frag: string): GLuint =
   # CLEAN UP SHADERS
   glDeleteShader(vertShader)
   glDeleteShader(fragShader)
-
-proc newProgram*(shaders: openArray[string]): GLuint =
-  0

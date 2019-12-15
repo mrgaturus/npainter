@@ -1,3 +1,4 @@
+from ../shader import newProgram
 import ../libs/gl
 
 const
@@ -14,11 +15,13 @@ type
   CTXLevel = object
     rect: GUIRect
     color: GUIColor
-  GUIRender* = object
+  CTXRender* = object
+    # GUI Program
+    program: GLuint
+    # Color Uniform
+    pro, color: GLint
     # White Pixel and Stream Size
     white, vao, vbo: GLuint
-    # Color Uniform
-    color: GLint
     # Viewport Height
     height: int32
     # Clipping and Color levels
@@ -28,8 +31,17 @@ type
 # GUI CREATION PROCS
 # --------
 
-proc newGUIRender*(uCol: GLint): GUIRender =
-  result.color = uCol
+proc newCTXRender*(): CTXRender =
+  # -- Create new program
+  result.program = newProgram("shaders/gui.vert", "shaders/gui.frag")
+  # Use Program
+  glUseProgram(result.program)
+  # Load uniforms
+  result.pro = glGetUniformLocation(result.program, "uPro")
+  result.color = glGetUniformLocation(result.program, "uCol")
+  glUniform1i(glGetUniformLocation(result.program, "uTex"), 0)
+  # Unuse Program
+  glUseProgram(0)
   # -- Gen Batch VAO and VBO
   glGenVertexArrays(1, addr result.vao)
   glGenBuffers(1, addr result.vbo)
@@ -66,10 +78,25 @@ proc newGUIRender*(uCol: GLint): GUIRender =
   glBindTexture(GL_TEXTURE_2D, 0)
 
 # --------
-# GUI RESET PROCS
+# GUI PREPARING PROCS
 # --------
 
-proc makeCurrent*(ctx: var GUIRender, height: int32) =
+proc start*(ctx: var CTXRender) =
+  # Use GUI program
+  glUseProgram(ctx.program)
+  # Prepare OpenGL Flags
+  glDisable(GL_DEPTH_TEST)
+  glDisable(GL_STENCIL_TEST)
+  # Modify Only Texture 0
+  glActiveTexture(GL_TEXTURE0)
+
+proc viewport*(ctx: var CTXRender, w, h: int32, pro: ptr float32) =
+  glViewport(0, 0, w, h)
+  glUniformMatrix4fv(ctx.pro, 1, false, pro)
+  # Set new height
+  ctx.height = h
+
+proc makeCurrent*(ctx: var CTXRender) =
   # Clear levels
   ctx.levels.setLen(0)
   # Disable Scissor Test
@@ -81,10 +108,8 @@ proc makeCurrent*(ctx: var GUIRender, height: int32) =
   # Set Default Color (Black)
   glClearColor(0.0, 0.0, 0.0, 1.0)
   glUniform4f(cast[GLint](ctx.color), 0.0, 0.0, 0.0, 1.0)
-  # Set new height
-  ctx.height = height
 
-proc clearCurrent*(ctx: var GUIRender) =
+proc clearCurrent*(ctx: var CTXRender) =
   # Disable Scissor Test
   glDisable(GL_SCISSOR_TEST)
   # Unbinf VAO and VBO
@@ -93,11 +118,17 @@ proc clearCurrent*(ctx: var GUIRender) =
   # Set To White Pixel
   glUniform4f(cast[GLint](ctx.color), 1.0, 1.0, 1.0, 1.0)
 
+proc finish*(ctx: var CTXRender) =
+  # Set program to None program
+  glBindTexture(GL_TEXTURE_2D, 0)
+  glBindVertexArray(0)
+  glUseProgram(0)
+
 # --------
 # GUI PAINTER HELPER PROCS
 # --------
 
-proc intersect(ctx: ptr GUIRender, rect: var GUIRect): GUIRect =
+proc intersect(ctx: ptr CTXRender, rect: var GUIRect): GUIRect =
   let
     prev = addr ctx.levels[^1].rect
     x1 = clamp(rect.x, prev.x, prev.x + prev.w)
@@ -113,7 +144,7 @@ proc intersect(ctx: ptr GUIRender, rect: var GUIRect): GUIRect =
 # GUI CLIP/COLOR PROCS
 # -----------------------
 
-proc clip*(ctx: ptr GUIRender, rect: var GUIRect) =
+proc clip*(ctx: ptr CTXRender, rect: var GUIRect) =
   if ctx.levels.len > 0:
     let nclip = ctx.intersect(rect)
     glScissor(nclip.x, ctx.height - nclip.y - nclip.h, nclip.w, nclip.h)
@@ -121,16 +152,16 @@ proc clip*(ctx: ptr GUIRender, rect: var GUIRect) =
     glEnable(GL_SCISSOR_TEST)
     glScissor(rect.x, ctx.height - rect.y - rect.h, rect.w, rect.h)
 
-proc color*(ctx: ptr GUIRender, color: var GUIColor) =
+proc color*(ctx: ptr CTXRender, color: var GUIColor) =
   glClearColor(color.r, color.g, color.b, color.a)
   glUniform4f(cast[GLint](ctx.color),
     color.r, color.g, color.b, color.a
   )
 
-proc clear*(ctx: ptr GUIRender) {.inline.} =
+proc clear*(ctx: ptr CTXRender) {.inline.} =
   glClear(GL_COLOR_BUFFER_BIT)
 
-proc reset*(ctx: ptr GUIRender) =
+proc reset*(ctx: ptr CTXRender) =
   if ctx.levels.len > 0:
     let level = addr ctx.levels[^1]
     block: # Reset Scissor
@@ -149,7 +180,7 @@ proc reset*(ctx: ptr GUIRender) =
     glClearColor(0.0, 0.0, 0.0, 1.0)
     glUniform4f(cast[GLint](ctx.color), 0.0, 0.0, 0.0, 1.0)
 
-proc push*(ctx: ptr GUIRender, rect: var GUIRect, color: var GUIColor) =
+proc push*(ctx: ptr CTXRender, rect: var GUIRect, color: var GUIColor) =
   var level: CTXLevel
   # Copy Color
   level.color = color
@@ -162,7 +193,7 @@ proc push*(ctx: ptr GUIRender, rect: var GUIRect, color: var GUIColor) =
   ctx.levels.add(level)
   ctx.reset()
 
-proc pop*(ctx: ptr GUIRender) =
+proc pop*(ctx: ptr CTXRender) =
   ctx.levels.setLen(ctx.levels.len - 1)
   ctx.reset()
 
@@ -170,7 +201,7 @@ proc pop*(ctx: ptr GUIRender) =
 # GUI BASIC DRAW PROCS
 # --------------
 
-proc fill*(ctx: ptr GUIRender, rect: var GUIRect) =
+proc fill*(ctx: ptr CTXRender, rect: var GUIRect) =
   let rectArray = [
     float32 rect.x, float32 rect.y,
     float32(rect.x + rect.w), float32 rect.y,

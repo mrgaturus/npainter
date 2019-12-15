@@ -1,5 +1,4 @@
 from ../math import orthoProjection, uvNormalize
-from ../shader import newSimpleProgram
 
 import ../libs/gl
 import render
@@ -14,20 +13,16 @@ type
     vWidth, vHeight: int32
     vCache: array[16, float32]
   # The Context
-  GUIContext* = object
-    # GUI Program and Projection
-    program: GLuint
-    uPro: GLint
-    # GUI viewport cache
-    vWidth, vHeight: int32
-    vCache: array[16, float32]
+  CTXRoot* = object
     # Root Frame
     vao, vbo0, vbo1: GLuint
     tex, fbo: GLuint
+    # GUI viewport cache
+    vWidth, vHeight: int32
+    vCache: array[16, float32]
+    # Regions
     regions: seq[CTXRegion]
     visible: int32
-    # GUI render
-    render*: GUIRender
 
 # -------------------
 # CONTEXT CONST PROCS
@@ -47,19 +42,11 @@ let texCORDS = [
 # CONTEXT CREATION/DISPOSE PROCS
 # -------------------
 
-proc newGUIContext*(): GUIContext =
-  # Initialize GUI Program
-  result.program = newSimpleProgram("shaders/gui.vert", "shaders/gui.frag")
-  result.uPro = glGetUniformLocation(result.program, "uPro")
-  # Initialize GUI Render
-  result.render = newGUIRender(
-    glGetUniformLocation(result.program, "uCol")
-  )
+proc newCTXRoot*(): CTXRoot =
   # Initialize Root Frame
   glGenTextures(1, addr result.tex)
   glGenFramebuffers(1, addr result.fbo)
   # Bind FrameBuffer and Texture
-  glUseProgram(result.program)
   glBindFramebuffer(GL_FRAMEBUFFER, result.fbo)
   glBindTexture(GL_TEXTURE_2D, result.tex)
   # Set Texture Parameters
@@ -68,14 +55,11 @@ proc newGUIContext*(): GUIContext =
   # Attach Texture
   glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D,
       result.tex, 0)
-  # Set shader sampler2D uniform
-  glUniform1i(glGetUniformLocation(result.program, "uTex"), 0)
   # Unbind Texture and Framebuffer
   glBindTexture(GL_TEXTURE_2D, 0)
   glBindFramebuffer(GL_FRAMEBUFFER, 0)
-  glUseProgram(0)
 
-proc allocRegions*(ctx: var GUIContext) =
+proc allocRegions*(ctx: var CTXRoot) =
   # Create New VAO
   glGenVertexArrays(1, addr ctx.vao)
   glGenBuffers(2, addr ctx.vbo0)
@@ -100,16 +84,16 @@ proc allocRegions*(ctx: var GUIContext) =
 # CONTEXT WINDOW PROCS
 # -------------------
 
-proc createRegion*(ctx: var GUIContext, rect: ptr GUIRect) =
+proc createRegion*(ctx: var CTXRoot, rect: ptr GUIRect) =
   ctx.regions.add(rect)
 
-proc update*(ctx: var GUIContext) =
-  # Clear Visible Count
-  ctx.visible = 0
+proc update*(ctx: var CTXRoot) =
+  # Visible Count
+  var count = 0'i32
   # Update VBO With Regions
-  for index, rect in pairs(ctx.regions):
+  for rect in ctx.regions:
     if rect.w > 0 and rect.h > 0:
-      let offset = vertSize * index
+      let offset = vertSize * count
       var rectArray = [
         float32 rect.x, float32 rect.y,
         float32(rect.x + rect.w), float32 rect.y,
@@ -124,10 +108,12 @@ proc update*(ctx: var GUIContext) =
       uvNormalize(addr rectArray[0], float32 ctx.vWidth, float32 ctx.vHeight)
       glBufferSubData(GL_ARRAY_BUFFER, offset, vertSize, addr rectArray[0])
       # Increment Visible Regions
-      inc(ctx.visible)
+      inc(count)
   glBindBuffer(GL_ARRAY_BUFFER, 0)
+  # Set Visible Count
+  ctx.visible = count
 
-proc resize*(ctx: var GUIContext, rect: ptr GUIRect) =
+proc resize*(ctx: var CTXRoot, rect: ptr GUIRect) =
   # Bind Texture
   glBindTexture(GL_TEXTURE_2D, ctx.tex)
   # Resize Texture
@@ -178,59 +164,40 @@ proc createFrame*(): CTXFrame =
   glBindFramebuffer(GL_FRAMEBUFFER, 0)
 
 # -------------------
-# CONTEXT RENDER PROC
-# -------------------
-
-proc `[]`*(ctx: var GUIContext): ptr GUIRender {.inline.} =
-  return addr(ctx.render)
-
-# -------------------
 # CONTEXT RENDER PROCS
 # -------------------
 
-proc start*(ctx: var GUIContext) =
-  # Use GUI program
-  glUseProgram(ctx.program)
-  # Prepare OpenGL Flags
-  glDisable(GL_DEPTH_TEST)
-  glDisable(GL_STENCIL_TEST)
-  # Modify Only Texture 0
-  glActiveTexture(GL_TEXTURE0)
-
-proc makeCurrent*(ctx: var GUIContext, frame: var CTXFrame) =
+proc makeCurrent*(ctx: var CTXRender, frame: var CTXFrame) =
   # Bind Frame's FBO
   glBindFramebuffer(GL_FRAMEBUFFER, frame.fbo)
-  # Clear Render Levels
-  makeCurrent(ctx.render, frame.vHeight)
+  # Make Render Current to FBO
+  makeCurrent(ctx)
   # Set Frame Viewport
-  glViewport(0, 0, frame.vWidth, frame.vHeight)
-  glUniformMatrix4fv(ctx.uPro, 1, false,
+  viewport(ctx, frame.vWidth, frame.vHeight,
     cast[ptr float32](addr frame.vCache)
   )
 
-proc makeCurrent*(ctx: var GUIContext) =
+proc makeCurrent*(ctx: var CTXRender, root: var CTXRoot) =
   # Bind Root FBO & Use Viewport
-  glBindFramebuffer(GL_FRAMEBUFFER, ctx.fbo)
+  glBindFramebuffer(GL_FRAMEBUFFER, root.fbo)
   # Clear Render Levels
-  makeCurrent(ctx.render, ctx.vHeight)
+  makeCurrent(ctx)
   # Set Root Viewport
-  glViewport(0, 0, ctx.vWidth, ctx.vHeight)
-  glUniformMatrix4fv(ctx.uPro, 1, false,
-    cast[ptr float32](addr ctx.vCache)
+  viewport(ctx, root.vWidth, root.vHeight,
+    cast[ptr float32](addr root.vCache)
   )
 
-proc clearCurrent*(ctx: var GUIContext) =
+proc clearCurrent*(ctx: var CTXRender, root: var CTXRoot) =
   # Bind to Framebuffer Screen
   glBindFramebuffer(GL_FRAMEBUFFER, 0)
   # Set To White Pixel
-  clearCurrent(ctx.render)
+  clearCurrent(ctx)
   # Set Root Viewport
-  glViewport(0, 0, ctx.vWidth, ctx.vHeight)
-  glUniformMatrix4fv(ctx.uPro, 1, false,
-    cast[ptr float32](addr ctx.vCache)
+  viewport(ctx, root.vWidth, root.vHeight,
+    cast[ptr float32](addr root.vCache)
   )
 
-proc render*(ctx: var GUIContext) =
+proc render*(ctx: var CTXRoot) =
   # Draw Regions
   glBindVertexArray(ctx.vao)
   glBindTexture(GL_TEXTURE_2D, ctx.tex)
@@ -242,12 +209,6 @@ proc render*(frame: var CTXFrame) =
   glBindTexture(GL_TEXTURE_2D, frame.tex)
   glDrawArrays(GL_TRIANGLE_STRIP, 0, 4)
 
-proc finish*(ctx: var GUIContext) =
-  # Set program to None program
-  glBindTexture(GL_TEXTURE_2D, 0)
-  glBindVertexArray(0)
-  glUseProgram(0)
-
 # -------------------
 # CONTEXT FRAME PROCS
 # -------------------
@@ -256,7 +217,7 @@ proc region*(frame: var CTXFrame, rect: ptr GUIRect) =
   let
     w = rect.w
     h = rect.h
-  if w != frame.vWidth and h != frame.vHeight:
+  if w != frame.vWidth or h != frame.vHeight:
     # Bind Texture
     glBindTexture(GL_TEXTURE_2D, frame.tex)
     # Resize Texture

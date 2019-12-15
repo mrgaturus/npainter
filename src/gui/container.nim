@@ -70,7 +70,7 @@ proc checkFocus(self: GUIContainer) =
     self.focus = nil
 
 # CONTAINER METHODS
-method draw(self: GUIContainer, ctx: ptr GUIRender) =
+method draw(self: GUIContainer, ctx: ptr CTXRender) =
   var count = 0;
 
   # Push Clipping and Color Level

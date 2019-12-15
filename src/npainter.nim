@@ -7,7 +7,7 @@ type
     colorn: GUIColor
     colorf: GUIColor
 
-method draw*(widget: GUIBlank, ctx: ptr GUIRender) =
+method draw*(widget: GUIBlank, ctx: ptr CTXRender) =
   if widget.any(wHover or wGrab):
     color(ctx, widget.color)
   elif widget.test(wFocus):

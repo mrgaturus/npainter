@@ -11,7 +11,7 @@ type
   GUIFrame* = ref object of GUIContainer
     fID*: uint16
     x, y: int32
-    ctx: CTXFrame
+    surf: CTXFrame
   SFrame* = object
     fID*: uint16
     x, y, w, h: int32
@@ -24,7 +24,7 @@ proc newGUIFrame*(layout: GUILayout, color: GUIColor): GUIFrame =
   # GUIWidget Default Flags
   result.flags = wVisible or wSignal or wDirty
   # Render Frame
-  result.ctx = createFrame()
+  result.surf = createFrame()
 
 # ---------
 # FRAME INIT PROCS
@@ -32,7 +32,7 @@ proc newGUIFrame*(layout: GUILayout, color: GUIColor): GUIFrame =
 
 proc boundaries*(frame: GUIFrame) {.inline.} =
   # Put them in new region
-  region(frame.ctx, addr frame.rect)
+  region(frame.surf, addr frame.rect)
   # Ensure x,y rect be always in 0
   copyMem(addr frame.x, addr frame.rect, sizeof(int32)*2)
   zeroMem(addr frame.rect, sizeof(int32)*2)
@@ -63,7 +63,7 @@ proc boundaries*(frame: GUIFrame, bounds: ptr SFrame, resize: bool) =
   # Move
   copyMem(addr frame.x, addr bounds.x, sizeof(int32)*2)
   # Update Region
-  region(frame.ctx, addr frame.rect)
+  region(frame.surf, addr frame.rect)
 
 proc handleTick*(frame: GUIFrame) =
   if frame.any(wUpdate or wLayout or wDirty):
@@ -76,11 +76,11 @@ proc handleTick*(frame: GUIFrame) =
 # FRAME RENDERING PROCS
 # ---------
 
-proc render*(frame: GUIFrame, ctx: var GUIContext) =
+proc render*(root: var CTXRoot, frame: GUIFrame, ctx: var CTXRender) =
   if frame.test(wVisible):
     if frame.test(wDraw):
-      makeCurrent(ctx, frame.ctx)
-      draw(frame, ctx[])
-      clearCurrent(ctx)
+      makeCurrent(ctx, frame.surf)
+      draw(frame, addr ctx)
+      clearCurrent(ctx, root)
     # Render Frame Texture
-    render(frame.ctx)
+    render(frame.surf)

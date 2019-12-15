@@ -1,6 +1,6 @@
 # GUI Objects
 from event import GUIState, GUISignal
-from render import GUIRender, GUIRect
+from render import CTXRender, GUIRect
 
 const
   # Indicators
@@ -62,7 +62,7 @@ method trigger*(widget: GUIWidget, signal: GUISignal) {.base.} = discard
 method update*(widget: GUIWidget) {.base.} = discard
 method layout*(widget: GUIWidget) {.base.} = discard
 # 3 -- Draw Method
-method draw*(widget: GUIWidget, ctx: ptr GUIRender) {.base.} =
+method draw*(widget: GUIWidget, ctx: ptr CTXRender) {.base.} =
   widget.clear(wDraw)
 
 # 1 -- 2 Out Handler Methods
