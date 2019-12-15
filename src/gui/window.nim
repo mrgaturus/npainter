@@ -4,6 +4,7 @@ import widget, event, context, render, container, frame
 
 from builder import signal
 from ../libs/gl import gladLoadGL
+from os import sleep
 
 let
   # NPainter EGL Configurations
@@ -39,7 +40,7 @@ type
     eglSur: EGLSurface
     # Renderer
     render: CTXRender
-    root: CTXRoot
+    surf: CTXRoot
     # GUI Widgets
     state: GUIState
     gui: GUIContainer
@@ -162,7 +163,9 @@ proc newGUIWindow*(w, h: int32, layout: GUILayout): GUIWindow =
   # Initialize EGL and GL
   result.createEGL()
   result.render = newCTXRender()
-  result.root = newCTXRoot()
+  result.surf = newCTXRoot()
+  # Disable VSync - Avoid Input Lag
+  discard eglSwapInterval(result.eglDsp, 0)
   # Create new root container
   block:
     let color = GUIColor(r: 0, g: 0, b: 0, a: 1)
@@ -180,8 +183,7 @@ proc newGUIWindow*(w, h: int32, layout: GUILayout): GUIWindow =
 # --------------------
 
 proc addWidget*(win: var GUIWindow, widget: GUIWidget, region: bool = true) =
-  if region:
-    win.root.createRegion(addr widget.rect)
+  if region: win.surf.createRegion(addr widget.rect)
   win.gui.add(widget)
 
 proc addFrame*(win: var GUIWindow, layout: GUILayout,
@@ -221,8 +223,8 @@ proc exec*(win: var GUIWindow): bool =
   result = XMapWindow(win.display, win.xID) != BadWindow
   discard XSync(win.display, 0)
   # Resize Root FBO
-  resize(win.root, addr win.gui.rect)
-  allocRegions(win.root)
+  resize(win.surf, addr win.gui.rect)
+  allocRegions(win.surf)
   # Resize Frames FBO
   for frame in reverse(win.gui):
     boundaries(frame)
@@ -282,7 +284,7 @@ proc notFramed*(win: var GUIWindow, tab: bool): bool =
     if test(win.gui, wGrab): return true
     elif win.hover != nil and test(win.hover, wGrab):
       found = win.hover
-    else: # Hover on other frames
+    else: # Search on other frames
       for frame in forward(win.gui):
         if pointOnArea(frame, state.mx, state.my):
           if state.eventType == evMouseClick:
@@ -309,11 +311,11 @@ proc notFramed*(win: var GUIWindow, tab: bool): bool =
     if found.test(wFocus):
       if found != win.focus:
         if test(win.gui, wFocus):
-          clear(win.gui, wFocus)
           focusOut(win.gui)
+          clear(win.gui, wFocus)
         elif win.focus != nil:
           focusOut(win.focus)
-          clear(win.gui, wFocus)
+          clear(win.focus, wFocus)
         win.focus = found
     elif found == win.focus:
       win.focus = nil
@@ -341,7 +343,7 @@ proc handleEvents*(win: var GUIWindow) =
         win.gui.rect.w = event.xconfigure.width
         win.gui.rect.h = event.xconfigure.height
         # Resize CTX Root
-        resize(win.root, addr win.gui.rect)
+        resize(win.surf, addr win.gui.rect)
         # Relayout and Redraw GUI
         win.gui.set(wDirty)
     else:
@@ -389,7 +391,7 @@ proc handleTick*(win: var GUIWindow): bool =
     update(win.gui)
   if any(win.gui, 0x000C):
     layout(win.gui)
-    update(win.root)
+    update(win.surf)
   # Update -> Layout Frames
   for frame in forward(win.gui):
     handleTick(frame)
@@ -397,17 +399,26 @@ proc handleTick*(win: var GUIWindow): bool =
   return true
 
 proc render*(win: var GUIWindow) =
+  # Start GUI Rendering
   start(win.render)
   # Draw hot/invalidated widgets
   if test(win.gui, wDraw):
-    makeCurrent(win.render, win.root)
+    makeCurrent(win.render, win.surf)
     draw(win.gui, addr win.render)
-    clearCurrent(win.render, win.root)
+    clearCurrent(win.render, win.surf)
   # Draw Root Regions
-  render(win.root)
+  render(win.surf)
   # Render floating frames
   for frame in reverse(win.gui):
-    render(win.root, frame, win.render)
-  # Present to X11/EGL Window
+    if frame.test(wVisible):
+      if frame.test(wDraw):
+        makeCurrent(win.render, frame.surf)
+        draw(frame, addr win.render)
+        clearCurrent(win.render, win.surf)
+      render(frame.surf)
+  # Finish GUI Rendering
   finish(win.render)
+  # Present to X11/EGL Window
   discard eglSwapBuffers(win.eglDsp, win.eglSur)
+  # TODO: FPS Strategy
+  sleep(16)

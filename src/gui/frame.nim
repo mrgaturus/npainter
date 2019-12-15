@@ -11,7 +11,7 @@ type
   GUIFrame* = ref object of GUIContainer
     fID*: uint16
     x, y: int32
-    surf: CTXFrame
+    surf*: CTXFrame
   SFrame* = object
     fID*: uint16
     x, y, w, h: int32
@@ -71,16 +71,3 @@ proc handleTick*(frame: GUIFrame) =
       update(frame)
     if frame.any(wUpdate or wDirty):
       layout(frame)
-
-# ---------
-# FRAME RENDERING PROCS
-# ---------
-
-proc render*(root: var CTXRoot, frame: GUIFrame, ctx: var CTXRender) =
-  if frame.test(wVisible):
-    if frame.test(wDraw):
-      makeCurrent(ctx, frame.surf)
-      draw(frame, addr ctx)
-      clearCurrent(ctx, root)
-    # Render Frame Texture
-    render(frame.surf)

@@ -9,18 +9,18 @@ proc newProgram*(vert, frag: string): GLuint =
     success: GLint
 
   # LOAD VERTEX SHADER
-  try: 
+  try:
     buffer = readFile(vert)
-    bAddr = buffer[0].addr
+    bAddr = addr buffer[0]
   except: echo "ERROR: failed loading shader " & vert
-  glShaderSource(vertShader, 1, cast[cstringArray](bAddr.addr), nil)
+  glShaderSource(vertShader, 1, cast[cstringArray](addr bAddr), nil)
 
   # LOAD FRAGMENT SHADER
-  try: 
+  try:
     buffer = readFile(frag)
-    bAddr = buffer[0].addr
+    bAddr = addr buffer[0]
   except: echo "ERROR: failed loading shader " & frag
-  glShaderSource(fragShader, 1, cast[cstringArray](bAddr.addr), nil)
+  glShaderSource(fragShader, 1, cast[cstringArray](addr bAddr), nil)
 
   # COMPILE SHADERS: TODO: CHECK ERRORS
   glCompileShader(vertShader)
@@ -38,7 +38,6 @@ proc newProgram*(vert, frag: string): GLuint =
   glAttachShader(result, vertShader)
   glAttachShader(result, fragShader)
   glLinkProgram(result)
-
   # CLEAN UP SHADERS
   glDeleteShader(vertShader)
   glDeleteShader(fragShader)
