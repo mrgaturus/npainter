@@ -219,6 +219,7 @@ proc exec*(win: var GUIWindow): bool =
   discard XSync(win.display, 0)
   # Resize Root FBO
   resize(win.ctx, addr win.root.rect)
+  allocRegions(win.ctx)
   # Resize Frames FBO
   for frame in reverse(win.root):
     boundaries(frame)

@@ -8,14 +8,13 @@ type
     colorf: GUIColor
 
 method draw*(widget: GUIBlank, ctx: ptr GUIRender) =
-  clip(ctx, widget.rect)
   if widget.any(wHover or wGrab):
     color(ctx, widget.color)
   elif widget.test(wFocus):
     color(ctx, widget.colorf)
   else:
     color(ctx, widget.colorn)
-  clear(ctx)
+  fill(ctx, widget.rect)
   widget.clear(wDraw)
 
 method event*(widget: GUIBlank, state: ptr GUIState) =
@@ -36,6 +35,15 @@ when isMainModule:
     blank.colorn = GUIColor(r: 1.0, g: 1.0, b: 1.0, a: 1.0)
     blank.colorf = GUIColor(r: 1.0, g: 1.0, b: 0.0, a: 1.0)
     blank.flags = wVisible or wEnabled
+    win.addWidget(blank)
+
+    blank = new GUIBlank
+    blank.rect = GUIRect(x: 100, y: 80, w: 50, h: 60)
+    blank.color = GUIColor(r: 1.0, g: 0.0, b: 1.0, a: 1.0)
+    blank.colorn = GUIColor(r: 1.0, g: 1.0, b: 1.0, a: 1.0)
+    blank.colorf = GUIColor(r: 1.0, g: 1.0, b: 0.0, a: 1.0)
+    blank.flags = wVisible or wEnabled
+
     win.addWidget(blank)
     # A Frame
     blank = new GUIBlank
