@@ -2,7 +2,7 @@ import macros
 
 # Signal Builder
 var lastID {.compileTime.} : uint16 = 1
-macro signal*(name: untyped, messages: untyped): untyped =
+macro signal*(name: untyped, messages: untyped) =
   name.expectKind(nnkIdent)
   result = nnkStmtList.newTree()
   # Create ID Const Node
@@ -42,6 +42,3 @@ macro signal*(name: untyped, messages: untyped): untyped =
         )
       )
     )
-
-# Widget Builder
-# TODO: Plan how is the sintaxis

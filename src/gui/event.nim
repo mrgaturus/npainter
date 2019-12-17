@@ -43,15 +43,27 @@ type
     utf8str*: cstring
     # Modifiers for Both
     mods*: uint16
-  # GUI Signal Queue
-  SignalData* = object
+  # GUI Signal Private
+  SKind = enum
+    sSignal, sCallback
   Signal = object
     next: GUISignal
-    id*, msg*: uint16
-    data*: SignalData
+    # Signal or Callback
+    case kind: SKind
+    of sSignal: 
+      id*, msg*: uint16
+    of sCallback: 
+      cb: GUICallback
+    # Signal Data
+    data*: GUISData
+  # Signal Generic Data
+  GUICallback* = proc(g, d: pointer) {.nimcall.}
+  GUISData* = object
+  # GUI Signal and Queue
   GUISignal* = ptr Signal
   GUIQueue* = object
     back, front: GUISignal
+    global: pointer
 
 # UTF8Buffer allocation/reallocation
 proc utf8buffer*(state: var GUIState, cap: int32) =
@@ -112,11 +124,13 @@ proc translateXEvent*(state: var GUIState, display: PDisplay, event: PXEvent,
 # ------------
 
 var queue: ptr GUIQueue = nil
-proc allocQueue*() =
+proc allocQueue*(g: pointer) =
   if queue.isNil:
     queue = cast[ptr GUIQueue](
       alloc0(sizeof(GUIQueue))
     )
+    # Define Global Data
+    queue.global = g
 
 proc disposeQueue*() =
   var signal = queue.back
@@ -140,6 +154,17 @@ iterator pollQueue*(): GUISignal =
   queue.back = nil
   queue.front = nil
 
+# ---------------
+# CALLBACK CALLER
+# ---------------
+
+proc callSignal*(signal: GUISignal): bool =
+  result = signal.kind == sCallback
+  if result: signal.cb(
+    queue.global, 
+    cast[pointer](addr signal.data)
+  )
+
 # ------------
 # SIGNAL PUSHER
 # ------------
@@ -147,12 +172,15 @@ iterator pollQueue*(): GUISignal =
 proc pushSignal*(id: uint16, msg: enum, data: pointer, size: Natural) =
   # Allocs new signal
   let nsignal = cast[GUISignal](
-    alloc(sizeof(Signal) + size)
+    alloc0(sizeof(Signal) + size)
   )
   nsignal.next = nil
-  # Assign Attribs
+  # Signal Kind
+  nsignal.kind = sSignal
+  # Assign Msg
   nsignal.id = id
   nsignal.msg = uint16(msg)
+  # Copy Extra Data
   copyMem(addr nsignal.data, data, size)
   # Add new signal to Front
   if queue.front.isNil:
@@ -162,5 +190,31 @@ proc pushSignal*(id: uint16, msg: enum, data: pointer, size: Natural) =
     queue.front.next = nsignal
     queue.front = nsignal
 
-template convert*(data: var SignalData, t: type): untyped =
+proc pushCallback(cb: GUICallback, data: pointer, size: Natural) =
+  # Allocs new signal
+  let nsignal = cast[GUISignal](
+    alloc0(sizeof(Signal) + size)
+  )
+  nsignal.next = nil
+  # Assign Callback
+  nsignal.kind = sCallback
+  nsignal.cb = cb
+  # Copy Extra Data
+  copyMem(addr nsignal.data, data, size)
+  # Add new signal to Front
+  if queue.front.isNil:
+    queue.back = nsignal
+    queue.front = nsignal
+  else:
+    queue.front.next = nsignal
+    queue.front = nsignal
+
+template pushCallback*(cb: proc, data: pointer, size: Natural) =
+  pushCallback(cast[GUICallback](cb), data, size)
+
+# ---------------------
+# SIGNAL DATA CONVERTER
+# ---------------------
+
+template convert*(data: var GUISData, t: type): untyped =
   cast[ptr t](data)

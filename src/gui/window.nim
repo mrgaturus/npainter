@@ -150,7 +150,7 @@ proc createEGL(win: var GUIWindow) =
 # WINDOW CREATION PROCS
 # --------------------
 
-proc newGUIWindow*(w, h: int32, layout: GUILayout): GUIWindow =
+proc newGUIWindow*(g: pointer, w, h: int32, layout: GUILayout): GUIWindow =
   # Create new X11 Display
   result.display = XOpenDisplay(nil)
   if result.display.isNil:
@@ -175,8 +175,8 @@ proc newGUIWindow*(w, h: int32, layout: GUILayout): GUIWindow =
     root.rect.h = h
     # Set the new root with initial sizes
     result.gui = root
-  # Alloc Global GUIQueue
-  allocQueue()
+  # Alloc Global GUIQueue with Global
+  allocQueue(g)
 
 # --------------------
 # WINDOW GUI CREATION PROCS
@@ -364,6 +364,10 @@ proc handleEvents*(win: var GUIWindow) =
 proc handleTick*(win: var GUIWindow): bool =
   # Signal ID Handling
   for signal in pollQueue():
+    # is GUI Callback?
+    if callSignal(signal): 
+      continue
+    # is GUI Signal?
     case signal.id:
     of NoSignalID: discard
     of WindowID:

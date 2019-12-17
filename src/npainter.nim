@@ -2,10 +2,20 @@ import libs/gl
 import gui/[window, widget, render, container, event]
 
 type
+  Counter = object
+    clicked, released: int
   GUIBlank = ref object of GUIWidget
     color: GUIColor
     colorn: GUIColor
     colorf: GUIColor
+
+proc click(g: ptr Counter, d: pointer) =
+  inc(g.clicked)
+  echo "Click Count: ", g.clicked
+
+proc release(g: ptr Counter, d: pointer) =
+  inc(g.released)
+  echo "Released Count: ", g.clicked
 
 method draw*(widget: GUIBlank, ctx: ptr CTXRender) =
   if widget.any(wHover or wGrab):
@@ -18,13 +28,22 @@ method draw*(widget: GUIBlank, ctx: ptr CTXRender) =
   widget.clear(wDraw)
 
 method event*(widget: GUIBlank, state: ptr GUIState) =
-  if state.eventType == evMouseClick: widget.set(wGrab)
-  elif state.eventType == evMouseRelease: widget.clear(wGrab)
+  if state.eventType == evMouseClick:
+    widget.set(wGrab)
+    pushCallback(click, nil, 0)
+  elif state.eventType == evMouseRelease: 
+    widget.clear(wGrab)
+    pushCallback(release, nil, 0)
 
 when isMainModule:
+  # Create Counter
+  var counter = Counter(
+    clicked: 0, 
+    released: 0
+  )
   # Create a new Window
   let layout = new GUILayout
-  var win = newGUIWindow(1280, 720, layout)
+  var win = newGUIWindow(addr counter, 1280, 720, layout)
 
   # Create Widgets
   block:
