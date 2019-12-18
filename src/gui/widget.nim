@@ -2,21 +2,20 @@
 from event import GUIState, GUISignal
 from render import CTXRender, GUIRect
 
-const
+const # set[T] doesn't has xor
   # Indicators
-  wDraw* = 0x0001'u16
-  wUpdate* = 0x0002'u16
-  wLayout* = 0x0004'u16
-  wDirty* = 0x0008'u16
+  wDraw* = uint16(1 shl 0)
+  wUpdate* = uint16(1 shl 1)
+  wLayout* = uint16(1 shl 2)
+  wDirty* = uint16(1 shl 3)
   # Status
-  wVisible* = 0x0010'u16
-  wEnabled* = 0x0020'u16
+  wVisible* = uint16(1 shl 4)
+  wEnabled* = uint16(1 shl 5)
+  wSignal* = uint16(1 shl 6)
   # Handlers
-  wFocus* = 0x0040'u16
-  wHover* = 0x0080'u16
-  wGrab* = 0x0100'u16
-  # Signal-Enabled
-  wSignal* = 0x0200'u16
+  wFocus* = uint16(1 shl 7)
+  wHover* = uint16(1 shl 8)
+  wGrab* = uint16(1 shl 9)
 
 type
   GUIWidget* = ref object of RootObj

@@ -2,10 +2,10 @@ from event import GUIState, GUIEvent, GUISignal
 import widget, render
 
 const
-  wDrawDirty* = 0x0400'u16
+  wDrawDirty* = uint16(1 shl 10)
   # Combinations
-  wFocusCheck* = 0x0070'u16
-  wReactive = 0x000F'u16
+  wFocusCheck* = 0xb0'u16
+  wReactive = 0x0f'u16
 
 type
   # GUIContainer, GUILayout and Decorator
@@ -175,7 +175,7 @@ method trigger(self: GUIContainer, signal: GUISignal) =
         (widget.id == signal.id or widget.id == 0):
       widget.trigger(signal)
 
-      let focusCheck = (widget.flags and wFocusCheck) xor 0x0030'u16
+      let focusCheck = (widget.flags and wFocusCheck) xor 0x30'u16
       if (focusCheck and wFocus) == wFocus and widget != focusAux:
         if focusCheck == wFocus:
           if focusAux != nil:
@@ -230,9 +230,9 @@ method layout(self: GUIContainer) =
 
   for widget in self:
     widget.set(self.flags and wDirty)
-    if (widget.flags and 0x000C) != 0:
+    if (widget.flags and 0x0C) != 0:
       widget.layout()
-      widget.clear(0x000D)
+      widget.clear(0x0D)
 
       if (widget.flags and wVisible) == wVisible:
         widget.set(wDraw)
@@ -242,7 +242,7 @@ method layout(self: GUIContainer) =
       self.set(widget.flags and wReactive)
 
   self.checkFocus()
-  self.clear(0x000C)
+  self.clear(0x0C)
 
 method hoverOut(self: GUIContainer) =
   var aux: GUIWidget = self.hover
