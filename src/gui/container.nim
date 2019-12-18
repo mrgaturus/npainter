@@ -31,7 +31,6 @@ proc newGUIContainer*(layout: GUILayout, color: GUIColor): GUIContainer =
 proc add*(self: GUIContainer, widget: GUIWidget) =
   if self.first.isNil:
     self.first = widget
-    self.last = widget
   else:
     widget.prev = self.last
     self.last.next = widget
@@ -61,7 +60,7 @@ proc stepWidget(self: GUIContainer, back: bool): bool =
 
 proc checkFocus(self: GUIContainer) =
   var focus: GUIWidget = self.focus
-  if focus != nil and (focus.flags and wFocusCheck) != wFocusCheck:
+  if focus != nil and not focus.test(wFocusCheck):
     focus.focusOut()
     focus.clear(wFocus)
 
@@ -81,7 +80,7 @@ method draw(self: GUIContainer, ctx: ptr CTXRender) =
     ctx.clear()
   # Draw Widgets
   for widget in self:
-    if (widget.flags and wDraw) == wDraw:
+    if widget.test(wDraw):
       widget.draw(ctx)
       inc(count)
   # Pop Clipping and Color Level
@@ -94,7 +93,7 @@ method update(self: GUIContainer) =
   var count = 0;
 
   for widget in self:
-    if (widget.flags and wUpdate) == wUpdate:
+    if widget.test(wUpdate):
       widget.update()
       inc(count)
 
@@ -110,8 +109,8 @@ method event(self: GUIContainer, state: ptr GUIState) =
   of evMouseMove, evMouseClick, evMouseRelease, evMouseAxis:
     found = self.hover
 
-    if (self.flags and wGrab) == wGrab:
-      if found != nil and (found.flags and wGrab) == wGrab:
+    if self.test(wGrab):
+      if found != nil and found.test(wGrab):
         if pointOnArea(self.rect, state.mx, state.my):
           found.set(wHover)
         else:
@@ -124,8 +123,7 @@ method event(self: GUIContainer, state: ptr GUIState) =
 
       found = nil
       for widget in self:
-        if (widget.flags and wVisible) == wVisible and
-            pointOnArea(widget.rect, state.mx, state.my):
+        if widget.test(wVisible) and pointOnArea(widget.rect, state.mx, state.my):
           widget.set(wHover)
           self.set(wHover)
 
@@ -136,7 +134,7 @@ method event(self: GUIContainer, state: ptr GUIState) =
 
       self.hover = found
   of evKeyDown, evKeyUp:
-    if (self.flags and wFocus) == wFocus:
+    if self.test(wFocus):
       found = self.focus
 
   if found != nil:
@@ -171,7 +169,7 @@ method event(self: GUIContainer, state: ptr GUIState) =
 method trigger(self: GUIContainer, signal: GUISignal) =
   var focus = self.focus
   for widget in self:
-    if (widget.flags and wSignal) == wSignal and
+    if widget.test(wSignal) and
         (widget.id == signal.id or widget.id == 0):
       widget.trigger(signal)
 
@@ -203,7 +201,7 @@ method step(self: GUIContainer, back: bool) =
     widget.step(back)
     self.set(widget.flags and wReactive)
 
-    if (widget.flags and wFocusCheck) == wFocusCheck: return
+    if widget.test(wFocusCheck): return
     else:
       widget.focusOut()
       widget.clear(wFocus)
@@ -212,11 +210,11 @@ method step(self: GUIContainer, back: bool) =
 
   while self.stepWidget(back):
     widget = self.focus
-    if (widget.flags and 0x0030) == 0x0030:
+    if widget.test(0x30):
       widget.step(back)
       self.set(widget.flags and wReactive)
 
-      if (widget.flags and wFocus) == wFocus:
+      if widget.test(wFocusCheck):
         self.set(wFocus)
         return
 
@@ -224,17 +222,17 @@ method step(self: GUIContainer, back: bool) =
   self.clear(wFocus)
 
 method layout(self: GUIContainer) =
-  if (self.flags and wDirty) == wDirty:
+  if self.test(wDirty):
     self.layout.layout(self)
     self.set(wDrawDirty)
 
   for widget in self:
     widget.set(self.flags and wDirty)
-    if (widget.flags and 0x0C) != 0:
+    if widget.any(0x0C):
       widget.layout()
       widget.clear(0x0D)
 
-      if (widget.flags and wVisible) == wVisible:
+      if widget.test(wVisible):
         widget.set(wDraw)
       else:
         zeroMem(addr widget.rect, sizeof(GUIRect))
@@ -250,8 +248,7 @@ method hoverOut(self: GUIContainer) =
     hover.hoverOut()
     hover.clear(wHover)
     # if is focused check focus
-    if hover == self.focus and
-        (hover.flags and wFocusCheck) != wFocusCheck:
+    if hover == self.focus and not hover.test(wFocusCheck):
       hover.focusOut()
       hover.clear(wFocus)
       self.focus = nil
