@@ -2,8 +2,6 @@ import x11/xlib, x11/x
 from x11/keysym import XK_Tab, XK_ISO_Left_Tab
 
 const
-  # No Signal
-  NoSignalID* = 0'u16
   # Mouse Buttons
   LeftButton* = Button1
   MiddleButton* = Button2
@@ -51,7 +49,7 @@ type
     # Signal or Callback
     case kind: SKind
     of sSignal: 
-      id*, msg*: uint16
+      id*, msg*: uint8
     of sCallback: 
       cb: GUICallback
     # Signal Data
@@ -169,7 +167,7 @@ proc callSignal*(signal: GUISignal): bool =
 # SIGNAL PUSHER
 # ------------
 
-proc pushSignal*(id: uint16, msg: enum, data: pointer, size: Natural) =
+proc pushSignal*(id: uint8, msg: enum, data: pointer, size: Natural) =
   # Allocs new signal
   let nsignal = cast[GUISignal](
     alloc0(sizeof(Signal) + size)
@@ -179,7 +177,7 @@ proc pushSignal*(id: uint16, msg: enum, data: pointer, size: Natural) =
   nsignal.kind = sSignal
   # Assign Msg
   nsignal.id = id
-  nsignal.msg = uint16(msg)
+  nsignal.msg = uint8(msg)
   # Copy Extra Data
   copyMem(addr nsignal.data, data, size)
   # Add new signal to Front
@@ -216,5 +214,5 @@ template pushCallback*(cb: proc, data: pointer, size: Natural) =
 # SIGNAL DATA CONVERTER
 # ---------------------
 
-template convert*(data: var GUISData, t: type): untyped =
-  cast[ptr t](data)
+template convert*(data: GUISData, t: type): untyped =
+  cast[ptr t](addr data)

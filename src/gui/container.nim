@@ -29,6 +29,9 @@ proc newGUIContainer*(layout: GUILayout, color: GUIColor): GUIContainer =
   result.flags = wVisible or wSignal or wDirty
 
 proc add*(self: GUIContainer, widget: GUIWidget) =
+  # Merge Widget Signals to Self
+  incl(self.signals, widget.signals)
+  # Add Widget to List
   if self.first.isNil:
     self.first = widget
   else:
@@ -169,8 +172,7 @@ method event(self: GUIContainer, state: ptr GUIState) =
 method trigger(self: GUIContainer, signal: GUISignal) =
   var focus = self.focus
   for widget in self:
-    if widget.test(wSignal) and
-        (widget.id == signal.id or widget.id == 0):
+    if widget.test(wSignal) and (signal.id in widget):
       widget.trigger(signal)
 
       let check = (widget.flags and wFocusCheck) xor 0x30'u16

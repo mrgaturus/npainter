@@ -170,7 +170,7 @@ proc newGUIWindow*(g: pointer, w, h: int32, layout: GUILayout): GUIWindow =
   block:
     let color = GUIColor(r: 0, g: 0, b: 0, a: 1)
     var root = newGUIContainer(layout, color)
-    root.id = WindowID
+    root.signals = {WindowID, FrameID}
     root.rect.w = w
     root.rect.h = h
     # Set the new root with initial sizes
@@ -369,7 +369,6 @@ proc handleTick*(win: var GUIWindow): bool =
       continue
     # is GUI Signal?
     case signal.id:
-    of NoSignalID: discard
     of WindowID:
       case WindowMsg(signal.msg):
       of msgTerminate: return false

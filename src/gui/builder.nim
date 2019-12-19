@@ -1,9 +1,14 @@
 import macros
 
 # Signal Builder
-var lastID {.compileTime.} : uint16 = 1
+var lastID {.compileTime.} : uint8 = 0
 macro signal*(name: untyped, messages: untyped) =
+  # Expected Parameters
   name.expectKind(nnkIdent)
+  messages.expectKind(nnkStmtList)
+  # Check signal limit count
+  if lastID > 63'u8: error("exceded signal count")
+  # Create a new Tree
   result = nnkStmtList.newTree()
   # Create ID Const Node
   result.add(
@@ -19,7 +24,7 @@ macro signal*(name: untyped, messages: untyped) =
     )
   )
   inc(lastID)
-
+  # Create Msg Enum if not discarded
   if messages[0].kind != nnkDiscardStmt:
     # Create Enum Node
     var msgNode = newNimNode(nnkEnumTy)

@@ -18,26 +18,36 @@ const # set[T] doesn't has xor
   wGrab* = uint16(1 shl 9)
 
 type
+  GUIFlags = uint16
+  GUISignals = set[0'u8..63'u8]
   GUIWidget* = ref object of RootObj
     next*, prev*: GUIWidget
-    flags*, id*: uint16
+    signals*: GUISignals
+    flags*: GUIFlags
     rect*: GUIRect
 
 # ------------
 # WIDGET FLAGS
 # ------------
 
-proc set*(self: GUIWidget, mask: uint16) {.inline.} =
+proc set*(self: GUIWidget, mask: GUIFlags) {.inline.} =
   self.flags = self.flags or mask
 
-proc clear*(self: GUIWidget, mask: uint16) {.inline.} =
+proc clear*(self: GUIWidget, mask: GUIFlags) {.inline.} =
   self.flags = self.flags and not mask
 
-proc any*(self: GUIWidget, mask: uint16): bool {.inline.} =
+proc any*(self: GUIWidget, mask: GUIFlags): bool {.inline.} =
   return (self.flags and mask) != 0
 
-proc test*(self: GUIWidget, mask: uint16): bool {.inline.} =
+proc test*(self: GUIWidget, mask: GUIFlags): bool {.inline.} =
   return (self.flags and mask) == mask
+
+# -------------
+# WIDGET SIGNAL
+# -------------
+
+proc `in`*(signal: uint8, self: GUIWidget): bool {.inline.} =
+  return signal in self.signals
 
 # -----------
 # WIDGET RECT
