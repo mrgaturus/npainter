@@ -7,7 +7,8 @@ macro signal*(name: untyped, messages: untyped) =
   name.expectKind(nnkIdent)
   messages.expectKind(nnkStmtList)
   # Check signal limit count
-  if lastID > 63'u8: error("exceded signal count")
+  if lastID > 63'u8:
+    error("exceded max signal count")
   # Create a new Tree
   result = nnkStmtList.newTree()
   # Create ID Const Node

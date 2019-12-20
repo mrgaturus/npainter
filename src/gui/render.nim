@@ -6,9 +6,11 @@ const
   rectSize = 8 * sizeof(float32)
 
 type
-  # GUI RECT AND COLOR
+  # GUI RECT, PIVOT AND COLOR
   GUIRect* = object
     x*, y*, w*, h*: int32
+  GUIPivot* = object
+    x*, y*: int32
   GUIColor* = object
     r*, g*, b*, a*: float32
   # GUI Painter

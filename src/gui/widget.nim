@@ -1,6 +1,8 @@
 # GUI Objects
+from builder import signal
 from event import GUIState, GUISignal
-from render import CTXRender, GUIRect
+from render import CTXRender, GUIRect, GUIPivot
+from context import CTXFrame
 
 const # set[T] doesn't has xor
   # Indicators
@@ -16,15 +18,27 @@ const # set[T] doesn't has xor
   wFocus* = uint16(1 shl 7)
   wHover* = uint16(1 shl 8)
   wGrab* = uint16(1 shl 9)
+  # Frame Flag, controlled by window
+  wFramed* = uint16(1 shl 10)
 
 type
   GUIFlags = uint16
   GUISignals = set[0'u8..63'u8]
+  # A Widget can be assigned to a CTXFrame
   GUIWidget* = ref object of RootObj
     next*, prev*: GUIWidget
     signals*: GUISignals
     flags*: GUIFlags
     rect*: GUIRect
+    # Frame Surface, controlled by Window
+    pivot: GUIPivot
+    surf*: CTXFrame
+  GUIFrame* = distinct GUIWidget
+
+signal Frame:
+  Rebound
+  Open
+  Close
 
 # ------------
 # WIDGET FLAGS
@@ -54,9 +68,28 @@ proc `in`*(signal: uint8, self: GUIWidget): bool {.inline.} =
 # -----------
 
 proc pointOnArea*(rect: var GUIRect, x, y: int): bool =
-  result =
+  return
     x >= rect.x and x <= rect.x + rect.w and
     y >= rect.y and y <= rect.y + rect.h
+
+# -------------
+# WIDGET FRAMED
+# -------------
+
+proc relative*(widget: GUIWidget, state: var GUIState): bool =
+  result =
+    state.mx >= widget.pivot.x and
+    state.mx <= widget.pivot.x + widget.rect.w and
+    state.my >= widget.pivot.y and
+    state.my <= widget.pivot.y + widget.rect.h
+  if result:
+    state.mx -= widget.pivot.x
+    state.my -= widget.pivot.y
+
+proc region*(widget: GUIWidget): GUIRect {.inline.} =
+  copyMem(addr result, addr widget.rect, sizeof(GUIRect))
+  copyMem(addr widget.pivot, addr widget.rect, sizeof(int32)*2)
+  zeroMem(addr widget.rect, sizeof(int32)*2)
 
 # ------------
 # WIDGET ABSTRACT METHODS - Single-Threaded

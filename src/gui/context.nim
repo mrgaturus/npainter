@@ -7,7 +7,7 @@ type
   # Root Frame Regions
   CTXRegion = ptr GUIRect
   # Floating Frames
-  CTXFrame* = object
+  CTXFrame* = ref object
     vao, vbo, tex, fbo: GLuint
     # Frame viewport cache
     vWidth, vHeight: int32
@@ -127,6 +127,7 @@ proc resize*(ctx: var CTXRoot, rect: ptr GUIRect) =
   ctx.vHeight = rect.h
 
 proc createFrame*(): CTXFrame =
+  new result
   # -- Create New VAO
   glGenVertexArrays(1, addr result.vao)
   glGenBuffers(1, addr result.vbo)
@@ -167,7 +168,7 @@ proc createFrame*(): CTXFrame =
 # CONTEXT RENDER PROCS
 # -------------------
 
-proc makeCurrent*(ctx: var CTXRender, frame: var CTXFrame) =
+proc makeCurrent*(ctx: var CTXRender, frame: CTXFrame) =
   # Bind Frame's FBO
   glBindFramebuffer(GL_FRAMEBUFFER, frame.fbo)
   # Make Render Current to FBO
@@ -204,7 +205,7 @@ proc render*(ctx: var CTXRoot) =
   for index in `..<`(0, ctx.visible):
     glDrawArrays(GL_TRIANGLE_STRIP, index*4, 4)
 
-proc render*(frame: var CTXFrame) =
+proc render*(frame: CTXFrame) =
   glBindVertexArray(frame.vao)
   glBindTexture(GL_TEXTURE_2D, frame.tex)
   glDrawArrays(GL_TRIANGLE_STRIP, 0, 4)
@@ -213,28 +214,25 @@ proc render*(frame: var CTXFrame) =
 # CONTEXT FRAME PROCS
 # -------------------
 
-proc region*(frame: var CTXFrame, rect: ptr GUIRect) =
-  let
-    w = rect.w
-    h = rect.h
-  if w != frame.vWidth or h != frame.vHeight:
+proc region*(frame: CTXFrame, rect: GUIRect) =
+  if rect.w != frame.vWidth or rect.h != frame.vHeight:
     # Bind Texture
     glBindTexture(GL_TEXTURE_2D, frame.tex)
     # Resize Texture
-    glTexImage2D(GL_TEXTURE_2D, 0, cast[int32](GL_RGBA8), w, h, 0,
+    glTexImage2D(GL_TEXTURE_2D, 0, cast[int32](GL_RGBA8), rect.w, rect.h, 0,
         GL_RGBA, GL_UNSIGNED_BYTE, nil)
     # Unbind Texture
     glBindTexture(GL_TEXTURE_2D, 0)
     # Resize Viewport
-    orthoProjection(addr frame.vCache, 0, float32 w, float32 h, 0)
-    frame.vWidth = w
-    frame.vHeight = h
+    orthoProjection(addr frame.vCache, 0, float32 rect.w, float32 rect.h, 0)
+    frame.vWidth = rect.w
+    frame.vHeight = rect.h
   # Replace VBO with new rect
   let verts = [
     float32 rect.x, float32 rect.y,
-    float32(rect.x + w), float32 rect.y,
-    float32 rect.x, float32(rect.y + h),
-    float32(rect.x + w), float32(rect.y + h)
+    float32(rect.x + rect.w), float32 rect.y,
+    float32 rect.x, float32(rect.y + rect.h),
+    float32(rect.x + rect.w), float32(rect.y + rect.h)
   ]
   # Bind VBO
   glBindBuffer(GL_ARRAY_BUFFER, frame.vbo)

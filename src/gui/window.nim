@@ -1,6 +1,6 @@
 import ../libs/egl
 import x11/xlib, x11/x
-import widget, event, context, render, container, frame
+import widget, event, context, render, container
 
 from builder import signal
 from ../libs/gl import gladLoadGL
@@ -41,17 +41,25 @@ type
     # Renderer
     render: CTXRender
     surf: CTXRoot
-    # GUI Widgets
+    # Unused Renderer Frames (Cache)
+    unused: seq[CTXFrame]
+    # GUI State
     state: GUIState
-    gui: GUIContainer
-    # Cache
-    focus: GUIFrame
-    hover: GUIFrame
+    # GUI Widgets and frames
+    root: GUIContainer
+    last: GUIWidget
+    # Cache Frames
+    focus: GUIWidget
+    hover: GUIWidget
 
 signal Window:
+  # Basic Window
   Terminate
   FocusIM
   UnfocusIM
+  # Grab Control
+  HardGrab
+  SoftGrab
 
 const LC_ALL = 6 # Hardcopied from gcc header
 proc setlocale(category: cint, locale: cstring): cstring
@@ -174,7 +182,8 @@ proc newGUIWindow*(g: pointer, w, h: int32, layout: GUILayout): GUIWindow =
     root.rect.w = w
     root.rect.h = h
     # Set the new root with initial sizes
-    result.gui = root
+    result.root = root
+    result.last = root
   # Alloc Global GUIQueue with Global
   allocQueue(g)
 
@@ -183,35 +192,24 @@ proc newGUIWindow*(g: pointer, w, h: int32, layout: GUILayout): GUIWindow =
 # --------------------
 
 proc addWidget*(win: var GUIWindow, widget: GUIWidget, region: bool = true) =
-  if region: win.surf.createRegion(addr widget.rect)
-  win.gui.add(widget)
-
-proc addFrame*(win: var GUIWindow, layout: GUILayout,
-    color: GUIColor): GUIFrame =
-  result = newGUIFrame(layout, color)
-  if win.gui.prev == nil:
-    win.gui.prev = result
-  # Change Next Prev
-  if win.gui.next != nil:
-    win.gui.next.prev = result
-  # Change Next
-  result.next = win.gui.next
-  win.gui.next = result
+  if region: createRegion(win.surf, addr widget.rect)
+  # Add Widget to Root
+  add(win.root, widget)
 
 # --------------
 # WINDOW FRAME ITERATORS
 # --------------
 
-iterator forward(gui: GUIWidget): GUIFrame =
-  var frame = gui.next
+iterator forward(win: var GUIWindow): GUIWidget =
+  var frame = win.root.next
   while frame != nil:
-    yield cast[GUIFrame](frame)
+    yield frame
     frame = frame.next
 
-iterator reverse(gui: GUIWidget): GUIFrame =
-  var frame = gui.prev
-  while frame != nil:
-    yield cast[GUIFrame](frame)
+iterator reverse(win: var GUIWindow): GUIWidget =
+  var frame = win.last
+  while frame != win.root:
+    yield frame
     frame = frame.prev
 
 # --------------
@@ -223,11 +221,8 @@ proc exec*(win: var GUIWindow): bool =
   result = XMapWindow(win.display, win.xID) != BadWindow
   discard XSync(win.display, 0)
   # Resize Root FBO
-  resize(win.surf, addr win.gui.rect)
+  resize(win.surf, addr win.root.rect)
   allocRegions(win.surf)
-  # Resize Frames FBO
-  for frame in reverse(win.gui):
-    boundaries(frame)
 
 proc exit*(win: var GUIWindow) =
   # Dispose Queue
@@ -248,20 +243,48 @@ proc exit*(win: var GUIWindow) =
 # WINDOW PRIVATE PROCS
 # --------------------
 
-proc elevateFrame(root: GUIWidget, frame: GUIFrame) =
-  if frame.prev != nil:
+proc useCTXFrame(win: var GUIWindow, frame: GUIWidget) {.inline.} =
+  if len(win.unused) > 0: frame.surf = pop(win.unused)
+  else: frame.surf = createFrame()
+
+proc unuseCTXFrame(win: var GUIWindow, frame: GUIWidget) {.inline.} =
+  add(win.unused, frame.surf)
+  frame.surf = nil
+
+proc addFrame(win: var GUIWindow, frame: GUIWidget) =
+  # Next is nil, because is last
+  frame.next = nil
+  # Prev is last
+  frame.prev = win.last
+  win.last.next = frame
+  # Last is frame
+  win.last = frame
+  # Use CTX Frame
+  useCTXFrame(win, frame)
+
+proc delFrame(win: var GUIWindow, frame: GUIWidget) =
+  # Change next prev or last
+  if win.last == frame: win.last = frame.prev
+  else: frame.next.prev = frame.prev
+  # Change prev next (first is root)
+  frame.prev.next = frame.next
+  # Remove next and prev
+  frame.next = nil
+  frame.prev = nil
+  # Unuse CTX Frame
+  unuseCTXFrame(win, frame)
+
+proc elevateFrame(win: var GUIWindow, frame: GUIWidget) =
+  if win.last != frame:
     # Remove frame from it's position
     frame.prev.next = frame.next
-    if frame.next == nil: # Prev to root
-      root.prev = frame.prev
-    else: # Somewhere
-      frame.next.prev = frame.prev
-    # Prev is always nil
-    frame.prev = nil
-    # Move frame next to root
-    frame.next = root.next
-    frame.next.prev = frame
-    root.next = frame
+    frame.next.prev = frame.prev
+    # Next is nil because is last
+    frame.next = nil
+    # Move frame to last
+    frame.prev = win.last
+    win.last.next = frame
+    win.last = frame
 
 proc grab(win: var GUIWindow, evtype: int32) =
   if evtype == ButtonPress:
@@ -276,26 +299,24 @@ proc grab(win: var GUIWindow, evtype: int32) =
 # --------------------
 
 proc notFramed*(win: var GUIWindow, tab: bool): bool =
-  var
-    found: GUIFrame
-    state = addr win.state
-  case state.eventType
+  var found: GUIWidget
+  case win.state.eventType
   of evMouseMove, evMouseClick, evMouseRelease, evMouseAxis:
-    if test(win.gui, wGrab): return true
+    if test(win.root, wGrab): return true
     elif win.hover != nil and test(win.hover, wGrab):
       found = win.hover
     else: # Search on other frames
-      for frame in forward(win.gui):
-        if pointOnArea(frame, state.mx, state.my):
-          if state.eventType == evMouseClick:
-            elevateFrame(win.gui, frame)
+      for frame in reverse(win):
+        if relative(frame, win.state):
+          if win.state.eventType == evMouseClick:
+            elevateFrame(win, frame)
           # A frame was hovered
           found = frame
           break
       # Unhover prev frame
       if found != win.hover:
         if win.hover == nil:
-          hoverOut(win.gui)
+          hoverOut(win.root)
         else: hoverOut(win.hover)
         # Set hover current
         win.hover = found
@@ -303,16 +324,14 @@ proc notFramed*(win: var GUIWindow, tab: bool): bool =
     found = win.focus
   # Check if was framed
   if found != nil:
-    if tab: step(found, state.key == LeftTab)
-    else:
-      relative(found, win.state)
-      event(found, addr win.state)
+    if tab: step(found, win.state.key == LeftTab)
+    else: event(found, addr win.state)
     # Change focused
     if found.test(wFocus):
       if found != win.focus:
-        if test(win.gui, wFocus):
-          focusOut(win.gui)
-          clear(win.gui, wFocus)
+        if test(win.root, wFocus):
+          focusOut(win.root)
+          clear(win.root, wFocus)
         elif win.focus != nil:
           focusOut(win.focus)
           clear(win.focus, wFocus)
@@ -335,17 +354,17 @@ proc handleEvents*(win: var GUIWindow) =
     of Expose: echo "look why use exposed"
     of ConfigureNotify: # Resize
       let
-        w = win.gui.rect.w
-        h = win.gui.rect.h
+        w = win.root.rect.w
+        h = win.root.rect.h
       if event.xconfigure.window == win.xID and
           (event.xconfigure.width != w or
           event.xconfigure.height != h):
-        win.gui.rect.w = event.xconfigure.width
-        win.gui.rect.h = event.xconfigure.height
+        win.root.rect.w = event.xconfigure.width
+        win.root.rect.h = event.xconfigure.height
         # Resize CTX Root
-        resize(win.surf, addr win.gui.rect)
+        resize(win.surf, addr win.root.rect)
         # Relayout and Redraw GUI
-        win.gui.set(wDirty)
+        win.root.set(wDirty)
     else:
       # Grab/UnGrab X11 Window
       win.grab(event.theType)
@@ -357,9 +376,9 @@ proc handleEvents*(win: var GUIWindow) =
           win.state.key == LeftTab)
         # Handle on any of the frames
         if notFramed(win, tabbed):
-          if tabbed and test(win.gui, wFocus):
-            step(win.gui, win.state.key == LeftTab)
-          else: event(win.gui, addr win.state)
+          if tabbed and test(win.root, wFocus):
+            step(win.root, win.state.key == LeftTab)
+          else: event(win.root, addr win.state)
 
 proc handleTick*(win: var GUIWindow): bool =
   # Signal ID Handling
@@ -374,30 +393,37 @@ proc handleTick*(win: var GUIWindow): bool =
       of msgTerminate: return false
       of msgFocusIM: XSetICFocus(win.xic)
       of msgUnfocusIM: XUnsetICFocus(win.xic)
+      else: discard
     of FrameID:
-      let data = convert(signal.data, SFrame)
-      for frame in forward(win.gui):
-        if frame.fID == data.fID:
-          case FrameMsg(signal.msg):
-          of msgMove: frame.boundaries(data, false)
-          of msgResize: frame.boundaries(data, true)
-          of msgShow: frame.set(wVisible)
-          of msgHide: frame.clear(wVisible or wGrab)
-          break
-    else:
-      trigger(win.gui, signal)
-      # Send signal to frames
-      for frame in forward(win.gui):
-        trigger(frame, signal)
+      let frame = convert(signal.data, GUIWidget)[]
+      if frame != nil:
+        case FrameMsg(signal.msg)
+        of msgRebound:
+          if test(frame, wFramed):
+            region(frame.surf, frame.region)
+        of msgOpen:
+          if not test(frame, wFramed):
+            addFrame(win, frame)
+            region(frame.surf, frame.region)
+            # Mark Framed
+            set(frame, wFramed or wDirty)
+        of msgClose:
+          if test(frame, wFramed):
+            delFrame(win, frame)
+            # UnMark Framed
+            clear(frame, wFramed)
+    else: trigger(win.root, signal)
   # Update -> Layout Root
-  if test(win.gui, wUpdate):
-    update(win.gui)
-  if any(win.gui, 0x000C):
-    layout(win.gui)
+  if test(win.root, wUpdate):
+    update(win.root)
+  if any(win.root, 0x000C):
+    layout(win.root)
     update(win.surf)
-  # Update -> Layout Frames
-  for frame in forward(win.gui):
-    handleTick(frame)
+  for frame in forward(win):
+    if test(frame, wUpdate):
+      update(frame)
+    if any(frame, 0x000C):
+      layout(frame)
   # The loop isn't terminated
   return true
 
@@ -405,20 +431,19 @@ proc render*(win: var GUIWindow) =
   # Start GUI Rendering
   start(win.render)
   # Draw hot/invalidated widgets
-  if test(win.gui, wDraw):
+  if test(win.root, wDraw):
     makeCurrent(win.render, win.surf)
-    draw(win.gui, addr win.render)
+    draw(win.root, addr win.render)
     clearCurrent(win.render, win.surf)
   # Draw Root Regions
   render(win.surf)
   # Render floating frames
-  for frame in reverse(win.gui):
-    if frame.test(wVisible):
-      if frame.test(wDraw):
-        makeCurrent(win.render, frame.surf)
-        draw(frame, addr win.render)
-        clearCurrent(win.render, win.surf)
-      render(frame.surf)
+  for frame in forward(win):
+    if frame.test(wDraw):
+      makeCurrent(win.render, frame.surf)
+      draw(frame, addr win.render)
+      clearCurrent(win.render, win.surf)
+    render(frame.surf)
   # Finish GUI Rendering
   finish(win.render)
   # Present to X11/EGL Window

@@ -12,6 +12,7 @@ type
   Counter = object
     clicked, released: int
   GUIBlank = ref object of GUIWidget
+    frame: GUIWidget
     color: GUIColor
     colorn: GUIColor
     colorf: GUIColor
@@ -41,20 +42,19 @@ method draw*(widget: GUIBlank, ctx: ptr CTXRender) =
 method event*(widget: GUIBlank, state: ptr GUIState) =
   if state.eventType == evMouseClick:
     widget.set(wGrab)
+    pushSignal(FrameID, msgOpen, addr widget.frame, sizeof(GUIWidget))
     pushCallback(click, nil, 0)
   elif state.eventType == evMouseRelease: 
     widget.clear(wGrab)
     pushCallback(release, nil, 0)
-  block:
-    var click = ClickData(x: state.mx, y: state.my)
-    pushSignal(ExampleID, msgB, addr click, sizeof(ClickData))
+ # block:
+    #var click = ClickData(x: state.mx, y: state.my)
+    #pushSignal(ExampleID, msgB, addr click, sizeof(ClickData))
 
 method trigger*(widget: GUIWidget, signal: GUISignal) =
   case ExampleMsg(signal.msg)
   of msgA: echo "Recived A"
-  of msgB:
-    let data = signal.data.convert(ClickData) 
-    echo "Recived B: ", data.x, " ", data.y
+  of msgB: echo "Recived B"
 
 when isMainModule:
   # Create Counter
@@ -69,58 +69,63 @@ when isMainModule:
   # Create Widgets
   block:
     # A Blank
-    var blank = new GUIBlank
-    blank.rect = GUIRect(x: 20, y: 20, w: 50, h: 60)
-    blank.color = GUIColor(r: 1.0, g: 0.0, b: 1.0, a: 1.0)
-    blank.colorn = GUIColor(r: 1.0, g: 1.0, b: 1.0, a: 1.0)
-    blank.colorf = GUIColor(r: 1.0, g: 1.0, b: 0.0, a: 1.0)
-    blank.signals = {ExampleID}
-    blank.flags = wVisible or wEnabled or wSignal
-    win.addWidget(blank)
+    var blank1 = new GUIBlank
+    blank1.rect = GUIRect(x: 20, y: 20, w: 50, h: 60)
+    blank1.color = GUIColor(r: 1.0, g: 0.0, b: 1.0, a: 1.0)
+    blank1.colorn = GUIColor(r: 1.0, g: 1.0, b: 1.0, a: 1.0)
+    blank1.colorf = GUIColor(r: 1.0, g: 1.0, b: 0.0, a: 1.0)
+    blank1.signals = {ExampleID}
+    blank1.flags = wVisible or wEnabled or wSignal
 
-    blank = new GUIBlank
-    blank.rect = GUIRect(x: 100, y: 80, w: 50, h: 60)
-    blank.color = GUIColor(r: 1.0, g: 0.0, b: 1.0, a: 1.0)
-    blank.colorn = GUIColor(r: 1.0, g: 1.0, b: 1.0, a: 1.0)
-    blank.colorf = GUIColor(r: 1.0, g: 1.0, b: 0.0, a: 1.0)
-    blank.flags = wVisible or wEnabled
-
-    win.addWidget(blank)
     # A Frame
-    blank = new GUIBlank
-    blank.rect = GUIRect(x: 20, y: 20, w: 50, h: 60)
-    blank.color = GUIColor(r: 1.0, g: 0.0, b: 1.0, a: 1.0)
-    blank.colorn = GUIColor(r: 1.0, g: 1.0, b: 1.0, a: 1.0)
-    blank.colorf = GUIColor(r: 1.0, g: 1.0, b: 0.0, a: 1.0)
-    blank.signals = {ExampleID}
-    blank.flags = wVisible or wEnabled or wSignal
+    var blankf = new GUIBlank
+    blankf.rect = GUIRect(x: 20, y: 20, w: 50, h: 60)
+    blankf.color = GUIColor(r: 1.0, g: 0.0, b: 1.0, a: 1.0)
+    blankf.colorn = GUIColor(r: 1.0, g: 1.0, b: 1.0, a: 1.0)
+    blankf.colorf = GUIColor(r: 1.0, g: 1.0, b: 0.0, a: 1.0)
+    blankf.signals = {ExampleID}
+    blankf.flags = wVisible or wEnabled or wSignal
 
-    var frame = win.addFrame(layout, GUIColor(r: 0.0, g: 1.0, b: 1.0, a: 0.5))
-    frame.rect = GUIRect(x: 110, y: 150, w: 100, h: 100)
-    frame.add(blank)
+    var frame = newGUIContainer(layout, GUIColor(r: 0.0, g: 1.0, b: 1.0, a: 0.5))
+    frame.rect = GUIRect(x: 80, y: 120, w: 100, h: 100)
+    frame.add(blankf)
+    frame.flags = wDirty or wVisible or wEnabled
+    blank1.frame = frame
+
+    win.addWidget(blank1)
+
+    blank1 = new GUIBlank
+    blank1.rect = GUIRect(x: 100, y: 80, w: 50, h: 60)
+    blank1.color = GUIColor(r: 1.0, g: 0.0, b: 1.0, a: 1.0)
+    blank1.colorn = GUIColor(r: 1.0, g: 1.0, b: 1.0, a: 1.0)
+    blank1.colorf = GUIColor(r: 1.0, g: 1.0, b: 0.0, a: 1.0)
+    blank1.flags = wVisible or wEnabled
+
     # A Frame
-    blank = new GUIBlank
-    blank.rect = GUIRect(x: 20, y: 20, w: 50, h: 60)
-    blank.color = GUIColor(r: 1.0, g: 0.0, b: 1.0, a: 1.0)
-    blank.colorn = GUIColor(r: 1.0, g: 1.0, b: 1.0, a: 1.0)
-    blank.colorf = GUIColor(r: 1.0, g: 1.0, b: 0.0, a: 1.0)
-    blank.signals = {ExampleID}
-    blank.flags = wVisible or wEnabled or wSignal
+    blankf = new GUIBlank
+    blankf.rect = GUIRect(x: 20, y: 20, w: 50, h: 60)
+    blankf.color = GUIColor(r: 1.0, g: 0.0, b: 1.0, a: 1.0)
+    blankf.colorn = GUIColor(r: 1.0, g: 1.0, b: 1.0, a: 1.0)
+    blankf.colorf = GUIColor(r: 1.0, g: 1.0, b: 0.0, a: 1.0)
+    blankf.signals = {ExampleID}
+    blankf.flags = wVisible or wEnabled or wSignal
     
-    frame = win.addFrame(layout, GUIColor(r: 1.0, g: 1.0, b: 0.0, a: 0.5))
+    frame = newGUIContainer(layout, GUIColor(r: 1.0, g: 1.0, b: 0.0, a: 0.5))
     frame.rect = GUIRect(x: 60, y: 100, w: 100, h: 100)
-    frame.add(blank)
+    frame.add(blankf)
+    frame.flags = wDirty or wVisible or wEnabled
+    blank1.frame = frame
+
+    win.addWidget(blank1)
 
   # MAIN LOOP
   var running = win.exec()
   while running:
     win.handleEvents()
     running = win.handleTick()
-    
     # Render Main Program
     glClearColor(0.5, 0.5, 0.5, 1.0)
     glClear(GL_COLOR_BUFFER_BIT or GL_DEPTH_BUFFER_BIT)
-
     # Render GUI
     win.render()
 
