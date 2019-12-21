@@ -25,12 +25,9 @@ proc click(g: ptr Counter, d: pointer) =
 proc release(g: ptr Counter, d: pointer) =
   inc(g.released)
   echo "Released Count: ", g.clicked
-  if g.released > 10:
-    pushSignal(WindowID, msgTerminate, nil, 0)
 
 method draw*(widget: GUIBlank, ctx: ptr CTXRender) =
   if widget.any(wHover or wGrab):
-    echo sizeof(widget.signals)
     color(ctx, widget.color)
   elif widget.test(wFocus):
     color(ctx, widget.colorf)
@@ -42,7 +39,14 @@ method draw*(widget: GUIBlank, ctx: ptr CTXRender) =
 method event*(widget: GUIBlank, state: ptr GUIState) =
   if state.eventType == evMouseClick:
     widget.set(wGrab)
-    pushSignal(FrameID, msgOpen, addr widget.frame, sizeof(GUIWidget))
+    if widget.frame != nil:
+      if test(widget.frame, wFramed):
+        pushSignal(FrameID, msgClose, addr widget.frame, sizeof(GUIWidget))
+      else:
+        widget.frame.rect.x = widget.rect.x
+        widget.frame.rect.y = widget.rect.y + widget.rect.h
+        pushSignal(FrameID, msgOpen, addr widget.frame, sizeof(GUIWidget))
+    widget.set(wFocus)
     pushCallback(click, nil, 0)
   elif state.eventType == evMouseRelease: 
     widget.clear(wGrab)
@@ -99,7 +103,8 @@ when isMainModule:
     blank1.color = GUIColor(r: 1.0, g: 0.0, b: 1.0, a: 1.0)
     blank1.colorn = GUIColor(r: 1.0, g: 1.0, b: 1.0, a: 1.0)
     blank1.colorf = GUIColor(r: 1.0, g: 1.0, b: 0.0, a: 1.0)
-    blank1.flags = wVisible or wEnabled
+    blank1.signals = {ExampleID}
+    blank1.flags = wVisible or wEnabled or wSignal
 
     # A Frame
     blankf = new GUIBlank

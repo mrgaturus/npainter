@@ -30,15 +30,14 @@ type
     signals*: GUISignals
     flags*: GUIFlags
     rect*: GUIRect
-    # Frame Surface, controlled by Window
+    # Frame Surface, Optionally
     pivot: GUIPivot
     surf*: CTXFrame
-  GUIFrame* = distinct GUIWidget
 
 signal Frame:
-  Rebound
-  Open
+  Region
   Close
+  Open
 
 # ------------
 # WIDGET FLAGS
@@ -67,24 +66,33 @@ proc `in`*(signal: uint8, self: GUIWidget): bool {.inline.} =
 # WIDGET RECT
 # -----------
 
-proc pointOnArea*(rect: var GUIRect, x, y: int): bool =
+proc pointOnArea*(rect: var GUIRect, x, y: int32): bool =
   return
     x >= rect.x and x <= rect.x + rect.w and
     y >= rect.y and y <= rect.y + rect.h
+
+proc relative*(rect: var GUIRect, state: ptr GUIState) =
+  state.mx -= rect.x
+  state.my -= rect.y
+
+template absX*(widget: GUIWidget, x: int32): int32 =
+  return widget.rect.x + x
+
+template absY*(widget: GUIWidget, y: int32): int32 =
+  return widget.rect.y + y
 
 # -------------
 # WIDGET FRAMED
 # -------------
 
-proc relative*(widget: GUIWidget, state: var GUIState): bool =
-  result =
-    state.mx >= widget.pivot.x and
-    state.mx <= widget.pivot.x + widget.rect.w and
-    state.my >= widget.pivot.y and
-    state.my <= widget.pivot.y + widget.rect.h
-  if result:
-    state.mx -= widget.pivot.x
-    state.my -= widget.pivot.y
+proc pointOnFrame*(widget: GUIWidget, x, y: int32): bool =
+  return
+    x >= widget.pivot.x and x <= widget.pivot.x + widget.rect.w and
+    y >= widget.pivot.y and y <= widget.pivot.y + widget.rect.h
+
+proc relative*(widget: GUIWidget, state: ptr GUIState) =
+  state.mx -= widget.pivot.x
+  state.my -= widget.pivot.y
 
 proc region*(widget: GUIWidget): GUIRect {.inline.} =
   copyMem(addr result, addr widget.rect, sizeof(GUIRect))
@@ -107,7 +115,7 @@ method layout*(widget: GUIWidget) {.base.} = discard
 method draw*(widget: GUIWidget, ctx: ptr CTXRender) {.base.} =
   widget.clear(wDraw)
 
-# 1 -- 2 Out Handler Methods
+# Out Handler Methods
 method hoverOut*(widget: GUIWidget) {.base.} =
   if widget.test(wVisible): widget.set(wDraw)
 method focusOut*(widget: GUIWidget) {.base.} =

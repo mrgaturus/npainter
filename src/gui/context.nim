@@ -214,8 +214,10 @@ proc render*(frame: CTXFrame) =
 # CONTEXT FRAME PROCS
 # -------------------
 
-proc region*(frame: CTXFrame, rect: GUIRect) =
-  if rect.w != frame.vWidth or rect.h != frame.vHeight:
+proc region*(frame: CTXFrame, rect: GUIRect): bool {.discardable.} =
+  # Check if resize is needed
+  result = rect.w != frame.vWidth or rect.h != frame.vHeight
+  if result:
     # Bind Texture
     glBindTexture(GL_TEXTURE_2D, frame.tex)
     # Resize Texture

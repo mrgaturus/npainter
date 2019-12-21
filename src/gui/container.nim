@@ -26,7 +26,7 @@ proc newGUIContainer*(layout: GUILayout, color: GUIColor): GUIContainer =
   result.layout = layout
   result.color = color
   # GUIWidget Default Flags
-  result.flags = wVisible or wSignal or wDirty
+  result.flags = wEnabled or wVisible or wSignal or wDirty
 
 proc add*(self: GUIContainer, widget: GUIWidget) =
   # Merge Widget Signals to Self
@@ -74,7 +74,6 @@ proc checkFocus(self: GUIContainer) =
 # CONTAINER METHODS
 method draw(self: GUIContainer, ctx: ptr CTXRender) =
   var count = 0;
-
   # Push Clipping and Color Level
   ctx.push(self.rect, self.color)
   # Clear color if it was dirty
@@ -88,22 +87,20 @@ method draw(self: GUIContainer, ctx: ptr CTXRender) =
       inc(count)
   # Pop Clipping and Color Level
   ctx.pop()
-
-  if count == 0:
-    self.clear(wDraw)
+  # If no draw found, unmark draw
+  if count == 0: self.clear(wDraw)
 
 method update(self: GUIContainer) =
   var count = 0;
-
+  # Update marked widgets
   for widget in self:
     if widget.test(wUpdate):
       widget.update()
       inc(count)
-
+  # Check if focus was damaged
   self.checkFocus()
-
-  if count == 0:
-    self.clear(wUpdate)
+  # If no update found, unmark update
+  if count == 0: self.clear(wUpdate)
 
 method event(self: GUIContainer, state: ptr GUIState) =
   var found: GUIWidget = nil
