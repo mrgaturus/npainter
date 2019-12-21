@@ -103,18 +103,17 @@ method update(self: GUIContainer) =
   if count == 0: self.clear(wUpdate)
 
 method event(self: GUIContainer, state: ptr GUIState) =
-  var found: GUIWidget = nil
+  var found: GUIWidget
 
   case state.eventType
   of evMouseMove, evMouseClick, evMouseRelease, evMouseAxis:
     found = self.hover
 
-    if self.test(wGrab):
-      if found != nil and found.test(wGrab):
-        if pointOnArea(self.rect, state.mx, state.my):
-          found.set(wHover)
-        else:
-          found.clear(wHover)
+    if found != nil and found.test(wGrab):
+      if pointOnArea(self.rect, state.mx, state.my):
+        found.set(wHover)
+      else:
+        found.clear(wHover)
     elif found.isNil or not pointOnArea(found.rect, state.mx, state.my):
       if found != nil:
         found.hoverOut()
@@ -156,7 +155,7 @@ method event(self: GUIContainer, state: ptr GUIState) =
       elif focus.isNil:
         self.focus = self.hover
         self.set(wFocus)
-    elif (check and wFocus) == wFocus or found != focus:
+    elif (check and wFocus) == wFocus and check > wFocus:
       found.focusOut()
       found.clear(wFocus)
 

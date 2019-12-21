@@ -7,8 +7,6 @@ signal Example:
   B
 
 type
-  ClickData = object
-    x, y: int32
   Counter = object
     clicked, released: int
   GUIBlank = ref object of GUIWidget
@@ -24,6 +22,7 @@ proc click(g: ptr Counter, d: pointer) =
 
 proc release(g: ptr Counter, d: pointer) =
   inc(g.released)
+  pushSignal(ExampleID, msgB, nil, 0)
   echo "Released Count: ", g.clicked
 
 method draw*(widget: GUIBlank, ctx: ptr CTXRender) =
@@ -51,6 +50,7 @@ method event*(widget: GUIBlank, state: ptr GUIState) =
   elif state.eventType == evMouseRelease: 
     widget.clear(wGrab)
     pushCallback(release, nil, 0)
+  widget.set(wDraw)
  # block:
     #var click = ClickData(x: state.mx, y: state.my)
     #pushSignal(ExampleID, msgB, addr click, sizeof(ClickData))
