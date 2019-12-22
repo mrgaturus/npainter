@@ -244,7 +244,7 @@ method hoverOut(self: GUIContainer) =
   var hover: GUIWidget = self.hover
   if hover != nil:
     hover.hoverOut()
-    hover.clear(wHover)
+    hover.clear(wHover or wGrab)
     # if is focused check focus
     if hover == self.focus and not hover.test(wFocusCheck):
       hover.focusOut()

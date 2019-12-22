@@ -1,6 +1,6 @@
 # GUI Objects
 from builder import signal
-from event import GUIState, GUISignal
+from event import GUIState, GUISignal, pushSignal
 from render import CTXRender, GUIRect, GUIPivot
 from context import CTXFrame
 
@@ -26,11 +26,13 @@ type
   GUISignals = set[0'u8..63'u8]
   # A Widget can be assigned to a CTXFrame
   GUIWidget* = ref object of RootObj
+    # Widget Tree
     next*, prev*: GUIWidget
+    # Widget Basic Info
     signals*: GUISignals
     flags*: GUIFlags
     rect*: GUIRect
-    # Frame Surface, Optionally
+    # Widget floating
     pivot: GUIPivot
     surf*: CTXFrame
 
@@ -81,9 +83,51 @@ template absX*(widget: GUIWidget, x: int32): int32 =
 template absY*(widget: GUIWidget, y: int32): int32 =
   return widget.rect.y + y
 
-# -------------
-# WIDGET FRAMED
-# -------------
+# ------------------------
+# WIDGET FRAMED open/close
+# ------------------------
+
+proc open*(widget: GUIWidget, x, y: int32) =
+  widget.pivot.x = x
+  widget.pivot.y = y
+  # Send Widget to Window for open
+  pushSignal(
+    FrameID, msgOpen, 
+    unsafeAddr widget, 
+    sizeof(GUIWidget)
+  )
+
+proc close*(widget: GUIWidget) =
+  # Send Widget to window for close
+  pushSignal(
+    FrameID, msgClose, 
+    unsafeAddr widget, 
+    sizeof(GUIWidget)
+  )
+
+proc move*(widget: GUIWidget, x, y: int32) =
+  widget.pivot.x = x
+  widget.pivot.y = y
+  # Send Widget to Window for move
+  pushSignal(
+    FrameID, msgRegion, 
+    unsafeAddr widget, 
+    sizeof(GUIWidget)
+  )
+
+proc resize*(widget: GUIWidget, w, h: int32) =
+  widget.rect.w = w
+  widget.rect.h = h
+  # Send Widget to Window for resize
+  pushSignal(
+    FrameID, msgRegion, 
+    unsafeAddr widget, 
+    sizeof(GUIWidget)
+  )
+
+# ------------------------
+# WIDGET FRAMED CONTROLLED
+# ------------------------
 
 proc pointOnFrame*(widget: GUIWidget, x, y: int32): bool =
   return
@@ -95,9 +139,11 @@ proc relative*(widget: GUIWidget, state: ptr GUIState) =
   state.my -= widget.pivot.y
 
 proc region*(widget: GUIWidget): GUIRect {.inline.} =
-  copyMem(addr result, addr widget.rect, sizeof(GUIRect))
-  copyMem(addr widget.pivot, addr widget.rect, sizeof(int32)*2)
+  # Make sure rect x, y is always 0
   zeroMem(addr widget.rect, sizeof(int32)*2)
+  # x, y -> pivot, w, h -> rect
+  copyMem(addr result, addr widget.pivot, sizeof(GUIPivot))
+  copyMem(addr result.w, addr widget.rect.w, sizeof(int32)*2)
 
 # ------------
 # WIDGET ABSTRACT METHODS - Single-Threaded

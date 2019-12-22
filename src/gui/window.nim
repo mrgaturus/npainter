@@ -321,8 +321,6 @@ proc elevateFrame(win: var GUIWindow, frame: GUIWidget) =
     win.last.next = frame
     win.last = frame
 
-
-
 # --------------------
 # WINDOW RUNNING PROCS
 # --------------------
@@ -422,15 +420,15 @@ proc handleTick*(win: var GUIWindow): bool =
         convert(signal.data, GUIWidget)[]
       if frame != nil:
         case FrameMsg(signal.msg)
-        of msgRegion:
+        of msgRegion: # Move or resize
           if test(frame, wFramed):
             if region(frame.surf, frame.region):
               frame.set(wDirty)
-        of msgClose:
-          if test(frame, wFramed): 
+        of msgClose: # Remove frame from window
+          if test(frame, wFramed):
             delFrame(win, frame)
-        of msgOpen:
-          if not test(frame, wFramed): 
+        of msgOpen: # Add frame to window
+          if not test(frame, wFramed):
             addFrame(win, frame)
             # Update frame region after added
             region(frame.surf, frame.region)

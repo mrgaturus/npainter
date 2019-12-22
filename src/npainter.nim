@@ -26,6 +26,7 @@ proc release(g: ptr Counter, d: pointer) =
   echo "Released Count: ", g.clicked
 
 method draw*(widget: GUIBlank, ctx: ptr CTXRender) =
+  #echo "reached lol"
   if widget.any(wHover or wGrab):
     color(ctx, widget.color)
   elif widget.test(wFocus):
@@ -36,20 +37,19 @@ method draw*(widget: GUIBlank, ctx: ptr CTXRender) =
   widget.clear(wDraw)
 
 method event*(widget: GUIBlank, state: ptr GUIState) =
+  #echo "cursor mx: ", state.mx, " cursor my: ", state.my
   if state.eventType == evMouseClick:
     widget.set(wGrab)
     if widget.frame != nil:
-      if test(widget.frame, wFramed):
-        pushSignal(FrameID, msgClose, addr widget.frame, sizeof(GUIWidget))
-      else:
-        widget.frame.rect.x = widget.rect.x
-        widget.frame.rect.y = widget.rect.y + widget.rect.h
-        pushSignal(FrameID, msgOpen, addr widget.frame, sizeof(GUIWidget))
+        open(widget.frame, widget.rect.x, widget.rect.y + widget.rect.h)
     widget.set(wFocus)
     pushCallback(click, nil, 0)
-  elif state.eventType == evMouseRelease: 
+  elif state.eventType == evMouseRelease:
+    close(widget.frame)
     widget.clear(wGrab)
     pushCallback(release, nil, 0)
+  if widget.test(wGrab) and widget.frame != nil:
+    move(widget.frame, state.mx + 20, state.my + 20)
   widget.set(wDraw)
  # block:
     #var click = ClickData(x: state.mx, y: state.my)
