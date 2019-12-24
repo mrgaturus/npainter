@@ -1,10 +1,10 @@
-import ../libs/egl
-import x11/xlib, x11/x
 import widget, event, context, render, container
+import x11/xlib, x11/x
+import ../libs/egl
 
 from builder import signal
+from timer import sleep
 from ../libs/gl import gladLoadGL
-from os import sleep
 
 let
   # NPainter EGL Configurations
@@ -191,25 +191,23 @@ proc newGUIWindow*(global: pointer, w, h: int32, layout: GUILayout): GUIWindow =
 # WINDOW GUI CREATION PROCS
 # --------------------
 
-proc addWidget*(win: var GUIWindow, widget: GUIWidget, region: bool = true) =
+proc add*(win: var GUIWindow, widget: GUIWidget, region: bool = true) =
   if region: createRegion(win.surf, addr widget.rect)
   # Add Widget to Root
   add(win.root, widget)
 
-# --------------
-# WINDOW ONLY FRAME ITERATOR
-# --------------
+# -----------------------
+# WINDOW WIDGET ITERATORS
+# -----------------------
 
+# Only Floating Frames
 iterator frames(win: var GUIWindow): GUIWidget =
   var frame = win.root.next
   while frame != nil:
     yield frame
     frame = frame.next
 
-# --------------
-# WINDOW WIDGET ITERATORS
-# --------------
-
+# Every Widget
 iterator forward(win: var GUIWindow): GUIWidget =
   var frame = cast[GUIWidget](win.root)
   while frame != nil:
@@ -253,15 +251,6 @@ proc exit*(win: var GUIWindow) =
 # WINDOW PRIVATE PROCS
 # --------------------
 
-# Assign a ctxframe to a widget
-proc useCTXFrame(win: var GUIWindow, frame: GUIWidget) {.inline.} =
-  if len(win.unused) > 0: frame.surf = pop(win.unused)
-  else: frame.surf = createFrame()
-
-proc unuseCTXFrame(win: var GUIWindow, frame: GUIWidget) {.inline.} =
-  add(win.unused, frame.surf)
-  frame.surf = nil
-
 # Grab X11 Window
 proc grab(win: var GUIWindow, evtype: int32) =
   if evtype == ButtonPress:
@@ -270,6 +259,15 @@ proc grab(win: var GUIWindow, evtype: int32) =
         GrabModeAsync, GrabModeAsync, None, None, CurrentTime)
   elif evtype == ButtonRelease:
     discard XUngrabPointer(win.display, CurrentTime)
+
+# Assign a ctxframe to a widget
+proc useCTXFrame(win: var GUIWindow, frame: GUIWidget) {.inline.} =
+  if len(win.unused) > 0: frame.surf = pop(win.unused)
+  else: frame.surf = createFrame()
+
+proc unuseCTXFrame(win: var GUIWindow, frame: GUIWidget) {.inline.} =
+  add(win.unused, frame.surf)
+  frame.surf = nil
 
 # --------------------
 # WINDOW FLOATING PRIVATE PROCS

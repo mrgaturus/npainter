@@ -1,5 +1,5 @@
 import libs/gl
-import gui/[window, widget, render, container, event]
+import gui/[window, widget, render, container, event, timer]
 from gui/builder import signal
 
 signal Example:
@@ -14,6 +14,7 @@ type
     color: GUIColor
     colorn: GUIColor
     colorf: GUIColor
+    t: GUITimer
 
 proc click(g: ptr Counter, d: pointer) =
   inc(g.clicked)
@@ -40,12 +41,13 @@ method event*(widget: GUIBlank, state: ptr GUIState) =
   #echo "cursor mx: ", state.mx, " cursor my: ", state.my
   if state.eventType == evMouseClick:
     widget.set(wGrab)
-    if widget.frame != nil:
-        open(widget.frame, widget.rect.x, widget.rect.y + widget.rect.h)
+    widget.t = newTimer(1000)
+    widget.set(wUpdate)
     widget.set(wFocus)
     pushCallback(click, nil, 0)
   elif state.eventType == evMouseRelease:
-    close(widget.frame)
+    if checkTimer(widget.t): close(widget.frame)
+    else: widget.clear(wUpdate)
     widget.clear(wGrab)
     pushCallback(release, nil, 0)
   if widget.test(wGrab) and widget.frame != nil:
@@ -59,6 +61,13 @@ method trigger*(widget: GUIWidget, signal: GUISignal) =
   case ExampleMsg(signal.msg)
   of msgA: echo "Recived A"
   of msgB: echo "Recived B"
+
+method update*(widget: GUIBlank) =
+  if checkTimer(widget.t):
+    if widget.frame != nil:
+      open(widget.frame)
+    widget.clear(wUpdate)
+
 
 when isMainModule:
   # Create Counter
@@ -96,7 +105,7 @@ when isMainModule:
     frame.flags = wDirty or wVisible or wEnabled
     blank1.frame = frame
 
-    win.addWidget(blank1)
+    win.add(blank1)
 
     blank1 = new GUIBlank
     blank1.rect = GUIRect(x: 100, y: 80, w: 50, h: 60)
@@ -121,7 +130,7 @@ when isMainModule:
     frame.flags = wDirty or wVisible or wEnabled
     blank1.frame = frame
 
-    win.addWidget(blank1)
+    win.add(blank1)
 
   # MAIN LOOP
   var running = win.exec()

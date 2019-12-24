@@ -87,9 +87,7 @@ template absY*(widget: GUIWidget, y: int32): int32 =
 # WIDGET FRAMED open/close
 # ------------------------
 
-proc open*(widget: GUIWidget, x, y: int32) =
-  widget.pivot.x = x
-  widget.pivot.y = y
+proc open*(widget: GUIWidget) =
   # Send Widget to Window for open
   pushSignal(
     FrameID, msgOpen, 
