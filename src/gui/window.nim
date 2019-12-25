@@ -304,6 +304,14 @@ proc elevateFrame(win: var GUIWindow, frame: GUIWidget) =
 # WINDOW RUNNING PROCS
 # --------------------
 
+proc checkFocus(win: var GUIWindow) =
+  # if is no focused properly, call focusOut
+  if win.focus != nil and not test(win.focus, wFocusCheck):
+    focusOut(win.focus)
+    clear(win.focus, wFocus)
+    # Remove focus from cache
+    win.focus = nil
+
 proc processEvent(win: var GUIWindow, tabbed: bool) =
   var found: GUIWidget
   let state = addr win.state
@@ -335,17 +343,12 @@ proc processEvent(win: var GUIWindow, tabbed: bool) =
     else:
       relative(found, state)
       event(found, state)
-    # Change focused or focus out
-    if found.test(wFocusCheck):
-      if found != win.focus:
-        if win.focus != nil:
-          focusOut(win.focus)
-          clear(win.focus, wFocus)
-        win.focus = found
-    elif found == win.focus:
-      focusOut(win.focus)
-      clear(win.focus, wFocus)
-      win.focus = nil
+    # Change win focused if found is focused
+    if found.test(wFocusCheck) and found != win.focus:
+      if win.focus != nil:
+        focusOut(win.focus)
+        clear(win.focus, wFocus)
+      win.focus = found
 
 proc handleEvents(win: var GUIWindow) =
   var event: TXEvent
@@ -418,7 +421,11 @@ proc handleSignals(win: var GUIWindow): bool =
   # Event Loop isn't terminated
   return true
 
+# Use this in your main loop
 proc tick*(win: var GUIWindow): bool =
+  # Check Focus
+  checkFocus(win)
+  # Event -> Signal
   handleEvents(win)
   result = handleSignals(win)
   # Begin GUI Rendering

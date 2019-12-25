@@ -46,7 +46,7 @@ method event*(widget: GUIBlank, state: ptr GUIState) =
     widget.set(wFocus)
     pushCallback(click, nil, 0)
   elif state.eventType == evMouseRelease:
-    if checkTimer(widget.t): close(widget.frame)
+    if checkTimer(widget.t): discard #close(widget.frame)
     else: widget.clear(wUpdate)
     widget.clear(wGrab)
     pushCallback(release, nil, 0)
