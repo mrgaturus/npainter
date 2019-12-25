@@ -73,7 +73,7 @@ proc checkFocus(self: GUIContainer) =
 
 # CONTAINER METHODS
 method draw(self: GUIContainer, ctx: ptr CTXRender) =
-  var count = 0;
+  var count = 0
   # Push Clipping and Color Level
   ctx.push(self.rect, self.color)
   # Clear color if it was dirty
@@ -84,19 +84,21 @@ method draw(self: GUIContainer, ctx: ptr CTXRender) =
   for widget in self:
     if widget.test(wDraw):
       widget.draw(ctx)
-      inc(count)
+      # Count if flag is still here
+      count += int(widget.test(wDraw))
   # Pop Clipping and Color Level
   ctx.pop()
   # If no draw found, unmark draw
   if count == 0: self.clear(wDraw)
 
 method update(self: GUIContainer) =
-  var count = 0;
+  var count = 0
   # Update marked widgets
   for widget in self:
     if widget.test(wUpdate):
       widget.update()
-      inc(count)
+      # Count if flag is still here
+      count += int(widget.test(wUpdate))
   # Check if focus was damaged
   self.checkFocus()
   # If no update found, unmark update
