@@ -13,16 +13,20 @@ type
     vWidth, vHeight: int32
     vCache: array[16, float32]
   # The Context
-  CTXRoot* = object
+  GUIContext* = object
+    # CTX GUI Renderer
+    render: CTXRender
     # Root Frame
     vao, vbo0, vbo1: GLuint
     tex, fbo: GLuint
     # GUI viewport cache
     vWidth, vHeight: int32
     vCache: array[16, float32]
-    # Regions
+    # Root Regions
     regions: seq[CTXRegion]
     visible: int32
+    # Unused Frames
+    unused: seq[CTXFrame]
 
 # -------------------
 # CONTEXT CONST PROCS
@@ -42,7 +46,9 @@ let texCORDS = [
 # CONTEXT CREATION/DISPOSE PROCS
 # -------------------
 
-proc newCTXRoot*(): CTXRoot =
+proc newGUIContext*(): GUIContext =
+  # Initialize Render
+  result.render = newCTXRender()
   # Initialize Root Frame
   glGenTextures(1, addr result.tex)
   glGenFramebuffers(1, addr result.fbo)
@@ -59,7 +65,7 @@ proc newCTXRoot*(): CTXRoot =
   glBindTexture(GL_TEXTURE_2D, 0)
   glBindFramebuffer(GL_FRAMEBUFFER, 0)
 
-proc allocRegions*(ctx: var CTXRoot) =
+proc allocRegions*(ctx: var GUIContext) =
   # Create New VAO
   glGenVertexArrays(1, addr ctx.vao)
   glGenBuffers(2, addr ctx.vbo0)
@@ -84,10 +90,10 @@ proc allocRegions*(ctx: var CTXRoot) =
 # CONTEXT WINDOW PROCS
 # -------------------
 
-proc createRegion*(ctx: var CTXRoot, rect: ptr GUIRect) =
+proc createRegion*(ctx: var GUIContext, rect: ptr GUIRect) =
   ctx.regions.add(rect)
 
-proc update*(ctx: var CTXRoot) =
+proc update*(ctx: var GUIContext) =
   # Visible Count
   var count = 0'i32
   # Update VBO With Regions
@@ -113,7 +119,7 @@ proc update*(ctx: var CTXRoot) =
   # Set Visible Count
   ctx.visible = count
 
-proc resize*(ctx: var CTXRoot, rect: ptr GUIRect) =
+proc resize*(ctx: var GUIContext, rect: ptr GUIRect) =
   # Bind Texture
   glBindTexture(GL_TEXTURE_2D, ctx.tex)
   # Resize Texture
@@ -126,7 +132,57 @@ proc resize*(ctx: var CTXRoot, rect: ptr GUIRect) =
   ctx.vWidth = rect.w
   ctx.vHeight = rect.h
 
-proc createFrame*(): CTXFrame =
+# -------------------
+# CONTEXT RENDER PROCS
+# -------------------
+
+template `[]`*(ctx: var GUIContext): var CTXRender =
+  ctx.render
+
+proc makeCurrent*(ctx: var GUIContext, frame: CTXFrame) =
+  if frame.isNil: # Make Root current
+    # Bind Root FBO & Use Viewport
+    glBindFramebuffer(GL_FRAMEBUFFER, ctx.fbo)
+    # Set Root Viewport
+    viewport(ctx.render, ctx.vWidth, ctx.vHeight,
+      cast[ptr float32](addr ctx.vCache)
+    )
+  else: # Make Frame Current
+    # Bind Frame's FBO
+    glBindFramebuffer(GL_FRAMEBUFFER, frame.fbo)
+    # Set Frame Viewport
+    viewport(ctx.render, frame.vWidth, frame.vHeight,
+      cast[ptr float32](addr frame.vCache)
+    )
+  # Make Renderer ready for GUI Drawing
+  makeCurrent(ctx.render)
+
+proc clearCurrent*(ctx: var GUIContext) =
+  # Bind to Framebuffer Screen
+  glBindFramebuffer(GL_FRAMEBUFFER, 0)
+  # Set Root Viewport
+  viewport(ctx.render, ctx.vWidth, ctx.vHeight,
+    cast[ptr float32](addr ctx.vCache)
+  )
+  # Set To White Pixel
+  clearCurrent(ctx.render)
+
+proc render*(ctx: var GUIContext, frame: CTXFrame) =
+  if frame.isNil: # Draw Regions
+    glBindVertexArray(ctx.vao)
+    glBindTexture(GL_TEXTURE_2D, ctx.tex)
+    for index in `..<`(0, ctx.visible):
+      glDrawArrays(GL_TRIANGLE_STRIP, index*4, 4)
+  else: # Draw Frames
+    glBindVertexArray(frame.vao)
+    glBindTexture(GL_TEXTURE_2D, frame.tex)
+    glDrawArrays(GL_TRIANGLE_STRIP, 0, 4)
+
+# ---------------------------
+# CONTEXT FRAME CREATION PROC
+# ---------------------------
+
+proc createFrame(): CTXFrame =
   new result
   # -- Create New VAO
   glGenVertexArrays(1, addr result.vao)
@@ -165,54 +221,17 @@ proc createFrame*(): CTXFrame =
   glBindFramebuffer(GL_FRAMEBUFFER, 0)
 
 # -------------------
-# CONTEXT RENDER PROCS
-# -------------------
-
-proc makeCurrent*(ctx: var CTXRender, frame: CTXFrame) =
-  # Bind Frame's FBO
-  glBindFramebuffer(GL_FRAMEBUFFER, frame.fbo)
-  # Make Render Current to FBO
-  makeCurrent(ctx)
-  # Set Frame Viewport
-  viewport(ctx, frame.vWidth, frame.vHeight,
-    cast[ptr float32](addr frame.vCache)
-  )
-
-proc makeCurrent*(ctx: var CTXRender, root: var CTXRoot) =
-  # Bind Root FBO & Use Viewport
-  glBindFramebuffer(GL_FRAMEBUFFER, root.fbo)
-  # Clear Render Levels
-  makeCurrent(ctx)
-  # Set Root Viewport
-  viewport(ctx, root.vWidth, root.vHeight,
-    cast[ptr float32](addr root.vCache)
-  )
-
-proc clearCurrent*(ctx: var CTXRender, root: var CTXRoot) =
-  # Bind to Framebuffer Screen
-  glBindFramebuffer(GL_FRAMEBUFFER, 0)
-  # Set To White Pixel
-  clearCurrent(ctx)
-  # Set Root Viewport
-  viewport(ctx, root.vWidth, root.vHeight,
-    cast[ptr float32](addr root.vCache)
-  )
-
-proc render*(ctx: var CTXRoot) =
-  # Draw Regions
-  glBindVertexArray(ctx.vao)
-  glBindTexture(GL_TEXTURE_2D, ctx.tex)
-  for index in `..<`(0, ctx.visible):
-    glDrawArrays(GL_TRIANGLE_STRIP, index*4, 4)
-
-proc render*(frame: CTXFrame) =
-  glBindVertexArray(frame.vao)
-  glBindTexture(GL_TEXTURE_2D, frame.tex)
-  glDrawArrays(GL_TRIANGLE_STRIP, 0, 4)
-
-# -------------------
 # CONTEXT FRAME PROCS
 # -------------------
+
+proc useFrame*(ctx: var GUIContext, frame: var CTXFrame) {.inline.} =
+  if len(ctx.unused) > 0: frame = pop(ctx.unused)
+  else: frame = createFrame()
+
+proc unuseFrame*(ctx: var GUIContext, frame: var CTXFrame) {.inline.} =
+  add(ctx.unused, frame)
+  # Mark Frame Ref as Nil
+  frame = nil
 
 proc region*(frame: CTXFrame, rect: GUIRect): bool {.discardable.} =
   # Check if resize is needed

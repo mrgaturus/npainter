@@ -2,9 +2,9 @@ from event import GUIState, GUIEvent, GUISignal
 import widget, render
 
 const
-  wDrawDirty* = uint16(1 shl 11)
+  wDrawDirty* = uint16(1 shl 9)
   # Combinations
-  wFocusCheck* = 0xb0'u16
+  wFocusCheck* = 0x70'u16
   wReactive = 0x0f'u16
 
 type
@@ -26,7 +26,7 @@ proc newGUIContainer*(layout: GUILayout, color: GUIColor): GUIContainer =
   result.layout = layout
   result.color = color
   # GUIWidget Default Flags
-  result.flags = wEnabled or wVisible or wSignal or wDirty
+  result.flags = wEnabled or wVisible or wDirty
 
 proc add*(self: GUIContainer, widget: GUIWidget) =
   # Merge Widget Signals to Self
@@ -168,7 +168,7 @@ method event(self: GUIContainer, state: ptr GUIState) =
 method trigger(self: GUIContainer, signal: GUISignal) =
   var focus = self.focus
   for widget in self:
-    if widget.test(wSignal) and (signal.id in widget):
+    if signal.id in widget:
       widget.trigger(signal)
 
       let check = (widget.flags and wFocusCheck) xor 0x30'u16

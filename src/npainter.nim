@@ -88,7 +88,7 @@ when isMainModule:
     blank1.colorn = GUIColor(r: 1.0, g: 1.0, b: 1.0, a: 1.0)
     blank1.colorf = GUIColor(r: 1.0, g: 1.0, b: 0.0, a: 1.0)
     blank1.signals = {ExampleID}
-    blank1.flags = wVisible or wEnabled or wSignal
+    blank1.flags = wVisible or wEnabled
 
     # A Frame
     var blankf = new GUIBlank
@@ -97,7 +97,7 @@ when isMainModule:
     blankf.colorn = GUIColor(r: 1.0, g: 1.0, b: 1.0, a: 1.0)
     blankf.colorf = GUIColor(r: 1.0, g: 1.0, b: 0.0, a: 1.0)
     blankf.signals = {ExampleID}
-    blankf.flags = wVisible or wEnabled or wSignal
+    blankf.flags = wVisible or wEnabled
 
     var frame = newGUIContainer(layout, GUIColor(r: 0.0, g: 1.0, b: 1.0, a: 0.5))
     frame.rect = GUIRect(x: 80, y: 120, w: 100, h: 100)
@@ -113,7 +113,7 @@ when isMainModule:
     blank1.colorn = GUIColor(r: 1.0, g: 1.0, b: 1.0, a: 1.0)
     blank1.colorf = GUIColor(r: 1.0, g: 1.0, b: 0.0, a: 1.0)
     blank1.signals = {ExampleID}
-    blank1.flags = wVisible or wEnabled or wSignal
+    blank1.flags = wVisible or wEnabled
 
     # A Frame
     blankf = new GUIBlank
@@ -122,7 +122,7 @@ when isMainModule:
     blankf.colorn = GUIColor(r: 1.0, g: 1.0, b: 1.0, a: 1.0)
     blankf.colorf = GUIColor(r: 1.0, g: 1.0, b: 0.0, a: 1.0)
     blankf.signals = {ExampleID}
-    blankf.flags = wVisible or wEnabled or wSignal
+    blankf.flags = wVisible or wEnabled
     
     frame = newGUIContainer(layout, GUIColor(r: 1.0, g: 1.0, b: 0.0, a: 0.5))
     frame.rect = GUIRect(x: 60, y: 100, w: 100, h: 100)
@@ -135,13 +135,10 @@ when isMainModule:
   # MAIN LOOP
   var running = win.exec()
   while running:
-    win.handleEvents()
-    running = win.handleTick()
     # Render Main Program
     glClearColor(0.5, 0.5, 0.5, 1.0)
     glClear(GL_COLOR_BUFFER_BIT or GL_DEPTH_BUFFER_BIT)
     # Render GUI
-    win.render()
-
+    running = win.tick()
   # Close Window and Dispose Resources
   win.exit()

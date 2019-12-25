@@ -38,11 +38,8 @@ type
     eglCfg: EGLConfig
     eglCtx: EGLContext
     eglSur: EGLSurface
-    # Renderer
-    render: CTXRender
-    surf: CTXRoot
-    # Unused Renderer Frames (Cache)
-    unused: seq[CTXFrame]
+    # GUI Render Context
+    ctx: GUIContext
     # GUI State
     state: GUIState
     # GUI Widgets and frames
@@ -170,8 +167,7 @@ proc newGUIWindow*(global: pointer, w, h: int32, layout: GUILayout): GUIWindow =
   result.state.utf8buffer(32)
   # Initialize EGL and GL
   result.createEGL()
-  result.render = newCTXRender()
-  result.surf = newCTXRoot()
+  result.ctx = newGUIContext()
   # Disable VSync - Avoid Input Lag
   discard eglSwapInterval(result.eglDsp, 0)
   # Create new root container
@@ -192,7 +188,7 @@ proc newGUIWindow*(global: pointer, w, h: int32, layout: GUILayout): GUIWindow =
 # --------------------
 
 proc add*(win: var GUIWindow, widget: GUIWidget, region: bool = true) =
-  if region: createRegion(win.surf, addr widget.rect)
+  if region: createRegion(win.ctx, addr widget.rect)
   # Add Widget to Root
   add(win.root, widget)
 
@@ -200,20 +196,14 @@ proc add*(win: var GUIWindow, widget: GUIWidget, region: bool = true) =
 # WINDOW WIDGET ITERATORS
 # -----------------------
 
-# Only Floating Frames
-iterator frames(win: var GUIWindow): GUIWidget =
-  var frame = win.root.next
-  while frame != nil:
-    yield frame
-    frame = frame.next
-
-# Every Widget
+# Root -> Last Frame
 iterator forward(win: var GUIWindow): GUIWidget =
   var frame = cast[GUIWidget](win.root)
   while frame != nil:
     yield frame
     frame = frame.next
 
+# Last Frame -> Root
 iterator reverse(win: var GUIWindow): GUIWidget =
   var frame = win.last
   while frame != nil:
@@ -229,8 +219,8 @@ proc exec*(win: var GUIWindow): bool =
   result = XMapWindow(win.display, win.xID) != BadWindow
   discard XSync(win.display, 0)
   # Resize Root FBO
-  resize(win.surf, addr win.root.rect)
-  allocRegions(win.surf)
+  resize(win.ctx, addr win.root.rect)
+  allocRegions(win.ctx)
 
 proc exit*(win: var GUIWindow) =
   # Dispose Queue
@@ -260,15 +250,6 @@ proc grab(win: var GUIWindow, evtype: int32) =
   elif evtype == ButtonRelease:
     discard XUngrabPointer(win.display, CurrentTime)
 
-# Assign a ctxframe to a widget
-proc useCTXFrame(win: var GUIWindow, frame: GUIWidget) {.inline.} =
-  if len(win.unused) > 0: frame.surf = pop(win.unused)
-  else: frame.surf = createFrame()
-
-proc unuseCTXFrame(win: var GUIWindow, frame: GUIWidget) {.inline.} =
-  add(win.unused, frame.surf)
-  frame.surf = nil
-
 # --------------------
 # WINDOW FLOATING PRIVATE PROCS
 # --------------------
@@ -282,9 +263,9 @@ proc addFrame(win: var GUIWindow, frame: GUIWidget) =
   # Last is frame
   win.last = frame
   # Use CTX Frame
-  useCTXFrame(win, frame)
+  useFrame(win.ctx, frame.surf)
   # Mark as Framed
-  set(frame, 0x418)
+  set(frame, 0x18)
 
 proc delFrame(win: var GUIWindow, frame: GUIWidget) =
   # Change next prev or last
@@ -303,9 +284,9 @@ proc delFrame(win: var GUIWindow, frame: GUIWidget) =
     focusOut(frame)
     clear(frame, wFocus)
   # Unuse CTX Frame
-  unuseCTXFrame(win, frame)
+  unuseFrame(win.ctx, frame.surf)
   # Unmark as Framed
-  clear(frame, 0x418)
+  clear(frame, 0x18)
 
 proc elevateFrame(win: var GUIWindow, frame: GUIWidget) =
   if frame != win.last and frame.prev != nil:
@@ -323,7 +304,7 @@ proc elevateFrame(win: var GUIWindow, frame: GUIWidget) =
 # WINDOW RUNNING PROCS
 # --------------------
 
-proc processEvent*(win: var GUIWindow, tabbed: bool) =
+proc processEvent(win: var GUIWindow, tabbed: bool) =
   var found: GUIWidget
   let state = addr win.state
   # Look for Mouse event o key event
@@ -366,7 +347,7 @@ proc processEvent*(win: var GUIWindow, tabbed: bool) =
       clear(win.focus, wFocus)
       win.focus = nil
 
-proc handleEvents*(win: var GUIWindow) =
+proc handleEvents(win: var GUIWindow) =
   var event: TXEvent
   # Input Event Handing
   while XPending(win.display) != 0:
@@ -385,7 +366,7 @@ proc handleEvents*(win: var GUIWindow) =
         win.root.rect.w = event.xconfigure.width
         win.root.rect.h = event.xconfigure.height
         # Resize CTX Root
-        resize(win.surf, addr win.root.rect)
+        resize(win.ctx, addr win.root.rect)
         # Relayout and Redraw GUI
         win.root.set(wDirty)
     else:
@@ -399,7 +380,7 @@ proc handleEvents*(win: var GUIWindow) =
             win.state.key == LeftTab)
         )
 
-proc handleTick*(win: var GUIWindow): bool =
+proc handleSignals(win: var GUIWindow): bool =
   # Signal ID Handling
   for signal in pollQueue():
     # is GUI Callback?
@@ -419,14 +400,14 @@ proc handleTick*(win: var GUIWindow): bool =
       if frame != nil:
         case FrameMsg(signal.msg)
         of msgRegion: # Move or resize
-          if test(frame, wFramed):
+          if frame.surf != nil:
             if region(frame.surf, frame.region):
               frame.set(wDirty)
         of msgClose: # Remove frame from window
-          if test(frame, wFramed):
+          if frame.surf != nil:
             delFrame(win, frame)
         of msgOpen: # Add frame to window
-          if not test(frame, wFramed):
+          if frame.surf == nil:
             addFrame(win, frame)
             # Update frame region after added
             region(frame.surf, frame.region)
@@ -434,36 +415,30 @@ proc handleTick*(win: var GUIWindow): bool =
       for widget in forward(win):
         if signal.id in widget: 
           trigger(widget, signal)
-  # Update -> Layout
+  # Event Loop isn't terminated
+  return true
+
+proc tick*(win: var GUIWindow): bool =
+  handleEvents(win)
+  result = handleSignals(win)
+  # Begin GUI Rendering
+  start(win.ctx[])
+  # Update -> Layout -> Render
   for widget in forward(win):
     if test(widget, wUpdate):
       update(widget)
     if any(widget, 0x0C):
       layout(widget)
       if widget.prev == nil: 
-        update(win.surf)
-  # The loop isn't terminated
-  return true
-
-proc render*(win: var GUIWindow) =
-  # Start GUI Rendering
-  start(win.render)
-  # Draw hot/invalidated widgets
-  if test(win.root, wDraw):
-    makeCurrent(win.render, win.surf)
-    draw(win.root, addr win.render)
-    clearCurrent(win.render, win.surf)
-  # Draw Root Regions
-  render(win.surf)
-  # Render floating widgets
-  for frame in frames(win):
-    if frame.test(wDraw):
-      makeCurrent(win.render, frame.surf)
-      draw(frame, addr win.render)
-      clearCurrent(win.render, win.surf)
-    render(frame.surf)
-  # Finish GUI Rendering
-  finish(win.render)
+        update(win.ctx)
+    if test(widget, wDraw):
+      makeCurrent(win.ctx, widget.surf)
+      draw(widget, addr win.ctx[])
+      clearCurrent(win.ctx)
+    # Render root or frame
+    render(win.ctx, widget.surf)
+  # End GUI Rendering
+  finish(win.ctx[])
   # Present to X11/EGL Window
   discard eglSwapBuffers(win.eglDsp, win.eglSur)
   # TODO: FPS Strategy

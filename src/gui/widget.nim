@@ -13,13 +13,10 @@ const # set[T] doesn't has xor
   # Status
   wVisible* = uint16(1 shl 4)
   wEnabled* = uint16(1 shl 5)
-  wSignal* = uint16(1 shl 6)
   # Handlers
-  wFocus* = uint16(1 shl 7)
-  wHover* = uint16(1 shl 8)
-  wGrab* = uint16(1 shl 9)
-  # Frame Flag, controlled by window
-  wFramed* = uint16(1 shl 10)
+  wFocus* = uint16(1 shl 6)
+  wHover* = uint16(1 shl 7)
+  wGrab* = uint16(1 shl 8)
 
 type
   GUIFlags = uint16
