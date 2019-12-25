@@ -1,4 +1,4 @@
-from ../math import orthoProjection, uvNormalize
+from ../math import uvNormalize, guiProjection
 
 import ../libs/gl
 import render
@@ -128,7 +128,7 @@ proc resize*(ctx: var GUIContext, rect: ptr GUIRect) =
   # Unbind Texture
   glBindTexture(GL_TEXTURE_2D, 0)
   # Change viewport
-  orthoProjection(addr ctx.vCache, 0, float32 rect.w, float32 rect.h, 0)
+  guiProjection(addr ctx.vCache, 0, float32 rect.w, float32 rect.h, 0)
   ctx.vWidth = rect.w
   ctx.vHeight = rect.h
 
@@ -245,7 +245,7 @@ proc region*(frame: CTXFrame, rect: GUIRect): bool {.discardable.} =
     # Unbind Texture
     glBindTexture(GL_TEXTURE_2D, 0)
     # Resize Viewport
-    orthoProjection(addr frame.vCache, 0, float32 rect.w, float32 rect.h, 0)
+    guiProjection(addr frame.vCache, 0, float32 rect.w, float32 rect.h, 0)
     frame.vWidth = rect.w
     frame.vHeight = rect.h
   # Replace VBO with new rect

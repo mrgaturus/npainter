@@ -77,7 +77,7 @@ when isMainModule:
   )
   # Create a new Window
   let layout = new GUILayout
-  var win = newGUIWindow(addr counter, 1280, 720, layout)
+  var win = newGUIWindow(addr counter, 1024, 600, layout)
 
   # Create Widgets
   block:

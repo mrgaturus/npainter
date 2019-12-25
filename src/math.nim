@@ -1,31 +1,20 @@
-# Math designed only for this software
+# C Math only for this software
 
 # -------------------
 # GUI VEC2 MATH
 # -------------------
 
 {.emit: """
+// Normalize UV for GUI Regions
 void uv_normalize(float* r, float w, float h) {
   for (int i = 0; i < 8; i += 2) {
     r[i] /= w;
     r[i + 1] = (h - r[i + 1]) / h;
   }
 }
-""".}
 
-proc uvNormalize*(buffer: ptr float32, w, h: float32)
-  {.importc: "uv_normalize".}
-
-# -------------------
-# Transforms
-# -------------------
-
-# -------------------
-# Projections
-# -------------------
-
-{.emit: """
-void mat4_ortho(float* r, float left, float right, float bottom, float top) {
+// Orthogonal Projection with 0 far
+void mat4_gui(float* r, float left, float right, float bottom, float top) {
   float dw = right - left;
   float dh = top - bottom;
 
@@ -38,5 +27,5 @@ void mat4_ortho(float* r, float left, float right, float bottom, float top) {
 }
 """.}
 
-proc orthoProjection*(mat: ptr array[16, float32], left, right, bottom,
-    top: float32) {.importc: "mat4_ortho".}
+proc uvNormalize*(buffer: ptr float32, w, h: float32) {.importc: "uv_normalize".}
+proc guiProjection*(mat: ptr array[16, float32], l,r,b,t: float32) {.importc: "mat4_gui".}
