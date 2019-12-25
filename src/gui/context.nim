@@ -90,7 +90,7 @@ proc allocRegions*(ctx: var GUIContext) =
 # CONTEXT WINDOW PROCS
 # -------------------
 
-proc createRegion*(ctx: var GUIContext, rect: ptr GUIRect) =
+proc createRegion*(ctx: var GUIContext, rect: CTXRegion) =
   ctx.regions.add(rect)
 
 proc update*(ctx: var GUIContext) =
@@ -140,7 +140,7 @@ template `[]`*(ctx: var GUIContext): var CTXRender =
   ctx.render
 
 proc makeCurrent*(ctx: var GUIContext, frame: CTXFrame) =
-  if frame.isNil: # Make Root current
+  if isNil(frame): # Make Root current
     # Bind Root FBO & Use Viewport
     glBindFramebuffer(GL_FRAMEBUFFER, ctx.fbo)
     # Set Root Viewport
@@ -168,7 +168,7 @@ proc clearCurrent*(ctx: var GUIContext) =
   clearCurrent(ctx.render)
 
 proc render*(ctx: var GUIContext, frame: CTXFrame) =
-  if frame.isNil: # Draw Regions
+  if isNil(frame): # Draw Regions
     glBindVertexArray(ctx.vao)
     glBindTexture(GL_TEXTURE_2D, ctx.tex)
     for index in `..<`(0, ctx.visible):
