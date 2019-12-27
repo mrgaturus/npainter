@@ -322,7 +322,9 @@ proc delFrame(win: var GUIWindow, frame: GUIWidget) =
     if test(frame, wStacked) and
         frame != win.sLast:
       win.wLast = frame.next
-    else: win.wLast = frame.prev
+    else: # There is no popup
+      win.wLast = frame.prev
+      win.sLast = nil
   elif frame == win.sLast:
     win.sLast = frame.prev
   else: frame.next.prev = frame.prev
@@ -371,6 +373,21 @@ proc findStacked(win: var GUIWindow): GUIWidget =
     # Use Grabbed Widget if a popup was not found
     if isNil(result) and not isNil(win.wHover) and test(win.wHover, wGrab):
       result = win.wHover
+    # Change hover
+    if result != win.sHover:
+      # Unhover prev hover
+      if win.sHover != nil:
+        if not test(win.sHover, wGrab):
+          hoverOut(win.sHover)
+        clear(win.sHover, wHover)
+      # Mark as hover or unhover
+      if result != nil:
+        if result.test(wGrab):
+          if pointOnFrame(result, state.mx, state.my):
+            result.set(wHover)
+          else: result.clear(wHover)
+        else: result.set(wHover)
+      win.sHover = result
   of evKeyDown, evKeyUp:
     if isNil(win.focus) or test(win.focus, wStacked):
       result = win.focus
@@ -382,6 +399,9 @@ proc findWidget(win: var GUIWindow): GUIWidget =
   of evMouseMove, evMouseClick, evMouseRelease, evMouseAxis:
     if win.wHover != nil and test(win.wHover, wGrab):
       result = win.wHover
+      if pointOnFrame(result, state.mx, state.my):
+        result.set(wHover)
+      else: result.clear(wHover)
     else: # Search on other frames
       for widget in reverse(win.wLast):
         if pointOnFrame(widget, state.mx, state.my):
@@ -396,6 +416,8 @@ proc findWidget(win: var GUIWindow): GUIWidget =
           hoverOut(win.wHover)
           clear(win.wHover, wHover)
         # Set wHover current
+        if result != nil:
+          result.set(wHover)
         win.wHover = result
   of evKeyDown, evKeyUp:
     result = win.focus

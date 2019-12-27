@@ -40,17 +40,20 @@ method draw*(widget: GUIBlank, ctx: ptr CTXRender) =
 method event*(widget: GUIBlank, state: ptr GUIState) =
   #echo "cursor mx: ", state.mx, " cursor my: ", state.my
   if state.eventType == evMouseClick:
-    widget.set(wGrab)
-    widget.t = newTimer(250)
-    widget.set(wUpdate)
+    if widget.test(wGrab):
+      close(widget.frame)
+      widget.clear(wGrab)
+    else:
+      widget.t = newTimer(1000)
+      widget.set(wUpdate)
+      widget.set(wGrab)
     widget.set(wFocus)
     pushCallback(click, nil, 0)
   elif state.eventType == evMouseRelease:
     if checkTimer(widget.t): discard #close(widget.frame)
     else: widget.clear(wUpdate)
-    widget.clear(wGrab)
     pushCallback(release, nil, 0)
-  if widget.test(wGrab) and widget.frame != nil:
+  if widget.frame != nil and not test(widget.frame, wVisible):
     move(widget.frame, state.mx + 20, state.my + 20)
   widget.set(wDraw)
  # block:
@@ -102,7 +105,7 @@ when isMainModule:
     var frame = newGUIContainer(layout, GUIColor(r: 0.0, g: 1.0, b: 1.0, a: 0.5))
     frame.rect = GUIRect(x: 80, y: 120, w: 100, h: 100)
     frame.add(blankf)
-    frame.flags = wDirty or wVisible or wEnabled
+    frame.flags = wPopup
     blank1.frame = frame
 
     win.add(blank1)
@@ -127,7 +130,7 @@ when isMainModule:
     frame = newGUIContainer(layout, GUIColor(r: 1.0, g: 1.0, b: 0.0, a: 0.5))
     frame.rect = GUIRect(x: 60, y: 100, w: 100, h: 100)
     frame.add(blankf)
-    frame.flags = wDirty or wVisible or wEnabled or wStacked
+    frame.flags = wPopup
     blank1.frame = frame
 
     win.add(blank1)

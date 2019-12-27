@@ -107,11 +107,10 @@ method event(self: GUIContainer, state: ptr GUIState) =
     found = self.hover
 
     if found != nil and found.test(wGrab):
-      if pointOnArea(self.rect, state.mx, state.my):
+      if pointOnArea(found, state.mx, state.my):
         found.set(wHover)
-      else:
-        found.clear(wHover)
-    elif found.isNil or not pointOnArea(found.rect, state.mx, state.my):
+      else: found.clear(wHover)
+    elif isNil(found) or not pointOnArea(found, state.mx, state.my):
       if found != nil:
         found.hoverOut()
         found.clear(wHover)
@@ -119,14 +118,11 @@ method event(self: GUIContainer, state: ptr GUIState) =
 
       found = nil
       for widget in self:
-        if widget.test(wVisible) and pointOnArea(widget.rect, state.mx, state.my):
+        if pointOnArea(widget, state.mx, state.my):
           widget.set(wHover)
-          self.set(wHover)
-
           found = widget
+          # A widget was hovered
           break
-      if found.isNil:
-        self.clear(wHover)
 
       self.hover = found
   of evKeyDown, evKeyUp:

@@ -72,10 +72,13 @@ proc `in`*(signal: uint8, self: GUIWidget): bool {.inline.} =
 # WIDGET RECT
 # -----------
 
-proc pointOnArea*(rect: var GUIRect, x, y: int32): bool =
-  return
-    x >= rect.x and x <= rect.x + rect.w and
-    y >= rect.y and y <= rect.y + rect.h
+proc pointOnArea*(widget: GUIWidget, x, y: int32): bool =
+  result = widget.test(wVisible)
+  if result:
+    let rect = addr widget.rect
+    result =
+      x >= rect.x and x <= rect.x + rect.w and
+      y >= rect.y and y <= rect.y + rect.h
 
 proc relative*(rect: var GUIRect, state: ptr GUIState) =
   state.mx -= rect.x
