@@ -1,4 +1,5 @@
 from ../math import uvNormalize, guiProjection
+from ../shader import newProgram
 
 import ../libs/gl
 import render
@@ -15,6 +16,7 @@ type
   # The Context
   GUIContext* = object
     # CTX GUI Renderer
+    program: GLuint
     render: CTXRender
     # Root Frame
     vao, vbo0, vbo1: GLuint
@@ -47,8 +49,18 @@ let texCORDS = [
 # -------------------
 
 proc newGUIContext*(): GUIContext =
-  # Initialize Render
-  result.render = newCTXRender()
+  # Create new Program
+  result.program = newProgram("shaders/gui.vert", "shaders/gui.frag")
+  # Initialize Uniforms
+  glUseProgram(result.program)
+  result.render = newCTXRender(
+    glGetUniformLocation(result.program, "uPro"),
+    glGetUniformLocation(result.program, "uCol")
+  )
+  glUniform1i(
+    glGetUniformLocation(result.program, "uTex"), 0
+  )
+  glUseProgram(0)
   # Initialize Root Frame
   glGenTextures(1, addr result.tex)
   glGenFramebuffers(1, addr result.fbo)
@@ -136,8 +148,17 @@ proc resize*(ctx: var GUIContext, rect: ptr GUIRect) =
 # CONTEXT RENDER PROCS
 # -------------------
 
-template `[]`*(ctx: var GUIContext): var CTXRender =
-  ctx.render
+template render*(ctx: var GUIContext): ptr CTXRender =
+  addr ctx.render
+
+proc start*(ctx: var GUIContext) =
+  # Use GUI program
+  glUseProgram(ctx.program)
+  # Prepare OpenGL Flags
+  glDisable(GL_DEPTH_TEST)
+  glDisable(GL_STENCIL_TEST)
+  # Modify Only Texture 0
+  glActiveTexture(GL_TEXTURE0)
 
 proc makeCurrent*(ctx: var GUIContext, frame: CTXFrame) =
   if isNil(frame): # Make Root current
@@ -177,6 +198,12 @@ proc render*(ctx: var GUIContext, frame: CTXFrame) =
     glBindVertexArray(frame.vao)
     glBindTexture(GL_TEXTURE_2D, frame.tex)
     glDrawArrays(GL_TRIANGLE_STRIP, 0, 4)
+
+proc finish*() =
+  # Set program to None program
+  glBindTexture(GL_TEXTURE_2D, 0)
+  glBindVertexArray(0)
+  glUseProgram(0)
 
 # ---------------------------
 # CONTEXT FRAME CREATION PROC

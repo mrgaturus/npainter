@@ -1,4 +1,3 @@
-from ../shader import newProgram
 import ../libs/gl
 
 const
@@ -18,8 +17,6 @@ type
     rect: GUIRect
     color: GUIColor
   CTXRender* = object
-    # GUI Program
-    program: GLuint
     # Color Uniform
     pro, color: GLint
     # White Pixel and Stream Size
@@ -33,17 +30,10 @@ type
 # GUI CREATION PROCS
 # --------
 
-proc newCTXRender*(): CTXRender =
-  # -- Create new program
-  result.program = newProgram("shaders/gui.vert", "shaders/gui.frag")
-  # Use Program
-  glUseProgram(result.program)
-  # Load uniforms
-  result.pro = glGetUniformLocation(result.program, "uPro")
-  result.color = glGetUniformLocation(result.program, "uCol")
-  glUniform1i(glGetUniformLocation(result.program, "uTex"), 0)
-  # Unuse Program
-  glUseProgram(0)
+proc newCTXRender*(uPro, uCol: GLint): CTXRender =
+  # -- Projection and Color Uniform
+  result.pro = uPro
+  result.color = uCol
   # -- Gen Batch VAO and VBO
   glGenVertexArrays(1, addr result.vao)
   glGenBuffers(1, addr result.vbo)
@@ -79,18 +69,9 @@ proc newCTXRender*(): CTXRender =
   # Unbind White Pixel Texture
   glBindTexture(GL_TEXTURE_2D, 0)
 
-# --------
-# GUI PREPARING PROCS
-# --------
-
-proc start*(ctx: var CTXRender) =
-  # Use GUI program
-  glUseProgram(ctx.program)
-  # Prepare OpenGL Flags
-  glDisable(GL_DEPTH_TEST)
-  glDisable(GL_STENCIL_TEST)
-  # Modify Only Texture 0
-  glActiveTexture(GL_TEXTURE0)
+# --------------------------
+# GUI RENDER PREPARING PROCS
+# --------------------------
 
 proc viewport*(ctx: var CTXRender, w, h: int32, pro: ptr float32) =
   glViewport(0, 0, w, h)
@@ -120,15 +101,9 @@ proc clearCurrent*(ctx: var CTXRender) =
   # Set To White Pixel
   glUniform4f(cast[GLint](ctx.color), 1.0, 1.0, 1.0, 1.0)
 
-proc finish*(ctx: var CTXRender) =
-  # Set program to None program
-  glBindTexture(GL_TEXTURE_2D, 0)
-  glBindVertexArray(0)
-  glUseProgram(0)
-
-# --------
+# ------------------------
 # GUI PAINTER HELPER PROCS
-# --------
+# ------------------------
 
 proc intersect(ctx: ptr CTXRender, rect: var GUIRect): GUIRect =
   let
@@ -181,6 +156,10 @@ proc reset*(ctx: ptr CTXRender) =
     glDisable(GL_SCISSOR_TEST)
     glClearColor(0.0, 0.0, 0.0, 1.0)
     glUniform4f(cast[GLint](ctx.color), 0.0, 0.0, 0.0, 1.0)
+
+# -----------------------
+# GUI CLIP/COLOR LEVELS PROCS
+# -----------------------
 
 proc push*(ctx: ptr CTXRender, rect: var GUIRect, color: var GUIColor) =
   var level: CTXLevel

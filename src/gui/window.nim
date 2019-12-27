@@ -525,7 +525,7 @@ proc tick*(win: var GUIWindow): bool =
   handleEvents(win)
   result = handleSignals(win)
   # Begin GUI Rendering
-  start(win.ctx[])
+  start(win.ctx)
   # Update -> Layout -> Render
   for widget in forward(win.root):
     if test(widget, wUpdate):
@@ -536,12 +536,12 @@ proc tick*(win: var GUIWindow): bool =
         update(win.ctx) # Update Regions
     if test(widget, wDraw):
       makeCurrent(win.ctx, widget.surf)
-      draw(widget, addr win.ctx[])
+      draw(widget, render(win.ctx))
       clearCurrent(win.ctx)
     # Render root or frame
     render(win.ctx, widget.surf)
   # End GUI Rendering
-  finish(win.ctx[])
+  finish()
   # Present to X11/EGL Window
   discard eglSwapBuffers(win.eglDsp, win.eglSur)
   # TODO: FPS Strategy
