@@ -4,19 +4,26 @@ from event import GUIState, GUISignal, pushSignal
 from render import CTXRender, GUIRect, GUIPivot
 from context import CTXFrame
 
-const # set[T] doesn't has xor
-  # Indicators
+const # For now is better use traditional flags
+  # Indicators - Update -> Layout -> Draw
   wDraw* = uint16(1 shl 0)
   wUpdate* = uint16(1 shl 1)
   wLayout* = uint16(1 shl 2)
   wDirty* = uint16(1 shl 3)
-  # Status
+  # Status - Visible, Enabled or Popup
   wVisible* = uint16(1 shl 4)
   wEnabled* = uint16(1 shl 5)
-  # Handlers
-  wFocus* = uint16(1 shl 6)
-  wHover* = uint16(1 shl 7)
-  wGrab* = uint16(1 shl 8)
+  wStacked* = uint16(1 shl 6)
+  # Handlers - Focus, Hover and Grab
+  wFocus* = uint16(1 shl 7)
+  wHover* = uint16(1 shl 8)
+  wGrab* = uint16(1 shl 9)
+  # Default Flags - Widget Constructor
+  wStandard* = 0x30'u16
+  wPopup* = 0x60'u16
+  # ---------------------
+  # Semi-Automatic Checks
+  wFocusCheck* = 0xb0'u16
 
 type
   GUIFlags = uint16
@@ -87,16 +94,16 @@ template absY*(widget: GUIWidget, y: int32): int32 =
 proc open*(widget: GUIWidget) =
   # Send Widget to Window for open
   pushSignal(
-    FrameID, msgOpen, 
-    unsafeAddr widget, 
+    FrameID, msgOpen,
+    unsafeAddr widget,
     sizeof(GUIWidget)
   )
 
 proc close*(widget: GUIWidget) =
   # Send Widget to window for close
   pushSignal(
-    FrameID, msgClose, 
-    unsafeAddr widget, 
+    FrameID, msgClose,
+    unsafeAddr widget,
     sizeof(GUIWidget)
   )
 
@@ -105,8 +112,8 @@ proc move*(widget: GUIWidget, x, y: int32) =
   widget.pivot.y = y
   # Send Widget to Window for move
   pushSignal(
-    FrameID, msgRegion, 
-    unsafeAddr widget, 
+    FrameID, msgRegion,
+    unsafeAddr widget,
     sizeof(GUIWidget)
   )
 
@@ -115,8 +122,8 @@ proc resize*(widget: GUIWidget, w, h: int32) =
   widget.rect.h = h
   # Send Widget to Window for resize
   pushSignal(
-    FrameID, msgRegion, 
-    unsafeAddr widget, 
+    FrameID, msgRegion,
+    unsafeAddr widget,
     sizeof(GUIWidget)
   )
 
@@ -156,7 +163,8 @@ method layout*(widget: GUIWidget) {.base.} = discard
 method draw*(widget: GUIWidget, ctx: ptr CTXRender) {.base.} =
   widget.clear(wDraw)
 
-# Out Handler Methods
+# -- Out Handler Methods
+method frameOut*(widget: GUIWidget) {.base.} = discard
 method hoverOut*(widget: GUIWidget) {.base.} =
   if widget.test(wVisible): widget.set(wDraw)
 method focusOut*(widget: GUIWidget) {.base.} =

@@ -41,7 +41,7 @@ method event*(widget: GUIBlank, state: ptr GUIState) =
   #echo "cursor mx: ", state.mx, " cursor my: ", state.my
   if state.eventType == evMouseClick:
     widget.set(wGrab)
-    widget.t = newTimer(1000)
+    widget.t = newTimer(250)
     widget.set(wUpdate)
     widget.set(wFocus)
     pushCallback(click, nil, 0)
@@ -127,7 +127,7 @@ when isMainModule:
     frame = newGUIContainer(layout, GUIColor(r: 1.0, g: 1.0, b: 0.0, a: 0.5))
     frame.rect = GUIRect(x: 60, y: 100, w: 100, h: 100)
     frame.add(blankf)
-    frame.flags = wDirty or wVisible or wEnabled
+    frame.flags = wDirty or wVisible or wEnabled or wStacked
     blank1.frame = frame
 
     win.add(blank1)

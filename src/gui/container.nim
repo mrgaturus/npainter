@@ -2,9 +2,9 @@ from event import GUIState, GUIEvent, GUISignal
 import widget, render
 
 const
-  wDrawDirty* = uint16(1 shl 9)
+  # Draw Background
+  wDrawDirty* = uint16(1 shl 10)
   # Combinations
-  wFocusCheck* = 0x70'u16
   wReactive = 0x0f'u16
 
 type
