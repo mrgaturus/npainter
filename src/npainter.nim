@@ -102,11 +102,27 @@ when isMainModule:
     blankf.signals = {ExampleID}
     blankf.flags = wVisible or wEnabled
 
-    var frame = newGUIContainer(layout, GUIColor(r: 0.0, g: 1.0, b: 1.0, a: 0.5))
-    frame.rect = GUIRect(x: 80, y: 120, w: 100, h: 100)
-    frame.add(blankf)
-    frame.flags = wPopup
-    blank1.frame = frame
+    var blankz = new GUIBlank
+    blankf.rect = GUIRect(x: 20, y: 20, w: 50, h: 60)
+    blankf.color = GUIColor(r: 1.0, g: 0.0, b: 1.0, a: 1.0)
+    blankf.colorn = GUIColor(r: 1.0, g: 1.0, b: 1.0, a: 1.0)
+    blankf.colorf = GUIColor(r: 1.0, g: 1.0, b: 0.0, a: 1.0)
+    blankf.signals = {ExampleID}
+    blankf.flags = wVisible or wEnabled
+
+    var frame2 = newGUIContainer(layout, GUIColor(r: 0.0, g: 1.0, b: 1.0, a: 0.5))
+    frame2.rect = GUIRect(x: 80, y: 120, w: 100, h: 100)
+    frame2.add(blankf)
+    #blankz.frame = frame2
+
+    var frame1 = newGUIContainer(layout, GUIColor(r: 0.0, g: 1.0, b: 1.0, a: 0.5))
+    frame1.rect = GUIRect(x: 80, y: 120, w: 100, h: 100)
+    frame1.add(blankz)
+
+    frame1.set(wStacked)
+    frame2.set(wStacked)
+
+    blank1.frame = frame1
 
     win.add(blank1)
 
@@ -127,10 +143,10 @@ when isMainModule:
     blankf.signals = {ExampleID}
     blankf.flags = wVisible or wEnabled
     
-    frame = newGUIContainer(layout, GUIColor(r: 1.0, g: 1.0, b: 0.0, a: 0.5))
+    var frame = newGUIContainer(layout, GUIColor(r: 1.0, g: 1.0, b: 0.0, a: 0.5))
     frame.rect = GUIRect(x: 60, y: 100, w: 100, h: 100)
-    frame.add(blankf)
-    frame.flags = wPopup
+    #frame.add(blankf)
+    frame.set(wStacked)
     blank1.frame = frame
 
     win.add(blank1)

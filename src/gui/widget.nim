@@ -19,14 +19,14 @@ const # For now is better use traditional flags
   wHover* = uint16(1 shl 8)
   wGrab* = uint16(1 shl 9)
   # Default Flags - Widget Constructor
-  wStandard* = 0x30'u16
-  wPopup* = 0x60'u16
+  wStandard* = 0x30'u16 # Visible-Enabled
+  wPopup* = 0x60'u16 # Enabled-Stacked
   # ---------------------
   # Semi-Automatic Checks
   wFocusCheck* = 0xb0'u16
 
 type
-  GUIFlags = uint16
+  GUIFlags* = uint16
   GUISignals = set[0'u8..63'u8]
   # A Widget can be assigned to a CTXFrame
   GUIWidget* = ref object of RootObj

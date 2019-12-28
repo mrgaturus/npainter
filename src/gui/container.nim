@@ -2,10 +2,11 @@ from event import GUIState, GUIEvent, GUISignal
 import widget, render
 
 const
-  # Draw Background
-  wDrawDirty* = uint16(1 shl 10)
-  # Combinations
-  wReactive = 0x0f'u16
+  # Partial Layout Handling
+  cDirty* = uint16(1 shl 10)
+  cDraw* = uint16(1 shl 11)
+  # Reactive for Indicators
+  cReactive = 0x07'u16
 
 type
   # GUIContainer, GUILayout and Decorator
@@ -17,7 +18,7 @@ type
     color*: GUIColor
 
 # LAYOUT ABSTRACT METHOD
-method layout*(self: GUILayout, container: GUIContainer) {.base.} = discard
+method layout*(container: GUIContainer, self: GUILayout) {.base.} = discard
 
 # CONTAINER PROCS
 proc newGUIContainer*(layout: GUILayout, color: GUIColor): GUIContainer =
@@ -26,7 +27,7 @@ proc newGUIContainer*(layout: GUILayout, color: GUIColor): GUIContainer =
   result.layout = layout
   result.color = color
   # GUIWidget Default Flags
-  result.flags = wEnabled or wVisible or wDirty
+  result.flags = wStandard
 
 proc add*(self: GUIContainer, widget: GUIWidget) =
   # Merge Widget Signals to Self
@@ -40,12 +41,25 @@ proc add*(self: GUIContainer, widget: GUIWidget) =
 
   self.last = widget
 
-# CONTAINER PROCS PRIVATE
+# CONTAINER WIDGET ITERATOR
 iterator items*(self: GUIContainer): GUIWidget =
-  var widget: GUIWidget = self.first
+  var widget = self.first
   while widget != nil:
     yield widget
     widget = widget.next
+
+# CONTAINER REACTIVE
+proc reactive(self: GUIContainer, flags: GUIFlags) {.inline.} =
+  self.flags = self.flags or (flags and cReactive)
+  # Partial Relayout Reaction
+  if (flags and wDirty) == wDirty:
+    self.flags = self.flags or 0x404'u16
+
+# CONTAINER FOCUS PROCS
+proc checkFocus(self: GUIContainer) =
+  if self.test(wFocus):
+    if not test(self.focus, wFocusCheck):
+      self.clear(wFocus)
 
 proc stepWidget(self: GUIContainer, back: bool): bool =
   if back:
@@ -61,19 +75,14 @@ proc stepWidget(self: GUIContainer, back: bool): bool =
 
   result = not self.focus.isNil
 
-proc checkFocus(self: GUIContainer) =
-  if self.test(wFocus):
-    if not test(self.focus, wFocusCheck):
-      self.clear(wFocus)
-
 # CONTAINER METHODS
 method draw(self: GUIContainer, ctx: ptr CTXRender) =
   var count = 0
   # Push Clipping and Color Level
   ctx.push(self.rect, self.color)
   # Clear color if it was dirty
-  if self.test(wDrawDirty):
-    self.clear(wDrawDirty)
+  if self.test(cDraw):
+    self.clear(cDraw)
     ctx.clear()
   # Draw Widgets
   for widget in self:
@@ -114,7 +123,7 @@ method event(self: GUIContainer, state: ptr GUIState) =
       if found != nil:
         found.hoverOut()
         found.clear(wHover)
-        self.set(found.flags and wReactive)
+        self.reactive(found.flags)
 
       found = nil
       for widget in self:
@@ -144,7 +153,7 @@ method event(self: GUIContainer, state: ptr GUIState) =
           focus.focusOut()
           focus.clear(wFocus)
   
-          self.set(found.flags and wReactive)
+          self.reactive(found.flags)
         else: self.set(wFocus)
         # Change Current Focus
         self.focus = found
@@ -155,7 +164,7 @@ method event(self: GUIContainer, state: ptr GUIState) =
         found.focusOut()
         found.clear(wFocus)
 
-    self.set(found.flags and wReactive)
+    self.reactive(found.flags)
 
 method trigger(self: GUIContainer, signal: GUISignal) =
   var focus = self.focus
@@ -170,7 +179,7 @@ method trigger(self: GUIContainer, signal: GUISignal) =
             focus.focusOut()
             focus.clear(wFocus)
 
-            self.set(focus.flags and wReactive)
+            self.reactive(focus.flags)
           focus = widget
         elif widget == self.focus:
           self.clear(wFocus)
@@ -178,7 +187,7 @@ method trigger(self: GUIContainer, signal: GUISignal) =
           widget.focusOut()
           widget.clear(wFocus)
 
-      self.set(widget.flags and wReactive)
+      self.reactive(widget.flags)
 
   if focus != self.focus:
     self.focus = focus
@@ -189,20 +198,20 @@ method step(self: GUIContainer, back: bool) =
 
   if widget != nil:
     widget.step(back)
-    self.set(widget.flags and wReactive)
+    self.reactive(widget.flags)
 
     if widget.test(wFocusCheck): return
     else:
       widget.focusOut()
       widget.clear(wFocus)
 
-      self.set(widget.flags and wReactive)
+      self.reactive(widget.flags)
 
   while self.stepWidget(back):
     widget = self.focus
     if widget.test(0x30):
       widget.step(back)
-      self.set(widget.flags and wReactive)
+      self.reactive(widget.flags)
 
       if widget.test(wFocusCheck):
         self.set(wFocus)
@@ -211,12 +220,18 @@ method step(self: GUIContainer, back: bool) =
   self.clear(wFocus)
 
 method layout(self: GUIContainer) =
-  if self.test(wDirty):
-    self.layout.layout(self)
-    self.set(wDrawDirty)
+  # Check if is Root Dirty or Partially Dirty
+  let dirty = 
+    self.any(wDirty or cDirty)
+  if dirty:
+    layout(self, self.layout)
+    self.set(cDraw) # BG Draw
 
   for widget in self:
-    widget.set(self.flags and wDirty)
+    # Mark as dirty if is dirty
+    widget.set(
+      cast[uint16](dirty) shl 3'u16
+    ) # Layout or Dirty?
     if widget.any(0x0C):
       widget.layout()
       widget.clear(0x0D)
@@ -226,13 +241,12 @@ method layout(self: GUIContainer) =
       else: # Zeroing Rect doesn't count as region
         zeroMem(addr widget.rect, sizeof(GUIRect))
 
-      self.set(widget.flags and wReactive)
+      self.reactive(widget.flags)
 
   self.checkFocus()
-  self.clear(0x0C)
 
 method hoverOut(self: GUIContainer) =
-  var hover: GUIWidget = self.hover
+  var hover = self.hover
   if hover != nil:
     hover.hoverOut()
     hover.clear(wHover or wGrab)
@@ -241,13 +255,13 @@ method hoverOut(self: GUIContainer) =
       self.clear(wFocus)
 
     self.hover = nil
-    self.set(hover.flags and wReactive)
+    self.reactive(hover.flags)
 
 method focusOut(self: GUIContainer) =
-  var focus: GUIWidget = self.focus
+  var focus = self.focus
   if focus != nil:
     focus.focusOut()
     focus.clear(wFocus)
 
     self.focus = nil
-    self.set(focus.flags and wReactive)
+    self.reactive(focus.flags)

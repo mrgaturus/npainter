@@ -218,6 +218,8 @@ proc exec*(win: var GUIWindow): bool =
   # Resize Root FBO
   resize(win.ctx, addr win.root.rect)
   allocRegions(win.ctx)
+  # Mark root as Dirty
+  set(win.root, wDirty)
 
 proc exit*(win: var GUIWindow) =
   # Dispose Queue
@@ -532,8 +534,12 @@ proc tick*(win: var GUIWindow): bool =
       update(widget)
     if any(widget, 0x0C):
       layout(widget)
+      # Update Regions
       if widget.prev == nil:
-        update(win.ctx) # Update Regions
+        update(win.ctx)
+      # Remove flags
+      widget.flags = # Unmark as layout and force draw
+        widget.flags and not 0x0C'u16 or wDraw
     if test(widget, wDraw):
       makeCurrent(win.ctx, widget.surf)
       draw(widget, render(win.ctx))
