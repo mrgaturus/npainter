@@ -11,9 +11,6 @@ type
     clicked, released: int
   GUIBlank = ref object of GUIWidget
     frame: GUIWidget
-    color: GUIColor
-    colorn: GUIColor
-    colorf: GUIColor
     t: GUITimer
 
 proc click(g: ptr Counter, d: pointer) =
@@ -28,37 +25,34 @@ proc release(g: ptr Counter, d: pointer) =
 
 method draw*(widget: GUIBlank, ctx: ptr CTXRender) =
   #echo "reached lol"
-  if widget.any(wHover or wGrab):
-    color(ctx, widget.color)
+  var color = if widget.test(wHover):
+    GUIColor(r: 0.4, g: 0.4, b: 0.4, a: 1.0)
+  elif widget.test(wGrab):
+    GUIColor(r: 1.0, g: 0.0, b: 1.0, a: 1.0)
   elif widget.test(wFocus):
-    color(ctx, widget.colorf)
+    GUIColor(r: 1.0, g: 1.0, b: 0.0, a: 1.0)
   else:
-    color(ctx, widget.colorn)
+    GUIColor(r: 1.0, g: 1.0, b: 1.0, a: 1.0)
+
+  color(ctx, color)
   fill(ctx, widget.rect)
   widget.clear(wDraw)
+
 
 method event*(widget: GUIBlank, state: ptr GUIState) =
   #echo "cursor mx: ", state.mx, " cursor my: ", state.my
   if state.eventType == evMouseClick:
-    if widget.test(wGrab):
-      close(widget.frame)
-      widget.clear(wGrab)
+    if not isNil(widget.frame) and test(widget.frame, wVisible):
+      echo "true"
+      widget.clear(wHold)
     else:
-      widget.t = newTimer(1000)
-      widget.set(wUpdate)
-      widget.set(wGrab)
-    widget.set(wFocus)
-    pushCallback(click, nil, 0)
+      widget.t = newTimer(250)
+      widget.set(wFocus or wUpdate)
   elif state.eventType == evMouseRelease:
-    if checkTimer(widget.t): discard #close(widget.frame)
-    else: widget.clear(wUpdate)
-    pushCallback(release, nil, 0)
-  if widget.frame != nil and not test(widget.frame, wVisible):
-    move(widget.frame, state.mx + 20, state.my + 20)
+    if not checkTimer(widget.t):
+      widget.clear(wUpdate)
+
   widget.set(wDraw)
- # block:
-    #var click = ClickData(x: state.mx, y: state.my)
-    #pushSignal(ExampleID, msgB, addr click, sizeof(ClickData))
 
 method trigger*(widget: GUIWidget, signal: GUISignal) =
   case ExampleMsg(signal.msg)
@@ -69,8 +63,15 @@ method update*(widget: GUIBlank) =
   if checkTimer(widget.t):
     if widget.frame != nil:
       open(widget.frame)
+      widget.set(wHold)
     widget.clear(wUpdate)
 
+method handle*(widget: GUIBlank, kind: GUIHandle) =
+  echo "handle done: ", kind.repr
+  echo "by: ", cast[uint](widget)
+  if kind == outHold:
+    close(widget.frame)
+  widget.set(wDraw)
 
 when isMainModule:
   # Create Counter
@@ -87,40 +88,30 @@ when isMainModule:
     # A Blank
     var blank1 = new GUIBlank
     blank1.rect = GUIRect(x: 20, y: 20, w: 50, h: 60)
-    blank1.color = GUIColor(r: 1.0, g: 0.0, b: 1.0, a: 1.0)
-    blank1.colorn = GUIColor(r: 1.0, g: 1.0, b: 1.0, a: 1.0)
-    blank1.colorf = GUIColor(r: 1.0, g: 1.0, b: 0.0, a: 1.0)
     blank1.signals = {ExampleID}
     blank1.flags = wVisible or wEnabled
 
     # A Frame
     var blankf = new GUIBlank
     blankf.rect = GUIRect(x: 20, y: 20, w: 50, h: 60)
-    blankf.color = GUIColor(r: 1.0, g: 0.0, b: 1.0, a: 1.0)
-    blankf.colorn = GUIColor(r: 1.0, g: 1.0, b: 1.0, a: 1.0)
-    blankf.colorf = GUIColor(r: 1.0, g: 1.0, b: 0.0, a: 1.0)
     blankf.signals = {ExampleID}
     blankf.flags = wVisible or wEnabled
 
     var blankz = new GUIBlank
     blankf.rect = GUIRect(x: 20, y: 20, w: 50, h: 60)
-    blankf.color = GUIColor(r: 1.0, g: 0.0, b: 1.0, a: 1.0)
-    blankf.colorn = GUIColor(r: 1.0, g: 1.0, b: 1.0, a: 1.0)
-    blankf.colorf = GUIColor(r: 1.0, g: 1.0, b: 0.0, a: 1.0)
     blankf.signals = {ExampleID}
     blankf.flags = wVisible or wEnabled
 
     var frame2 = newGUIContainer(layout, GUIColor(r: 0.0, g: 1.0, b: 1.0, a: 0.5))
     frame2.rect = GUIRect(x: 80, y: 120, w: 100, h: 100)
+    frame2.flags = wPopup
     frame2.add(blankf)
     #blankz.frame = frame2
 
     var frame1 = newGUIContainer(layout, GUIColor(r: 0.0, g: 1.0, b: 1.0, a: 0.5))
     frame1.rect = GUIRect(x: 80, y: 120, w: 100, h: 100)
+    frame1.flags = wPopup
     frame1.add(blankz)
-
-    frame1.set(wStacked)
-    frame2.set(wStacked)
 
     blank1.frame = frame1
 
@@ -128,25 +119,19 @@ when isMainModule:
 
     blank1 = new GUIBlank
     blank1.rect = GUIRect(x: 100, y: 80, w: 50, h: 60)
-    blank1.color = GUIColor(r: 1.0, g: 0.0, b: 1.0, a: 1.0)
-    blank1.colorn = GUIColor(r: 1.0, g: 1.0, b: 1.0, a: 1.0)
-    blank1.colorf = GUIColor(r: 1.0, g: 1.0, b: 0.0, a: 1.0)
     blank1.signals = {ExampleID}
     blank1.flags = wVisible or wEnabled
 
     # A Frame
     blankf = new GUIBlank
     blankf.rect = GUIRect(x: 20, y: 20, w: 50, h: 60)
-    blankf.color = GUIColor(r: 1.0, g: 0.0, b: 1.0, a: 1.0)
-    blankf.colorn = GUIColor(r: 1.0, g: 1.0, b: 1.0, a: 1.0)
-    blankf.colorf = GUIColor(r: 1.0, g: 1.0, b: 0.0, a: 1.0)
     blankf.signals = {ExampleID}
     blankf.flags = wVisible or wEnabled
     
     var frame = newGUIContainer(layout, GUIColor(r: 1.0, g: 1.0, b: 0.0, a: 0.5))
     frame.rect = GUIRect(x: 60, y: 100, w: 100, h: 100)
     #frame.add(blankf)
-    frame.set(wStacked)
+    frame.flags = wPopup
     blank1.frame = frame
 
     win.add(blank1)

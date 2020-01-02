@@ -18,14 +18,20 @@ const # For now is better use traditional flags
   wFocus* = uint16(1 shl 7)
   wHover* = uint16(1 shl 8)
   wGrab* = uint16(1 shl 9)
+  # Handlers - Focus + Grab
+  wHold* = uint16(1 shl 10)
   # Default Flags - Widget Constructor
   wStandard* = 0x30'u16 # Visible-Enabled
   wPopup* = 0x60'u16 # Enabled-Stacked
   # ---------------------
   # Semi-Automatic Checks
   wFocusCheck* = 0xb0'u16
+  wHoverGrab* = 0x300'u16
 
 type
+  GUIHandle* = enum
+    inFocus, inHover, inHold, inFrame
+    outFocus, outHover, outHold, outFrame
   GUIFlags* = uint16
   GUISignals = set[0'u8..63'u8]
   # A Widget can be assigned to a CTXFrame
@@ -44,6 +50,24 @@ signal Frame:
   Region
   Close
   Open
+
+# ----------------
+# WIDGET ITERATORS
+# ----------------
+
+# First -> Last
+iterator forward*(first: GUIWidget): GUIWidget =
+  var frame = first
+  while frame != nil:
+    yield frame
+    frame = frame.next
+
+# Last -> First
+iterator reverse*(last: GUIWidget): GUIWidget =
+  var frame = last
+  while frame != nil:
+    yield frame
+    frame = frame.prev
 
 # ------------
 # WIDGET FLAGS
@@ -154,10 +178,13 @@ proc region*(widget: GUIWidget): GUIRect {.inline.} =
 # WIDGET ABSTRACT METHODS - Single-Threaded
 # ------------
 
+# -- In/Out Handle Method
+method handle*(widget: GUIWidget, kind: GUIHandle) {.base.} =
+  widget.set(wDraw)
 # 1 -- Event Methods
 method event*(widget: GUIWidget, state: ptr GUIState) {.base.} = discard
 method step*(widget: GUIWidget, back: bool) {.base.} =
-  widget.flags = (widget.flags xor wFocus) or wDraw
+  widget.flags = widget.flags xor wFocus
 # 2 -- Tick Methods
 method trigger*(widget: GUIWidget, signal: GUISignal) {.base.} = discard
 method update*(widget: GUIWidget) {.base.} = discard
@@ -165,10 +192,3 @@ method layout*(widget: GUIWidget) {.base.} = discard
 # 3 -- Draw Method
 method draw*(widget: GUIWidget, ctx: ptr CTXRender) {.base.} =
   widget.clear(wDraw)
-
-# -- Out Handler Methods
-method frameOut*(widget: GUIWidget) {.base.} = discard
-method hoverOut*(widget: GUIWidget) {.base.} =
-  if widget.test(wVisible): widget.set(wDraw)
-method focusOut*(widget: GUIWidget) {.base.} =
-  if widget.test(wVisible): widget.set(wDraw)

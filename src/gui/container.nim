@@ -3,8 +3,8 @@ import widget, render
 
 const
   # Partial Layout Handling
-  cDirty* = uint16(1 shl 10)
-  cDraw* = uint16(1 shl 11)
+  cDirty* = uint16(1 shl 11)
+  cDraw* = uint16(1 shl 12)
   # Reactive for Indicators
   cReactive = 0x07'u16
 
@@ -13,7 +13,7 @@ type
   GUILayout* = ref object of RootObj
   GUIContainer* = ref object of GUIWidget
     first, last: GUIWidget  # Iterating / Inserting
-    focus, hover: GUIWidget # Cache Pointers
+    hold, focus, hover: GUIWidget # Cache Pointers
     layout*: GUILayout
     color*: GUIColor
 
@@ -41,43 +41,60 @@ proc add*(self: GUIContainer, widget: GUIWidget) =
 
   self.last = widget
 
-# CONTAINER WIDGET ITERATOR
-iterator items*(self: GUIContainer): GUIWidget =
-  var widget = self.first
-  while widget != nil:
-    yield widget
-    widget = widget.next
-
-# CONTAINER REACTIVE
-proc reactive(self: GUIContainer, flags: GUIFlags) {.inline.} =
+proc semiReactive(self: GUIContainer, flags: GUIFlags) =
   self.flags = self.flags or (flags and cReactive)
   # Partial Relayout Reaction
   if (flags and wDirty) == wDirty:
-    self.flags = self.flags or 0x404'u16
+    self.flags = flags or 0x804'u16
 
-# CONTAINER FOCUS PROCS
-proc checkFocus(self: GUIContainer) =
-  if self.test(wFocus):
-    if not test(self.focus, wFocusCheck):
-      self.clear(wFocus)
-
-proc stepWidget(self: GUIContainer, back: bool): bool =
-  if back:
-    if isNil(self.focus):
-      self.focus = self.last
-    else:
-      self.focus = self.focus.prev
-  else:
-    if isNil(self.focus):
-      self.focus = self.first
-    else:
-      self.focus = self.focus.next
-
-  result = not self.focus.isNil
+proc reactive(self: GUIContainer, widget: GUIWidget) =
+  self.flags = self.flags or (widget.flags and cReactive)
+  # Partial Relayout Reaction
+  if (widget.flags and wDirty) == wDirty:
+    self.flags = self.flags or 0x804'u16
+  # Check/Change Focus
+  let check = # Check if is enabled and visible
+    (widget.flags and wFocusCheck) xor 0x30'u16
+  if check == wFocus:
+    if widget != self.focus:
+      let focus = self.focus
+      if isNil(focus): 
+        self.set(wFocus)
+      elif focus.test(wFocus):
+        # Handle Focus Out
+        focus.handle(outFocus)
+        focus.clear(wFocus)
+        # Handle Focus In
+        widget.handle(inFocus)
+        widget.set(wFocus)
+        # React to indicators
+        self.semiReactive(focus.flags)
+        self.semiReactive(widget.flags)
+      # Change Current Focus
+      self.focus = widget
+  elif widget == self.focus:
+    self.clear(wFocus)
+  elif (check and wFocus) == wFocus and check > wFocus:
+    widget.clear(wFocus) # Invalid focus
+  # Check/Change Hold
+  if (widget.flags and wHold) == wHold:
+    if widget != self.hold:
+      let hold = self.hold
+      if isNil(hold): 
+        self.set(wHold)
+      elif hold.test(wHold):
+        hold.handle(outHold)
+        hold.clear(wHold)
+        # React to indicators
+        self.semiReactive(hold.flags)
+      # Change Current Hold
+      self.hold = widget
+  elif widget == self.hold:
+    self.clear(wHold)
 
 # CONTAINER METHODS
 method draw(self: GUIContainer, ctx: ptr CTXRender) =
-  var count = 0
+  self.clear(wDraw)
   # Push Clipping and Color Level
   ctx.push(self.rect, self.color)
   # Clear color if it was dirty
@@ -85,138 +102,98 @@ method draw(self: GUIContainer, ctx: ptr CTXRender) =
     self.clear(cDraw)
     ctx.clear()
   # Draw Widgets
-  for widget in self:
+  for widget in forward(self.first):
     if widget.test(wDraw):
       widget.draw(ctx)
-      # Count if flag is still here
-      count += int(widget.test(wDraw))
+      # Check if there is a draw activated
+      self.flags = self.flags or
+        (widget.flags and wDraw)
   # Pop Clipping and Color Level
   ctx.pop()
-  # If no draw found, unmark draw
-  if count == 0: self.clear(wDraw)
 
 method update(self: GUIContainer) =
-  var count = 0
+  self.clear(wUpdate)
   # Update marked widgets
-  for widget in self:
+  for widget in forward(self.first):
     if widget.test(wUpdate):
       widget.update()
-      # Count if flag is still here
-      count += int(widget.test(wUpdate))
-  # Check if focus was damaged
-  self.checkFocus()
-  # If no update found, unmark update
-  if count == 0: self.clear(wUpdate)
+      # This mantains update marked
+      self.reactive(widget)
 
 method event(self: GUIContainer, state: ptr GUIState) =
-  var found: GUIWidget
+  var found = self.hold
+  # Find widget for process event
+  if isNil(found): # if hold is nil, search
+    case state.eventType # Mouse or Keyboard
+    of evMouseMove, evMouseClick, evMouseRelease, evMouseAxis:
+      found = self.hover # Cached Widget
+      # If is Grabbed don't find
+      if self.test(wGrab) and state.eventType != evMouseClick: discard
+      elif isNil(found) or not pointOnArea(found, state.mx, state.my):
+        # Handle HoverOut
+        if not isNil(found):
+          found.handle(outHover)
+          found.clear(wHoverGrab)
+          # Update Indicators
+          self.semiReactive(found.flags)
+          # Clear Found
+          found = nil
+        # Search hovered widget
+        for widget in forward(self.first):
+          if pointOnArea(widget, state.mx, state.my):
+            found = widget
+            # Handle HoverIn
+            found.handle(inHover)
+            found.set(wHover)
+            # Update Indicators
+            self.semiReactive(found.flags)
+            # Hovered Found
+            break
+        # Can be nil or not
+        self.hover = found
+    of evKeyDown, evKeyUp:
+      # Use Focused widget
+      if not isNil(self.focus):
+        found = self.focus
 
-  case state.eventType
-  of evMouseMove, evMouseClick, evMouseRelease, evMouseAxis:
-    found = self.hover
-
-    if found != nil and found.test(wGrab):
-      if pointOnArea(found, state.mx, state.my):
-        found.set(wHover)
-      else: found.clear(wHover)
-    elif isNil(found) or not pointOnArea(found, state.mx, state.my):
-      if found != nil:
-        found.hoverOut()
-        found.clear(wHover)
-        self.reactive(found.flags)
-
-      found = nil
-      for widget in self:
-        if pointOnArea(widget, state.mx, state.my):
-          widget.set(wHover)
-          found = widget
-          # A widget was hovered
-          break
-
-      self.hover = found
-  of evKeyDown, evKeyUp:
-    if self.test(wFocus):
-      found = self.focus
-
-  if found != nil:
+  if not isNil(found):
+    if state.eventType >= evMouseClick:
+      # Heredate Grab and Hover
+      found.flags = (found.flags and not wGrab) or 
+        (self.flags and wGrab)
+      # Check if cursor is on boundaries
+      if found.any(wGrab or wHold):
+        if pointOnArea(found, state.mx, state.my):
+          found.set(wHover)
+        else: found.clear(wHover)
     found.event(state)
-    if state.eventType > evKeyDown:
-      self.flags = (self.flags and not wGrab.uint16) or (
-          found.flags and wGrab)
-
-    let check = # Check if is enabled and visible
-      (found.flags and wFocusCheck) xor 0x30'u16
-    if check == wFocus:
-      if found != self.focus:
-        let focus = self.focus
-        if focus != nil:
-          focus.focusOut()
-          focus.clear(wFocus)
-  
-          self.reactive(found.flags)
-        else: self.set(wFocus)
-        # Change Current Focus
-        self.focus = found
-    elif (check and wFocus) == wFocus and check > wFocus:
-      if found == self.focus:
-        self.clear(wFocus)
-      else: # Invalid
-        found.focusOut()
-        found.clear(wFocus)
-
-    self.reactive(found.flags)
+    # React and Check
+    self.reactive(found)
 
 method trigger(self: GUIContainer, signal: GUISignal) =
-  var focus = self.focus
-  for widget in self:
+  for widget in forward(self.first):
     if signal.id in widget:
       widget.trigger(signal)
-
-      let check = (widget.flags and wFocusCheck) xor 0x30'u16
-      if (check and wFocus) == wFocus and widget != focus:
-        if check == wFocus:
-          if focus != nil:
-            focus.focusOut()
-            focus.clear(wFocus)
-
-            self.reactive(focus.flags)
-          focus = widget
-        elif widget == self.focus:
-          self.clear(wFocus)
-        else: # Invalid
-          widget.focusOut()
-          widget.clear(wFocus)
-
-      self.reactive(widget.flags)
-
-  if focus != self.focus:
-    self.focus = focus
-    self.set(wFocus)
-
-method step(self: GUIContainer, back: bool) =
-  var widget: GUIWidget = self.focus
-
-  if widget != nil:
-    widget.step(back)
-    self.reactive(widget.flags)
-
-    if widget.test(wFocusCheck): return
-    else:
-      widget.focusOut()
+      self.reactive(widget)
+      # Use inFocus for who is the focused
       widget.clear(wFocus)
 
-      self.reactive(widget.flags)
-
-  while self.stepWidget(back):
-    widget = self.focus
-    if widget.test(0x30):
-      widget.step(back)
-      self.reactive(widget.flags)
-
-      if widget.test(wFocusCheck):
-        self.set(wFocus)
-        return
-
+method step(self: GUIContainer, back: bool) =
+  var focus =
+    if isNil(self.focus):
+      if back: self.last
+      else: self.first
+    elif back: self.focus.prev
+    else: self.focus.next
+  while not isNil(focus):
+    focus.step(back)
+    self.reactive(focus)
+    # Check if widget was focused
+    if self.test(wFocusCheck): return
+    focus =
+      if back: focus.prev
+      else: focus.next
+  # Unfocus if reached end
   self.clear(wFocus)
 
 method layout(self: GUIContainer) =
@@ -226,8 +203,7 @@ method layout(self: GUIContainer) =
   if dirty:
     layout(self, self.layout)
     self.set(cDraw) # BG Draw
-
-  for widget in self:
+  for widget in forward(self.first):
     # Mark as dirty if is dirty
     widget.set(
       cast[uint16](dirty) shl 3'u16
@@ -235,33 +211,47 @@ method layout(self: GUIContainer) =
     if widget.any(0x0C):
       widget.layout()
       widget.clear(0x0D)
-
+      # Draw if visible
       if widget.test(wVisible):
         widget.set(wDraw)
       else: # Zeroing Rect doesn't count as region
         zeroMem(addr widget.rect, sizeof(GUIRect))
+      self.reactive(widget)
 
-      self.reactive(widget.flags)
-
-  self.checkFocus()
-
-method hoverOut(self: GUIContainer) =
-  var hover = self.hover
-  if hover != nil:
-    hover.hoverOut()
-    hover.clear(wHover or wGrab)
-    # if is focused check focus
-    if hover == self.focus and not hover.test(wFocusCheck):
-      self.clear(wFocus)
-
+method handle(self: GUIContainer, kind: GUIHandle) =
+  var
+    widget: GUIWidget
+    flag: GUIFlags
+  case kind
+  of inHover: # Hover Back Hold
+    widget = self.hold
+    # Change Hover to Hold
+    self.hover = widget
+  of outHover: # Unhover current widget
+    widget = self.hover
+    flag = wHoverGrab
+    # Remove Hover
     self.hover = nil
-    self.reactive(hover.flags)
-
-method focusOut(self: GUIContainer) =
-  var focus = self.focus
-  if focus != nil:
-    focus.focusOut()
-    focus.clear(wFocus)
-
-    self.focus = nil
-    self.reactive(focus.flags)
+  of inFocus, outFocus:
+    widget = self.focus
+    flag = wFocus
+    # Remove Focus if is Out
+    if kind == outFocus:
+      self.focus = nil
+  of inHold, outHold:
+    widget = self.hold
+    flag = wHold
+    # Remove Hold if is Out
+    if kind == outHold:
+      self.hold = nil
+  else: discard
+  # Handle In/Out on widget
+  if not isNil(widget):
+    # Call In/Out Method
+    widget.handle(kind)
+    # Turn on or off the flag
+    if kind < outFocus: 
+      widget.set(flag)
+    else: widget.clear(flag)
+    # Only React to Draw, Update, Layout
+    self.semiReactive(widget.flags)
