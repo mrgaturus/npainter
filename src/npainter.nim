@@ -51,6 +51,8 @@ method event*(widget: GUIBlank, state: ptr GUIState) =
   elif state.eventType == evMouseRelease:
     if not checkTimer(widget.t):
       widget.clear(wUpdate)
+  if not isNil(widget.frame) and not test(widget.frame, wVisible):
+    move(widget.frame, state.mx + 5, state.my + 5)
 
   widget.set(wDraw)
 

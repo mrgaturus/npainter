@@ -224,16 +224,16 @@ proc exit*(win: var GUIWindow) =
 # --------------------
 
 # --- Helpers ---
-proc addLeft(last: GUIWidget, frame: GUIWidget) =
+proc addLeft(left: GUIWidget, frame: GUIWidget) {.inline.} =
   # Add to right of widget prev
-  frame.prev = last.prev
-  last.prev.next = frame
+  frame.prev = left.prev
+  left.prev.next = frame
   # Add to left of widget
-  frame.next = last
-  last.prev = frame
+  frame.next = left
+  left.prev = frame
 
 # Guaranted to be added last to the list
-proc addLast(last: var GUIWidget, frame: GUIWidget) =
+proc addLast(last: var GUIWidget, frame: GUIWidget) {.inline.} =
   frame.next = nil
   # Prev allways exist
   frame.prev = last
@@ -243,8 +243,8 @@ proc addLast(last: var GUIWidget, frame: GUIWidget) =
 
 # --- Add or Delete ---
 proc addStacked(win: var GUIWindow, frame: GUIWidget) =
-  # Create a Popup Stack using Last as First
-  if not test(win.last, wStacked): 
+  # Mark popup stack
+  if isNil(win.above):
     win.above = frame
   # Add to last
   addLast(win.last, frame)
@@ -256,15 +256,9 @@ proc addStacked(win: var GUIWindow, frame: GUIWidget) =
   set(frame, 0x18)
 
 proc addFrame(win: var GUIWindow, frame: GUIWidget) =
-  if test(win.last, wStacked):
-    addLeft(win.above, frame)
-  else: # Add to Last
-    addLast(win.last, frame)
-    if frame.test(wGrab):
-      if win.hover != nil:
-        handle(win.hover, outHover)
-        clear(win.hover, wHoverGrab)
-      win.hover = frame
+  # Add to left of head of stack or to tail
+  if isNil(win.above): addLast(win.last, frame)
+  else: addLeft(win.above, frame) 
   # Alloc or Reuse a CTXFrame
   useFrame(win.ctx, frame.surf)
   # Handle FrameIn
@@ -274,38 +268,37 @@ proc addFrame(win: var GUIWindow, frame: GUIWidget) =
 
 proc delFrame(win: var GUIWindow, frame: GUIWidget) =
   # Unfocus if was focused
-  if test(frame, wFocus):
+  if frame == win.focus:
     handle(frame, outFocus)
     clear(frame, wFocus)
     # Remove focus
     win.focus = nil
   # Unhover if has hover or grab
-  if any(frame, wHoverGrab):
+  if frame == win.hover:
     handle(frame, outHover)
     clear(frame, wHoverGrab)
     # Remove Hover
-    if frame == win.hover:
-      win.hover = nil
-    elif frame == win.hold:
-      win.hold = nil
+    win.hover = nil
+  # Unhold if is holded
+  if frame == win.hold:
+    handle(frame, outHold)
+    clear(frame, wHold)
+    # Remove Hold
+    win.hold = nil
   # Handle FrameOut
   handle(frame, outFrame)
   # Unmark Visible
   clear(frame, 0x18)
   # Unuse CTX Frame
   unuseFrame(win.ctx, frame.surf)
+  # Check if above is removed
+  if frame == win.above:
+    win.above = frame.next
   # Change next prev or last
   if frame == win.last:
-    if test(frame, wStacked) and
-        frame != win.above:
-      win.last = frame.next
-    else: # There is no popup
-      win.last = frame.prev
-      win.above = nil
-  elif frame == win.above:
-    win.above = frame.prev
+    win.last = frame.prev
   else: frame.next.prev = frame.prev
-  # Change prev next (first is root)
+  # Change prev next
   frame.prev.next = frame.next
   # Remove next and prev
   frame.next = nil
@@ -361,15 +354,14 @@ proc checkHandlers(win: var GUIWindow, widget: GUIWidget) =
       widget.handle(inFocus)
       win.focus = widget
   elif widget == win.focus:
-    echo "outFocus by": cast[uint](widget)
     widget.handle(outFocus)
     widget.clear(wFocus)
     # Remove current focus
     win.focus = nil
   elif (check and wFocus) == wFocus and check > wFocus:
     widget.clear(wFocus) # Invalid focus
-  # Check or Change Hold
-  if (widget.flags and wHold) == wHold:
+  # Check or Change Hold (if is not stacked)
+  if (widget.flags and (wHold or wStacked)) == wHold:
     if widget != win.hold:
       let hold = win.hold
       # Unhold prev widget
@@ -424,6 +416,8 @@ proc findWidget(win: var GUIWindow): GUIWidget =
   of evKeyDown, evKeyUp:
     if isNil(win.focus) or isNil(win.above) or test(win.focus, wStacked):
       result = win.focus
+    elif not isNil(win.hold):
+      result = win.hold
 
 proc handleEvents(win: var GUIWindow) =
   var event: TXEvent
