@@ -46,9 +46,9 @@ type
     above: GUIWidget
     last: GUIWidget
     # Cache Frames
+    hold: GUIWidget
     focus: GUIWidget
     hover: GUIWidget
-    hold: GUIWidget
 
 signal Window:
   Terminate
@@ -223,14 +223,14 @@ proc exit*(win: var GUIWindow) =
 # WINDOW FLOATING PRIVATE PROCS
 # --------------------
 
-# --- Helpers ---
-proc addLeft(left: GUIWidget, frame: GUIWidget) {.inline.} =
+# --- Add Helpers ---
+proc addLeft(pivot: GUIWidget, frame: GUIWidget) {.inline.} =
   # Add to right of widget prev
-  frame.prev = left.prev
-  left.prev.next = frame
+  frame.prev = pivot.prev
+  pivot.prev.next = frame
   # Add to left of widget
-  frame.next = left
-  left.prev = frame
+  frame.next = pivot
+  pivot.prev = frame
 
 # Guaranted to be added last to the list
 proc addLast(last: var GUIWidget, frame: GUIWidget) {.inline.} =
@@ -241,7 +241,7 @@ proc addLast(last: var GUIWidget, frame: GUIWidget) {.inline.} =
   # Last is frame
   last = frame
 
-# --- Add or Delete ---
+# --- Add / Remove Procs ---
 proc addStacked(win: var GUIWindow, frame: GUIWidget) =
   # Mark popup stack
   if isNil(win.above):
@@ -280,11 +280,12 @@ proc delFrame(win: var GUIWindow, frame: GUIWidget) =
     # Remove Hover
     win.hover = nil
   # Unhold if is holded
-  if frame == win.hold:
+  if frame.test(wHold):
     handle(frame, outHold)
     clear(frame, wHold)
     # Remove Hold
-    win.hold = nil
+    if frame == win.hold:
+      win.hold = nil
   # Handle FrameOut
   handle(frame, outFrame)
   # Unmark Visible
@@ -383,21 +384,20 @@ proc findWidget(win: var GUIWindow): GUIWidget =
     if not isNil(win.hover) and test(win.hover, wGrab):
       result = win.hover
     elif isNil(win.above): # Not Stacked
-      if not isNil(win.hold): result = win.hold
-      else: # Find on frames if was not holded
+      if isNil(win.hold): # Find on frames if was not holded
         for widget in reverse(win.last):
           if pointOnFrame(widget, state.mx, state.my):
             result = widget
             break # A frame was hovered
+      else: result = win.hold
     else: # Stacked
       for widget in reverse(win.last):
-        if not widget.test(wStacked): break
+        if widget.next == win.above: break
         if widget.test(wHold) or pointOnFrame(widget, state.mx, state.my):
           result = widget
           break # A popup was hovered or is holded
       # Use Holded Widget if a popup was not found
-      if isNil(result) and not isNil(win.hold):
-        result = win.hold
+      if isNil(result): result = win.hold
     # Change current hover
     if result != win.hover:
       # Unhover prev hover
@@ -409,15 +409,21 @@ proc findWidget(win: var GUIWindow): GUIWidget =
         result.set(wHover)
       # Change current hover
       win.hover = result
+    # If is grabbed of holded, check if is in area
     elif not isNil(result) and test(result, wGrab or wHold):
       if pointOnFrame(result, state.mx, state.my):
         result.set(wHover)
       else: result.clear(wHover)
   of evKeyDown, evKeyUp:
-    if isNil(win.focus) or isNil(win.above) or test(win.focus, wStacked):
+    if not isNil(win.focus): # Use normal focus
       result = win.focus
-    elif not isNil(win.hold):
-      result = win.hold
+    elif not isNil(win.above): # Stacked
+      for widget in reverse(win.above):
+        if widget.next == win.above: break
+        if widget.test(wHold):
+          result = widget
+          break # Hold Found
+    if isNil(result): result = win.hold
 
 proc handleEvents(win: var GUIWindow) =
   var event: TXEvent
