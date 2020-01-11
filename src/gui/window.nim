@@ -49,6 +49,8 @@ type
     hold: GUIWidget
     focus: GUIWidget
     hover: GUIWidget
+    # Auxiliar Flags
+    aux: GUIFlags
 
 signal Window:
   Terminate
@@ -341,9 +343,34 @@ proc grab(win: var GUIWindow, widget: GUIWidget, evtype: int32) =
     widget.clear(wGrab)
 
 proc checkHandlers(win: var GUIWindow, widget: GUIWidget) =
-  # Check or Change Focused
+  # -- Check/Change Hold
+  if ((win.aux xor widget.flags) and wHold) == wHold:
+    if (widget.flags and wHold) == wHold:
+      # Change Hold is not stacked
+      if not widget.test(wStacked) and widget != win.hold:
+        let hold = win.hold
+        # Unhold prev widget
+        if not isNil(hold):
+          hold.handle(outHold)
+          hold.clear(wHold)
+        # Change Current Hold
+        win.hold = widget
+      # Unfocus if not equal
+      if widget != win.focus and not isNil(win.focus):
+        handle(win.focus, outFocus)
+        clear(win.focus, wFocus)
+        # Remove current focus
+        win.focus = nil
+      # Handle Holded  
+      widget.handle(inHold)
+    else: # Remove Hold
+      widget.handle(outHold)
+      # Remove current hold
+      if widget == win.hold:
+        win.hold = nil
+  # -- Check/Change Focus
   let check = # Check if is enabled and visible
-    (widget.flags and wFocusCheck) xor 0x30'u16
+    (widget.flags and 0x4b0) xor 0x30'u16
   if check == wFocus:
     if widget != win.focus:
       let focus = win.focus
@@ -361,24 +388,8 @@ proc checkHandlers(win: var GUIWindow, widget: GUIWidget) =
     win.focus = nil
   elif (check and wFocus) == wFocus and check > wFocus:
     widget.clear(wFocus) # Invalid focus
-  # Check or Change Hold (if is not stacked)
-  if (widget.flags and (wHold or wStacked)) == wHold:
-    if widget != win.hold:
-      let hold = win.hold
-      # Unhold prev widget
-      if not isNil(hold):
-        hold.handle(outHold)
-        hold.clear(wHold)
-      # Change Current Hold
-      widget.handle(inHold)
-      win.hold = widget
-  elif widget == win.hold:
-    widget.handle(outHold)
-    # Remove current hold
-    win.hold = nil
 
-proc findWidget(win: var GUIWindow): GUIWidget =
-  let state = addr win.state
+proc findWidget(win: var GUIWindow, state: ptr GUIState, tabbed: bool): GUIWidget =
   case state.eventType
   of evMouseMove, evMouseClick, evMouseRelease, evMouseAxis:
     if not isNil(win.hover) and test(win.hover, wGrab):
@@ -404,6 +415,7 @@ proc findWidget(win: var GUIWindow): GUIWidget =
       if not isNil(win.hover):
         handle(win.hover, outHover)
         clear(win.hover, wHover)
+      # Make hover current
       if not isNil(result):
         result.handle(inHover)
         result.set(wHover)
@@ -415,8 +427,8 @@ proc findWidget(win: var GUIWindow): GUIWidget =
         result.set(wHover)
       else: result.clear(wHover)
   of evKeyDown, evKeyUp:
-    if not isNil(win.focus): # Use normal focus
-      result = win.focus
+    if not isNil(win.focus) or tabbed:
+      return win.focus # Use normal focus
     elif not isNil(win.above): # Stacked
       for widget in reverse(win.above):
         if widget.next == win.above: break
@@ -449,22 +461,25 @@ proc handleEvents(win: var GUIWindow) =
         win.root.set(wDirty)
     else: # Check if the event is valid for be processed by a widget
       if translateXEvent(win.state, win.display, addr event, win.xic):
-        # Find Widget for process event
-        let found = findWidget(win)
+        let # Avoids win.state everywhere
+          state = addr win.state
+          tabbed = state.eventType == evKeyDown and
+            (state.key == RightTab or state.key == LeftTab)
+          # Find Widget for Process Event
+          found = findWidget(win, state, tabbed)
         # Process event if was found
         if not isNil(found):
-          let state = addr win.state
+          # Save Prev Flags
+          win.aux = found.flags
           # Grab/UnGrab x11 window and widget
           win.grab(found, event.theType)
           # Step focus or process event
-          if state.eventType == evKeyDown and
-              (state.key == RightTab or
-              state.key == LeftTab):
+          if tabbed: # Step Focused if Tabbed
             step(found, state.key == LeftTab)
           else: # Process Event
             relative(found, state)
             event(found, state)
-          # Check Handlers
+          # Check Handlers -Focus and Hold-
           checkHandlers(win, found)
 
 proc handleSignals(win: var GUIWindow): bool =
@@ -501,7 +516,10 @@ proc handleSignals(win: var GUIWindow): bool =
             region(frame.surf, frame.region)
     else: # Process signal to widgets
       for widget in forward(win.root):
-        if signal.id in widget: 
+        if signal.id in widget:
+          # Save Prev Flags
+          win.aux = widget.flags
+          # Trigger Signal
           trigger(widget, signal)
           # Check if hold or focus is changed
           checkHandlers(win, widget)
@@ -519,6 +537,9 @@ proc tick*(win: var GUIWindow): bool =
   for widget in forward(win.root):
     # is Update and/or Layout marked?
     if any(widget, 0x0E):
+      # Save Prev Flags
+      win.aux = widget.flags
+      # Do Layout or Update
       if test(widget, wUpdate):
         update(widget)
       if any(widget, 0x0C):

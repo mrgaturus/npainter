@@ -52,9 +52,25 @@ proc reactive(self: GUIContainer, widget: GUIWidget) =
   # Partial Relayout Reaction
   if (widget.flags and wDirty) == wDirty:
     self.flags = self.flags or 0x804'u16
-  # Check/Change Focus
+  # Check Hold and Focus
   let check = # Check if is enabled and visible
-    (widget.flags and wFocusCheck) xor 0x30'u16
+    (widget.flags and 0x4b0) xor 0x30'u16
+  # Check/Change Hold
+  if (check and wHold) == wHold:
+    if widget != self.hold:
+      let hold = self.hold
+      if isNil(hold): 
+        self.set(wHold)
+      elif hold.test(wHold):
+        hold.handle(outHold)
+        hold.clear(wHold)
+        # React to indicators
+        self.semiReactive(hold.flags)
+      # Change Current Hold
+      self.hold = widget
+  elif widget == self.hold:
+    self.clear(wHold)
+  # Check/Change Focus
   if check == wFocus:
     if widget != self.focus:
       let focus = self.focus
@@ -76,21 +92,7 @@ proc reactive(self: GUIContainer, widget: GUIWidget) =
     self.clear(wFocus)
   elif (check and wFocus) == wFocus and check > wFocus:
     widget.clear(wFocus) # Invalid focus
-  # Check/Change Hold
-  if (widget.flags and wHold) == wHold:
-    if widget != self.hold:
-      let hold = self.hold
-      if isNil(hold): 
-        self.set(wHold)
-      elif hold.test(wHold):
-        hold.handle(outHold)
-        hold.clear(wHold)
-        # React to indicators
-        self.semiReactive(hold.flags)
-      # Change Current Hold
-      self.hold = widget
-  elif widget == self.hold:
-    self.clear(wHold)
+
 
 # CONTAINER METHODS
 method draw(self: GUIContainer, ctx: ptr CTXRender) =
