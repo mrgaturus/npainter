@@ -100,26 +100,58 @@ when isMainModule:
     blank = new GUIBlank
     blank.flags = wStandard
     blank.rect = GUIRect(x: 20, y: 20, w: 100, h: 100)
-    # Menu Blank #2
-    con = newGUIContainer(lay, GUIColor(r: 0.2, g: 0.2, b: 0.2, a: 0.2))
-    con.flags = wPopup
-    con.rect.w = 200
-    con.rect.h = 100
-    # Sub-Blank #1
-    sub = new GUIBlank
-    sub.flags = wStandard
-    sub.rect = GUIRect(x: 10, y: 10, w: 20, h: 20)
-    con.add(sub)
-    # Sub-Blank #2
-    sub = new GUIBlank
-    sub.flags = wStandard
-    sub.rect = GUIRect(x: 40, y: 10, w: 20, h: 20)
-    con.add(sub)
-    # Add Blank 2
-    blank.frame = con
+    block: # Menu Blank #2
+      con = newGUIContainer(lay, GUIColor(r: 0.2, g: 0.2, b: 0.2, a: 0.2))
+      con.flags = wPopup
+      con.rect.w = 200
+      con.rect.h = 100
+      # Sub-Blank #1
+      sub = new GUIBlank
+      sub.flags = wStandard
+      sub.rect = GUIRect(x: 10, y: 10, w: 20, h: 20)
+      block: # Sub Menu #1
+        let subcon = newGUIContainer(lay, GUIColor(r: 0.5, g: 0.2, b: 0.2, a: 0.2))
+        subcon.flags = wPopup
+        subcon.rect.w = 200
+        subcon.rect.h = 80
+        # Sub-sub blank 1#
+        var subsub = new GUIBlank
+        subsub.flags = wStandard
+        subsub.rect = GUIRect(x: 10, y: 10, w: 180, h: 20)
+        subcon.add(subsub)
+        # Sub-sub blank 2#
+        subsub = new GUIBlank
+        subsub.flags = wStandard
+        subsub.rect = GUIRect(x: 10, y: 40, w: 180, h: 20)
+        subcon.add(subsub)
+        # Add to Sub
+        sub.frame = subcon
+      con.add(sub)
+      # Sub-Blank #2
+      sub = new GUIBlank
+      sub.flags = wStandard
+      sub.rect = GUIRect(x: 40, y: 10, w: 20, h: 20)
+      block: # Sub Menu #1
+        let subcon = newGUIContainer(lay, GUIColor(r: 0.2, g: 0.2, b: 0.8, a: 0.2))
+        subcon.flags = wEnabled
+        subcon.rect.w = 200
+        subcon.rect.h = 80
+        # Sub-sub blank 1#
+        var subsub = new GUIBlank
+        subsub.flags = wStandard
+        subsub.rect = GUIRect(x: 10, y: 10, w: 180, h: 20)
+        subcon.add(subsub)
+        # Sub-sub blank 2#
+        subsub = new GUIBlank
+        subsub.flags = wStandard
+        subsub.rect = GUIRect(x: 10, y: 40, w: 180, h: 20)
+        subcon.add(subsub)
+        # Add to Sub
+        sub.frame = subcon
+      con.add(sub)
+      # Add Blank 2
+      blank.frame = con
     win.add(blank)
-
-
   # MAIN LOOP
   var running = win.exec()
   while running:

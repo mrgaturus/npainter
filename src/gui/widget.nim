@@ -92,9 +92,9 @@ proc test*(self: GUIWidget, mask: GUIFlags): bool {.inline.} =
 proc `in`*(signal: uint8, self: GUIWidget): bool {.inline.} =
   return signal in self.signals
 
-# -----------
-# WIDGET RECT
-# -----------
+# ---------------------
+# WIDGET RELATIVE PROCS
+# ---------------------
 
 proc pointOnArea*(widget: GUIWidget, x, y: int32): bool =
   result = widget.test(wVisible)
@@ -103,16 +103,6 @@ proc pointOnArea*(widget: GUIWidget, x, y: int32): bool =
     result =
       x >= rect.x and x <= rect.x + rect.w and
       y >= rect.y and y <= rect.y + rect.h
-
-proc relative*(rect: var GUIRect, state: ptr GUIState) =
-  state.mx -= rect.x
-  state.my -= rect.y
-
-template absX*(widget: GUIWidget, x: int32): int32 =
-  return widget.rect.x + x
-
-template absY*(widget: GUIWidget, y: int32): int32 =
-  return widget.rect.y + y
 
 # ------------------------
 # WIDGET FRAMED open/close
@@ -164,8 +154,8 @@ proc pointOnFrame*(widget: GUIWidget, x, y: int32): bool =
     y >= widget.pivot.y and y <= widget.pivot.y + widget.rect.h
 
 proc relative*(widget: GUIWidget, state: ptr GUIState) =
-  state.mx -= widget.pivot.x
-  state.my -= widget.pivot.y
+  state.rx = state.mx - widget.pivot.x
+  state.ry = state.my - widget.pivot.y
 
 proc region*(widget: GUIWidget): GUIRect {.inline.} =
   # Make sure rect x, y is always 0

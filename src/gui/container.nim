@@ -59,7 +59,7 @@ proc reactive(self: GUIContainer, widget: GUIWidget) =
   if (check and wHold) == wHold:
     if widget != self.hold:
       let hold = self.hold
-      if isNil(hold): 
+      if isNil(hold):
         self.set(wHold)
       elif hold.test(wHold):
         hold.handle(outHold)
@@ -74,7 +74,7 @@ proc reactive(self: GUIContainer, widget: GUIWidget) =
   if check == wFocus:
     if widget != self.focus:
       let focus = self.focus
-      if isNil(focus): 
+      if isNil(focus):
         self.set(wFocus)
       elif focus.test(wFocus):
         # Handle Focus Out
@@ -131,7 +131,7 @@ method event(self: GUIContainer, state: ptr GUIState) =
       found = self.hover # Cached Widget
       # If is Grabbed don't find
       if self.test(wGrab) and state.eventType != evMouseClick: discard
-      elif isNil(found) or not pointOnArea(found, state.mx, state.my):
+      elif isNil(found) or not pointOnArea(found, state.rx, state.ry):
         # Handle HoverOut
         if not isNil(found):
           found.handle(outHover)
@@ -142,7 +142,7 @@ method event(self: GUIContainer, state: ptr GUIState) =
           found = nil
         # Search hovered widget
         for widget in forward(self.first):
-          if pointOnArea(widget, state.mx, state.my):
+          if pointOnArea(widget, state.rx, state.ry):
             found = widget
             # Handle HoverIn
             found.handle(inHover)
@@ -161,11 +161,11 @@ method event(self: GUIContainer, state: ptr GUIState) =
   if not isNil(found):
     if state.eventType >= evMouseClick:
       # Heredate Grab and Hover
-      found.flags = (found.flags and not wGrab) or 
+      found.flags = (found.flags and not wGrab) or
         (self.flags and wGrab)
       # Check if cursor is on boundaries
       if found.any(wGrab or wHold):
-        if pointOnArea(found, state.mx, state.my):
+        if pointOnArea(found, state.rx, state.ry):
           found.set(wHover)
         else: found.clear(wHover)
     found.event(state)
@@ -200,7 +200,7 @@ method step(self: GUIContainer, back: bool) =
 
 method layout(self: GUIContainer) =
   # Check if is Root Dirty or Partially Dirty
-  let dirty = 
+  let dirty =
     self.any(wDirty or cDirty)
   if dirty:
     layout(self, self.layout)
@@ -252,7 +252,7 @@ method handle(self: GUIContainer, kind: GUIHandle) =
     # Call In/Out Method
     widget.handle(kind)
     # Turn on or off the flag
-    if kind < outFocus: 
+    if kind < outFocus:
       widget.set(flag)
     else: widget.clear(flag)
     # Only React to Draw, Update, Layout

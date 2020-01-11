@@ -33,7 +33,8 @@ type
     eventType*: GUIEvent
     key*: uint
     # Mouse Event Detail
-    mx*, my*: int32
+    mx*, my*: int32 # Absolute
+    rx*, ry*: int32 # Relative
     pressure*: float32
     # Key Event Detail
     utf8state*: int32
@@ -48,9 +49,9 @@ type
     next: GUISignal
     # Signal or Callback
     case kind: SKind
-    of sSignal: 
+    of sSignal:
       id*, msg*: uint8
-    of sCallback: 
+    of sCallback:
       cb: GUICallback
     # Signal Data
     data*: GUISData
@@ -159,7 +160,7 @@ iterator pollQueue*(): GUISignal =
 proc callSignal*(signal: GUISignal): bool =
   result = signal.kind == sCallback
   if result: signal.cb(
-    queue.global, 
+    queue.global,
     cast[pointer](addr signal.data)
   )
 

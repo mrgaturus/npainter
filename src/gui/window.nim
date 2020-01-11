@@ -260,7 +260,7 @@ proc addStacked(win: var GUIWindow, frame: GUIWidget) =
 proc addFrame(win: var GUIWindow, frame: GUIWidget) =
   # Add to left of head of stack or to tail
   if isNil(win.above): addLast(win.last, frame)
-  else: addLeft(win.above, frame) 
+  else: addLeft(win.above, frame)
   # Alloc or Reuse a CTXFrame
   useFrame(win.ctx, frame.surf)
   # Handle FrameIn
@@ -361,7 +361,7 @@ proc checkHandlers(win: var GUIWindow, widget: GUIWidget) =
         clear(win.focus, wFocus)
         # Remove current focus
         win.focus = nil
-      # Handle Holded  
+      # Handle Holded
       widget.handle(inHold)
     else: # Remove Hold
       widget.handle(outHold)
@@ -389,7 +389,8 @@ proc checkHandlers(win: var GUIWindow, widget: GUIWidget) =
   elif (check and wFocus) == wFocus and check > wFocus:
     widget.clear(wFocus) # Invalid focus
 
-proc findWidget(win: var GUIWindow, state: ptr GUIState, tabbed: bool): GUIWidget =
+proc findWidget(win: var GUIWindow, state: ptr GUIState,
+    tabbed: bool): GUIWidget =
   case state.eventType
   of evMouseMove, evMouseClick, evMouseRelease, evMouseAxis:
     if not isNil(win.hover) and test(win.hover, wGrab):
