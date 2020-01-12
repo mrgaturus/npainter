@@ -1,7 +1,7 @@
 # GUI Objects
 from builder import signal
 from event import GUIState, GUISignal, pushSignal
-from render import CTXRender, GUIRect, GUIPivot
+from render import CTXRender, GUIRect
 from context import CTXFrame
 
 const # For now is better use traditional flags
@@ -42,9 +42,9 @@ type
     # Widget Basic Info
     signals*: GUISignals
     flags*: GUIFlags
-    rect*: GUIRect
+    # Widget Rects
+    rect*, hint*: GUIRect
     # Widget floating
-    pivot: GUIPivot
     surf*: CTXFrame
 
 signal Frame:
@@ -126,8 +126,8 @@ proc close*(widget: GUIWidget) =
   )
 
 proc move*(widget: GUIWidget, x, y: int32) =
-  widget.pivot.x = x
-  widget.pivot.y = y
+  widget.hint.x = x
+  widget.hint.y = y
   # Send Widget to Window for move
   pushSignal(
     FrameID, msgRegion,
@@ -151,18 +151,18 @@ proc resize*(widget: GUIWidget, w, h: int32) =
 
 proc pointOnFrame*(widget: GUIWidget, x, y: int32): bool =
   return
-    x >= widget.pivot.x and x <= widget.pivot.x + widget.rect.w and
-    y >= widget.pivot.y and y <= widget.pivot.y + widget.rect.h
+    x >= widget.hint.x and x <= widget.hint.x + widget.rect.w and
+    y >= widget.hint.y and y <= widget.hint.y + widget.rect.h
 
 proc relative*(widget: GUIWidget, state: ptr GUIState) =
-  state.rx = state.mx - widget.pivot.x
-  state.ry = state.my - widget.pivot.y
+  state.rx = state.mx - widget.hint.x
+  state.ry = state.my - widget.hint.y
 
 proc region*(widget: GUIWidget): GUIRect {.inline.} =
   # Make sure rect x, y is always 0
   zeroMem(addr widget.rect, sizeof(int32)*2)
-  # x, y -> pivot, w, h -> rect
-  copyMem(addr result, addr widget.pivot, sizeof(GUIPivot))
+  # x, y -> hint, w, h -> rect
+  copyMem(addr result, addr widget.hint, sizeof(int32)*2)
   copyMem(addr result.w, addr widget.rect.w, sizeof(int32)*2)
 
 # ------------
