@@ -12,22 +12,12 @@ type
   # GUIContainer, GUILayout and Decorator
   GUILayout* = ref object of RootObj
   GUIContainer* = ref object of GUIWidget
-    first, last: GUIWidget  # Iterating / Inserting
+    first*, last*: GUIWidget  # Iterating / Inserting
     hold, focus, hover: GUIWidget # Cache Pointers
-    layout*: GUILayout
-    color*: GUIColor
+    color*: GUIColor # Background Color
 
 # LAYOUT ABSTRACT METHOD
-method layout*(container: GUIContainer, self: GUILayout) {.base.} = discard
-
-# CONTAINER PROCS
-proc newGUIContainer*(layout: GUILayout, color: GUIColor): GUIContainer =
-  new result
-  # GUILayout
-  result.layout = layout
-  result.color = color
-  # GUIWidget Default Flags
-  result.flags = wStandard
+method arrange*(container: GUIContainer) {.base.} = discard
 
 proc add*(self: GUIContainer, widget: GUIWidget) =
   # Merge Widget Signals to Self
@@ -92,7 +82,6 @@ proc reactive(self: GUIContainer, widget: GUIWidget) =
     self.clear(wFocus)
   elif (check and wFocus) == wFocus and check > wFocus:
     widget.clear(wFocus) # Invalid focus
-
 
 # CONTAINER METHODS
 method draw(self: GUIContainer, ctx: ptr CTXRender) =
@@ -203,7 +192,7 @@ method layout(self: GUIContainer) =
   let dirty =
     self.any(wDirty or cDirty)
   if dirty:
-    layout(self, self.layout)
+    arrange(self) # Arrange Widgets
     self.set(cDraw) # BG Draw
   for widget in forward(self.first):
     # Mark as dirty if is dirty

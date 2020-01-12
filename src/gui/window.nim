@@ -154,13 +154,16 @@ proc createEGL(win: var GUIWindow) =
 # WINDOW CREATION PROCS
 # --------------------
 
-proc newGUIWindow*(global: pointer, w, h: int32, layout: GUILayout): GUIWindow =
+proc newGUIWindow*(root: GUIContainer, global: pointer): GUIWindow =
   # Create new X11 Display
   result.display = XOpenDisplay(nil)
   if result.display.isNil:
     echo "ERROR: failed opening X11 display"
-  # Initialize X11 Window and IM
-  result.xID = createXWindow(result.display, uint32 w, uint32 h)
+  # Initialize X11 Window
+  result.xID = createXWindow(result.display, 
+    uint32(root.rect.w), uint32(root.rect.h)
+  ) # Use root initial dimensions
+  # Initialize XIM/XIC
   result.createXIM()
   # Alloc a 32 byte UTF8Buffer
   result.state.utf8buffer(32)
@@ -169,28 +172,13 @@ proc newGUIWindow*(global: pointer, w, h: int32, layout: GUILayout): GUIWindow =
   result.ctx = newGUIContext()
   # Disable VSync - Avoid Input Lag
   discard eglSwapInterval(result.eglDsp, 0)
-  # Create new root container
-  block:
-    let color = GUIColor(r: 0, g: 0, b: 0, a: 1)
-    var root = newGUIContainer(layout, color)
-    root.signals = {WindowID, FrameID}
-    root.rect.w = w
-    root.rect.h = h
-    # Set the new root at first and next
-    result.root = root
-    result.last = root
-  # Alloc Global GUIQueue with Global
+  # Root has Window and Frame Signals
+  root.signals = {WindowID, FrameID}
+  # Set the new root at first and next
+  result.root = root
+  result.last = root
+  # Alloc GUIQueue in Global
   allocQueue(global)
-
-# --------------------
-# WINDOW GUI CREATION PROCS
-# --------------------
-
-proc add*(win: var GUIWindow, widget: GUIWidget, region: bool = true) =
-  if region: # Create new Region to Root Surf
-    createRegion(win.ctx, addr widget.rect)
-  # Add Widget to Root
-  add(win.root, widget)
 
 # --------------
 # WINDOW EXEC/EXIT
@@ -199,8 +187,12 @@ proc add*(win: var GUIWindow, widget: GUIWidget, region: bool = true) =
 proc exec*(win: var GUIWindow): bool =
   # Shows the win on the screen
   result = XMapWindow(win.display, win.xID) != BadWindow
-  discard XSync(win.display, 0)
-  # Resize Root FBO
+  discard XSync(win.display, 0) # Wait for show it
+  # Declare Root Regions
+  for widget in forward(win.root.first):
+    if (widget.flags and wOpaque) == 0:
+      createRegion(win.ctx, addr widget.rect)
+  # Initial Size for Root FBO
   resize(win.ctx, addr win.root.rect)
   allocRegions(win.ctx)
   # Mark root as Dirty

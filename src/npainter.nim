@@ -13,12 +13,12 @@ type
     frame: GUIWidget
     t: GUITimer
 
-proc click(g: ptr Counter, d: pointer) =
+proc click*(g: ptr Counter, d: pointer) =
   inc(g.clicked)
   pushSignal(ExampleID, msgA, nil, 0)
   echo "Click Count: ", g.clicked
 
-proc release(g: ptr Counter, d: pointer) =
+proc release*(g: ptr Counter, d: pointer) =
   inc(g.released)
   pushSignal(ExampleID, msgB, nil, 0)
   echo "Released Count: ", g.clicked
@@ -82,26 +82,29 @@ when isMainModule:
     released: 0
   )
   # Create a new Window
-  let lay = new GUILayout
-  var win = newGUIWindow(addr counter, 1024, 600, lay)
-
+  var win: GUIWindow
   # Create Widgets
   block:
     # Create two blanks
     var
       sub, blank: GUIBlank
       con: GUIContainer
+    # Initialize Root
+    let root = new GUIContainer
+    root.rect.w = 1024
+    root.rect.h = 600
     # --- Blank #1 ---
     blank = new GUIBlank
     blank.flags = wStandard
     blank.rect = GUIRect(x: 20, y: 150, w: 100, h: 100)
-    win.add(blank)
+    root.add(blank)
     # --- Blank #2 ---
     blank = new GUIBlank
-    blank.flags = wStandard
+    blank.flags = wStandard or wOpaque
     blank.rect = GUIRect(x: 20, y: 20, w: 100, h: 100)
     block: # Menu Blank #2
-      con = newGUIContainer(lay, GUIColor(r: 0.2, g: 0.2, b: 0.2, a: 0.2))
+      con = new GUIContainer
+      con.color = GUIColor(r: 0.2, g: 0.2, b: 0.2, a: 0.2)
       con.flags = wPopup
       con.rect.w = 200
       con.rect.h = 100
@@ -110,7 +113,8 @@ when isMainModule:
       sub.flags = wStandard
       sub.rect = GUIRect(x: 10, y: 10, w: 20, h: 20)
       block: # Sub Menu #1
-        let subcon = newGUIContainer(lay, GUIColor(r: 0.5, g: 0.2, b: 0.2, a: 0.2))
+        let subcon = new GUIContainer
+        subcon.color = GUIColor(r: 0.5, g: 0.2, b: 0.2, a: 0.2)
         subcon.flags = wPopup
         subcon.rect.w = 200
         subcon.rect.h = 80
@@ -132,7 +136,8 @@ when isMainModule:
       sub.flags = wStandard
       sub.rect = GUIRect(x: 40, y: 10, w: 20, h: 20)
       block: # Sub Menu #1
-        let subcon = newGUIContainer(lay, GUIColor(r: 0.2, g: 0.2, b: 0.8, a: 0.2))
+        let subcon = new GUIContainer
+        subcon.color = GUIColor(r: 0.2, g: 0.2, b: 0.8, a: 0.2)
         subcon.flags = wEnabled
         subcon.rect.w = 200
         subcon.rect.h = 80
@@ -151,7 +156,9 @@ when isMainModule:
       con.add(sub)
       # Add Blank 2
       blank.frame = con
-    win.add(blank)
+    root.add(blank)
+    # Creates new Window
+    win = newGUIWindow(root, addr counter)
   # MAIN LOOP
   var running = win.exec()
   while running:

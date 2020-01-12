@@ -18,12 +18,13 @@ const # For now is better use traditional flags
   wFocus* = uint16(1 shl 7)
   wHover* = uint16(1 shl 8)
   wGrab* = uint16(1 shl 9)
-  # Handlers - Focus + Grab
   wHold* = uint16(1 shl 10)
+  # Opaque - No Render Region for Root
+  wOpaque* = uint16(1 shl 13)
+  # ---------------------
   # Default Flags - Widget Constructor
   wStandard* = 0x30'u16 # Visible-Enabled
   wPopup* = 0x60'u16 # Enabled-Stacked
-  # ---------------------
   # Semi-Automatic Checks
   wFocusCheck* = 0xb0'u16
   wHoverGrab* = 0x300'u16
