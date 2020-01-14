@@ -143,8 +143,7 @@ method event(self: GUIContainer, state: ptr GUIState) =
         self.hover = found
     of evKeyDown, evKeyUp:
       # Use Focused widget
-      if not isNil(self.focus):
-        found = self.focus
+      found = self.focus
 
   if not isNil(found):
     if state.eventType >= evMouseClick:
