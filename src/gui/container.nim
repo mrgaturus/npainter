@@ -164,8 +164,6 @@ method trigger(self: GUIContainer, signal: GUISignal) =
     if signal.id in widget:
       widget.trigger(signal)
       self.reactive(widget)
-      # Use inFocus for who is the focused
-      widget.clear(wFocus)
 
 method step(self: GUIContainer, back: bool) =
   var focus =
