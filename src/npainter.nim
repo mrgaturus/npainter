@@ -100,7 +100,7 @@ when isMainModule:
     root.add(blank)
     # --- Blank #2 ---
     blank = new GUIBlank
-    blank.flags = wStandard or wOpaque
+    blank.flags = wStandard
     blank.rect = GUIRect(x: 20, y: 20, w: 100, h: 100)
     block: # Menu Blank #2
       con = new GUIContainer

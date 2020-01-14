@@ -189,12 +189,13 @@ proc exec*(win: var GUIWindow): bool =
   result = XMapWindow(win.display, win.xID) != BadWindow
   discard XSync(win.display, 0) # Wait for show it
   # Declare Root Regions
+  var count = 0'i32 # Count Root Widgets
   for widget in forward(win.root.first):
-    if (widget.flags and wOpaque) == 0:
-      createRegion(win.ctx, addr widget.rect)
+    inc(count) # Dirty but only once
   # Initial Size for Root FBO
   resize(win.ctx, addr win.root.rect)
-  allocRegions(win.ctx)
+  # Alloc Max Number of Regions
+  allocRegions(win.ctx, count)
   # Mark root as Dirty
   set(win.root, wDirty)
 
@@ -212,6 +213,18 @@ proc exit*(win: var GUIWindow) =
   discard XCloseIM(win.xim)
   discard XDestroyWindow(win.display, win.xID)
   discard XCloseDisplay(win.display)
+
+# ------------------------
+# WINDOW ROOT REGIONS PROC
+# ------------------------
+
+proc regions*(win: var GUIWindow) =
+  # Clear Regions
+  clearRegions(win.ctx)
+  # Redefine Regions
+  for widget in forward(win.root.first):
+    if (widget.flags and (wVisible or wOpaque)) == wVisible:
+      addRegion(win.ctx, widget.rect)
 
 # --------------------
 # WINDOW FLOATING PRIVATE PROCS
@@ -494,14 +507,14 @@ proc handleSignals(win: var GUIWindow): bool =
       if frame != nil:
         case FrameMsg(signal.msg)
         of msgRegion: # Move or resize
-          if frame.surf != nil:
+          if not isNil(frame.surf):
             if region(frame.surf, frame.region):
               frame.set(wDirty)
         of msgClose: # Remove frame from window
-          if frame.surf != nil:
+          if not isNil(frame.surf):
             delFrame(win, frame)
         of msgOpen: # Add frame to window
-          if frame.surf == nil:
+          if isNil(frame.surf):
             if test(frame, wStacked):
               addStacked(win, frame)
             else: addFrame(win, frame)
@@ -537,9 +550,9 @@ proc tick*(win: var GUIWindow): bool =
         update(widget)
       if any(widget, 0x0C):
         layout(widget)
-        # Update Regions
-        if widget.prev == nil:
-          update(win.ctx)
+        # Update Root Regions
+        if isNil(widget.surf):
+          regions(win)
         # Remove flags
         widget.flags = # Unmark as layout and force draw
           widget.flags and not 0x0C'u16 or wDraw

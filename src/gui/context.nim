@@ -5,8 +5,6 @@ import ../libs/gl
 import render
 
 type
-  # Root Frame Regions
-  CTXRegion = ptr GUIRect
   # Floating Frames
   CTXFrame* = ref object
     vao, vbo, tex, fbo: GLuint
@@ -21,12 +19,10 @@ type
     # Root Frame
     vao, vbo0, vbo1: GLuint
     tex, fbo: GLuint
+    visible: int32
     # GUI viewport cache
     vWidth, vHeight: int32
     vCache: array[16, float32]
-    # Root Regions
-    regions: seq[CTXRegion]
-    visible: int32
     # Unused Frames
     unused: seq[CTXFrame]
 
@@ -77,7 +73,11 @@ proc newGUIContext*(): GUIContext =
   glBindTexture(GL_TEXTURE_2D, 0)
   glBindFramebuffer(GL_FRAMEBUFFER, 0)
 
-proc allocRegions*(ctx: var GUIContext) =
+# ------------------
+# CONTEXT ROOT PROCS
+# ------------------
+
+proc allocRegions*(ctx: var GUIContext, count: int32) =
   # Create New VAO
   glGenVertexArrays(1, addr ctx.vao)
   glGenBuffers(2, addr ctx.vbo0)
@@ -85,11 +85,11 @@ proc allocRegions*(ctx: var GUIContext) =
   glBindVertexArray(ctx.vao)
   # Vertex Buffer (VVVV)
   glBindBuffer(GL_ARRAY_BUFFER, ctx.vbo0)
-  glBufferData(GL_ARRAY_BUFFER, len(ctx.regions) * vertSize, nil, GL_DYNAMIC_DRAW)
+  glBufferData(GL_ARRAY_BUFFER, count * vertSize, nil, GL_DYNAMIC_DRAW)
   glVertexAttribPointer(0, 2, cGL_FLOAT, false, 0, cast[pointer](0))
   # Coords Buffer (CCCC)
   glBindBuffer(GL_ARRAY_BUFFER, ctx.vbo1)
-  glBufferData(GL_ARRAY_BUFFER, len(ctx.regions) * vertSize, nil, GL_DYNAMIC_DRAW)
+  glBufferData(GL_ARRAY_BUFFER, count * vertSize, nil, GL_DYNAMIC_DRAW)
   glVertexAttribPointer(1, 2, cGL_FLOAT, false, 0, cast[pointer](0))
   # Enable Attribs
   glEnableVertexAttribArray(0)
@@ -98,39 +98,31 @@ proc allocRegions*(ctx: var GUIContext) =
   glBindBuffer(GL_ARRAY_BUFFER, 0)
   glBindVertexArray(0)
 
-# -------------------
-# CONTEXT WINDOW PROCS
-# -------------------
+proc clearRegions*(ctx: var GUIContext) {.inline.} =
+  ctx.visible = 0 # Only Move Cursor to 0
 
-proc createRegion*(ctx: var GUIContext, rect: CTXRegion) =
-  ctx.regions.add(rect)
+proc addRegion*(ctx: var GUIContext, rect: var GUIRect) =
+  if rect.w > 0 and rect.h > 0:
+    let offset = vertSize * ctx.visible
+    var rectArray = [
+      float32 rect.x, float32 rect.y,
+      float32(rect.x + rect.w), float32 rect.y,
+      float32 rect.x, float32(rect.y + rect.h),
+      float32(rect.x + rect.w), float32(rect.y + rect.h)
+    ]
+    # Vertex Update
+    glBindBuffer(GL_ARRAY_BUFFER, ctx.vbo0)
+    glBufferSubData(GL_ARRAY_BUFFER, offset, vertSize, addr rectArray[0])
+    # Coord Update
+    glBindBuffer(GL_ARRAY_BUFFER, ctx.vbo1)
+    uvNormalize(addr rectArray[0], float32 ctx.vWidth, float32 ctx.vHeight)
+    glBufferSubData(GL_ARRAY_BUFFER, offset, vertSize, addr rectArray[0])
+    # Unbind Current Buffer
+    glBindBuffer(GL_ARRAY_BUFFER, 0)
+    # Increment Visible Regions
+    inc(ctx.visible)
 
-proc update*(ctx: var GUIContext) =
-  # Visible Count
-  var count = 0'i32
-  # Update VBO With Regions
-  for rect in ctx.regions:
-    if rect.w > 0 and rect.h > 0:
-      let offset = vertSize * count
-      var rectArray = [
-        float32 rect.x, float32 rect.y,
-        float32(rect.x + rect.w), float32 rect.y,
-        float32 rect.x, float32(rect.y + rect.h),
-        float32(rect.x + rect.w), float32(rect.y + rect.h)
-      ]
-      # Vertex Update
-      glBindBuffer(GL_ARRAY_BUFFER, ctx.vbo0)
-      glBufferSubData(GL_ARRAY_BUFFER, offset, vertSize, addr rectArray[0])
-      # Coord Update
-      glBindBuffer(GL_ARRAY_BUFFER, ctx.vbo1)
-      uvNormalize(addr rectArray[0], float32 ctx.vWidth, float32 ctx.vHeight)
-      glBufferSubData(GL_ARRAY_BUFFER, offset, vertSize, addr rectArray[0])
-      # Increment Visible Regions
-      inc(count)
-  glBindBuffer(GL_ARRAY_BUFFER, 0)
-  # Set Visible Count
-  ctx.visible = count
-
+# Resize FBO Texture
 proc resize*(ctx: var GUIContext, rect: ptr GUIRect) =
   # Bind Texture
   glBindTexture(GL_TEXTURE_2D, ctx.tex)
@@ -189,12 +181,12 @@ proc clearCurrent*(ctx: var GUIContext) =
   clearCurrent(ctx.render)
 
 proc render*(ctx: var GUIContext, frame: CTXFrame) =
-  if isNil(frame): # Draw Regions
+  if isNil(frame): # Draw Root Regions
     glBindVertexArray(ctx.vao)
     glBindTexture(GL_TEXTURE_2D, ctx.tex)
     for index in `..<`(0, ctx.visible):
       glDrawArrays(GL_TRIANGLE_STRIP, index*4, 4)
-  else: # Draw Frames
+  else: # Draw Frame
     glBindVertexArray(frame.vao)
     glBindTexture(GL_TEXTURE_2D, frame.tex)
     glDrawArrays(GL_TRIANGLE_STRIP, 0, 4)
