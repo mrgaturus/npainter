@@ -205,8 +205,7 @@ method layout(self: GUIContainer) =
       # Draw if visible
       if widget.test(wVisible):
         widget.set(wDraw)
-      else: # Zeroing Rect doesn't count as region
-        zeroMem(addr widget.rect, sizeof(GUIRect))
+      # React To Flag Changes
       self.reactive(widget)
 
 method handle(self: GUIContainer, kind: GUIHandle) =

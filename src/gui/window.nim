@@ -174,6 +174,7 @@ proc newGUIWindow*(root: GUIContainer, global: pointer): GUIWindow =
   discard eglSwapInterval(result.eglDsp, 0)
   # Root has Window and Frame Signals
   root.signals = {WindowID, FrameID}
+  root.flags = wStandard
   # Set the new root at first and next
   result.root = root
   result.last = root
@@ -453,18 +454,16 @@ proc handleEvents(win: var GUIWindow) =
     case event.theType:
     of Expose: echo "look why use exposed"
     of ConfigureNotify: # Resize
-      let
-        w = win.root.rect.w
-        h = win.root.rect.h
+      let rect = addr win.root.rect
       if event.xconfigure.window == win.xID and
-          (event.xconfigure.width != w or
-          event.xconfigure.height != h):
-        win.root.rect.w = event.xconfigure.width
-        win.root.rect.h = event.xconfigure.height
-        # Resize CTX Root
-        resize(win.ctx, addr win.root.rect)
+          (event.xconfigure.width != rect.w or
+          event.xconfigure.height != rect.h):
+        rect.w = event.xconfigure.width
+        rect.h = event.xconfigure.height
+        # Resize CTX Root Texture
+        resize(win.ctx, rect)
         # Relayout and Redraw GUI
-        win.root.set(wDirty)
+        set(win.root, wDirty)
     else: # Check if the event is valid for be processed by a widget
       if translateXEvent(win.state, win.display, addr event, win.xic):
         let # Avoids win.state everywhere
