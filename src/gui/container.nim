@@ -9,8 +9,7 @@ const
   cReactive = 0x07'u16
 
 type
-  # GUIContainer, GUILayout and Decorator
-  GUILayout* = ref object of RootObj
+  # GUIContainer, Base class for Layout creation
   GUIContainer* = ref object of GUIWidget
     first*, last*: GUIWidget  # Iterating / Inserting
     hold, focus, hover: GUIWidget # Cache Pointers
