@@ -10,6 +10,9 @@ type
     x*, y*, w*, h*: int32
   GUIColor* = object
     r*, g*, b*, a*: float32
+  # Buffer Mapping
+  CTXBufferMap* = 
+    ptr UncheckedArray[float32]
   # GUI Painter
   CTXLevel = object
     rect: GUIRect
@@ -24,9 +27,9 @@ type
     # Clipping and Color levels
     levels: seq[CTXLevel]
 
-# --------
-# GUI CREATION PROCS
-# --------
+# -------------------------
+# GUI RENDER CREATION PROCS
+# -------------------------
 
 proc newCTXRender*(uPro, uCol: GLint): CTXRender =
   # -- Projection and Color Uniform

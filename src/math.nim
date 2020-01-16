@@ -5,9 +5,9 @@
 # -------------------
 
 {.emit: """
-// Normalize UV for GUI Regions
+// Normalize UV for GUI Root Regions
 void uv_normalize(float* r, float w, float h) {
-  for (int i = 0; i < 8; i += 2) {
+  for (int i = 0; i < 12; i += 2) {
     r[i] /= w;
     r[i + 1] = (h - r[i + 1]) / h;
   }
@@ -27,5 +27,5 @@ void mat4_gui(float* r, float left, float right, float bottom, float top) {
 }
 """.}
 
-proc uvNormalize*(buffer: ptr float32, w, h: float32) {.importc: "uv_normalize".}
+proc uvNormalize*(buffer: ptr array[12, float32], w,h: float32) {.importc: "uv_normalize".}
 proc guiProjection*(mat: ptr array[16, float32], l,r,b,t: float32) {.importc: "mat4_gui".}

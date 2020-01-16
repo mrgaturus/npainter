@@ -220,12 +220,14 @@ proc exit*(win: var GUIWindow) =
 # ------------------------
 
 proc regions*(win: var GUIWindow) =
-  # Clear Regions
-  clearRegions(win.ctx)
+  # Map Regions
+  let map = mapRegions(win.ctx)
   # Redefine Regions
   for widget in forward(win.root.first):
     if (widget.flags and (wVisible or wOpaque)) == wVisible:
-      addRegion(win.ctx, widget.rect)
+      addRegion(win.ctx, map, widget.rect)
+  # Unmap Regions
+  unmapRegions(win.ctx)
 
 # --------------------
 # WINDOW FLOATING PRIVATE PROCS

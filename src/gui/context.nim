@@ -16,10 +16,10 @@ type
     # CTX GUI Renderer
     program: GLuint
     render: CTXRender
-    # Root Frame
-    vao, vbo0, vbo1: GLuint
+    # Root Regions
+    vao, vbo: GLuint
     tex, fbo: GLuint
-    visible: int32
+    visible, max: int32
     # GUI viewport cache
     vWidth, vHeight: int32
     vCache: array[16, float32]
@@ -30,9 +30,9 @@ type
 # CONTEXT CONST PROCS
 # -------------------
 
-const
-  bufferSize = 16 * sizeof(float32)
-  vertSize = 8 * sizeof(float32)
+const # Buffer Sizes
+  SIZE_REGION = 12 * sizeof(float32)
+  SIZE_FRAME = 8 * sizeof(float32)
 let texCORDS = [
   0'f32, 1'f32,
   1'f32, 1'f32,
@@ -80,47 +80,66 @@ proc newGUIContext*(): GUIContext =
 proc allocRegions*(ctx: var GUIContext, count: int32) =
   # Create New VAO
   glGenVertexArrays(1, addr ctx.vao)
-  glGenBuffers(2, addr ctx.vbo0)
+  glGenBuffers(1, addr ctx.vbo)
   # Bind VAO and VBO
   glBindVertexArray(ctx.vao)
-  # Vertex Buffer (VVVV)
-  glBindBuffer(GL_ARRAY_BUFFER, ctx.vbo0)
-  glBufferData(GL_ARRAY_BUFFER, count * vertSize, nil, GL_DYNAMIC_DRAW)
-  glVertexAttribPointer(0, 2, cGL_FLOAT, false, 0, cast[pointer](0))
-  # Coords Buffer (CCCC)
-  glBindBuffer(GL_ARRAY_BUFFER, ctx.vbo1)
-  glBufferData(GL_ARRAY_BUFFER, count * vertSize, nil, GL_DYNAMIC_DRAW)
-  glVertexAttribPointer(1, 2, cGL_FLOAT, false, 0, cast[pointer](0))
+  # Alloc New VBO with max size
+  glBindBuffer(GL_ARRAY_BUFFER, ctx.vbo)
+  glBufferData(GL_ARRAY_BUFFER, count * SIZE_REGION * 2, nil, GL_DYNAMIC_DRAW)
+  # Define Attrib Layout (VVVVCCCC)
+  glVertexAttribPointer(0, 2, cGL_FLOAT, false, 0,
+    cast[pointer](0)
+  ) # Vertex (VVVVCCCC)
+  glVertexAttribPointer(1, 2, cGL_FLOAT, false, 0,
+    cast[pointer](count * SIZE_REGION)
+  ) # Coords (VVVVCCCC)
   # Enable Attribs
   glEnableVertexAttribArray(0)
   glEnableVertexAttribArray(1)
   # Unbind VBO and VAO
   glBindBuffer(GL_ARRAY_BUFFER, 0)
   glBindVertexArray(0)
+  # Define Maximun Regions
+  ctx.max = count
 
-proc clearRegions*(ctx: var GUIContext) {.inline.} =
-  ctx.visible = 0 # Only Move Cursor to 0
+proc mapRegions*(ctx: var GUIContext): CTXBufferMap =
+  ctx.visible = 0 # Move Cursor to 0
+  glBindBuffer(GL_ARRAY_BUFFER, ctx.vbo) # Modify Root Vertex Array
+  return cast[CTXBufferMap](
+    glMapBuffer(GL_ARRAY_BUFFER, GL_WRITE_ONLY)
+  )
 
-proc addRegion*(ctx: var GUIContext, rect: var GUIRect) =
+proc addRegion*(ctx: var GUIContext, map: CTXBufferMap, rect: var GUIRect) =
   if rect.w > 0 and rect.h > 0:
-    let offset = vertSize * ctx.visible
-    var rectArray = [
-      float32 rect.x, float32 rect.y,
-      float32(rect.x + rect.w), float32 rect.y,
-      float32 rect.x, float32(rect.y + rect.h),
-      float32(rect.x + rect.w), float32(rect.y + rect.h)
-    ]
-    # Vertex Update
-    glBindBuffer(GL_ARRAY_BUFFER, ctx.vbo0)
-    glBufferSubData(GL_ARRAY_BUFFER, offset, vertSize, addr rectArray[0])
-    # Coord Update
-    glBindBuffer(GL_ARRAY_BUFFER, ctx.vbo1)
-    uvNormalize(addr rectArray[0], float32 ctx.vWidth, float32 ctx.vHeight)
-    glBufferSubData(GL_ARRAY_BUFFER, offset, vertSize, addr rectArray[0])
-    # Unbind Current Buffer
-    glBindBuffer(GL_ARRAY_BUFFER, 0)
-    # Increment Visible Regions
+    let offset = ctx.visible*12
+    var verts: array[12, float32]
+    block: # Define Verts Array
+      let
+        x = float32 rect.x
+        y = float32 rect.y
+        xw = x + float32 rect.w
+        yh = y + float32 rect.h
+      verts = [
+        # Triangle 1
+        x, y, # 0
+        xw, y, # 1
+        x, yh, # 2
+        # Triangle 2
+        xw, yh, # 3
+        x, yh, # 2
+        xw, y # 1
+      ]
+    # Vertex
+    copyMem(addr map[offset], addr verts, SIZE_REGION)
+    # Tex Coords - Normalized
+    uvNormalize(addr verts, float32 ctx.vWidth, float32 ctx.vHeight)
+    copyMem(addr map[offset + ctx.max*12], addr verts, SIZE_REGION)
+    # Increment Visible Region Count
     inc(ctx.visible)
+
+proc unmapRegions*(ctx: var GUIContext) {.inline.} =
+  discard glUnmapBuffer(GL_ARRAY_BUFFER) # Guaranted
+  glBindBuffer(GL_ARRAY_BUFFER, 0)
 
 # Resize FBO Texture
 proc resize*(ctx: var GUIContext, rect: ptr GUIRect) =
@@ -184,8 +203,7 @@ proc render*(ctx: var GUIContext, frame: CTXFrame) =
   if isNil(frame): # Draw Root Regions
     glBindVertexArray(ctx.vao)
     glBindTexture(GL_TEXTURE_2D, ctx.tex)
-    for index in `..<`(0, ctx.visible):
-      glDrawArrays(GL_TRIANGLE_STRIP, index*4, 4)
+    glDrawArrays(GL_TRIANGLES, 0, ctx.visible*12)
   else: # Draw Frame
     glBindVertexArray(frame.vao)
     glBindTexture(GL_TEXTURE_2D, frame.tex)
@@ -210,13 +228,13 @@ proc createFrame(): CTXFrame =
   glBindVertexArray(result.vao)
   glBindBuffer(GL_ARRAY_BUFFER, result.vbo)
   # Alloc new Buffer (VVVVCCCC) with fixed texture coods
-  glBufferData(GL_ARRAY_BUFFER, bufferSize, nil, GL_DYNAMIC_DRAW)
-  glBufferSubData(GL_ARRAY_BUFFER, vertSize, vertSize, texCORDS[0].unsafeAddr)
+  glBufferData(GL_ARRAY_BUFFER, SIZE_FRAME * 2, nil, GL_DYNAMIC_DRAW)
+  glBufferSubData(GL_ARRAY_BUFFER, SIZE_FRAME, SIZE_FRAME, texCORDS[0].unsafeAddr)
   # Configure Attribs
   glVertexAttribPointer(0, 2, cGL_FLOAT, false, 0, cast[
       pointer](0))
   glVertexAttribPointer(1, 2, cGL_FLOAT, false, 0, cast[
-      pointer](vertSize))
+      pointer](SIZE_FRAME))
   # Enable Attribs
   glEnableVertexAttribArray(0)
   glEnableVertexAttribArray(1)
@@ -268,7 +286,7 @@ proc region*(frame: CTXFrame, rect: GUIRect): bool {.discardable.} =
     frame.vWidth = rect.w
     frame.vHeight = rect.h
   # Replace VBO with new rect
-  let verts = [
+  var verts = [
     float32 rect.x, float32 rect.y,
     float32(rect.x + rect.w), float32 rect.y,
     float32 rect.x, float32(rect.y + rect.h),
@@ -277,6 +295,6 @@ proc region*(frame: CTXFrame, rect: GUIRect): bool {.discardable.} =
   # Bind VBO
   glBindBuffer(GL_ARRAY_BUFFER, frame.vbo)
   # Replace Vertex
-  glBufferSubData(GL_ARRAY_BUFFER, 0, vertSize, unsafeAddr verts[0])
+  glBufferSubData(GL_ARRAY_BUFFER, 0, SIZE_FRAME, addr verts)
   # Unbind VBO
   glBindBuffer(GL_ARRAY_BUFFER, 0)
