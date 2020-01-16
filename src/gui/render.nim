@@ -1,8 +1,8 @@
 import ../libs/gl
 
 const
-  maxSize = 4096 * sizeof(float32)*2 #32KB
-  rectSize = 8 * sizeof(float32)
+  BATCH_SIZE = 4096 * sizeof(float32)*2 #32KB
+  RECT_SIZE = 8 * sizeof(float32)
 
 type
   # GUI RECT AND COLOR
@@ -17,7 +17,7 @@ type
   CTXLevel = object
     rect: GUIRect
     color: GUIColor
-  CTXRender* = object
+  CTXCanvas* = object
     # Color Uniform
     pro, color: GLint
     # White Pixel and Stream Size
@@ -31,7 +31,7 @@ type
 # GUI RENDER CREATION PROCS
 # -------------------------
 
-proc newCTXRender*(uPro, uCol: GLint): CTXRender =
+proc newCTXCanvas*(uPro, uCol: GLint): CTXCanvas =
   # -- Projection and Color Uniform
   result.pro = uPro
   result.color = uCol
@@ -41,13 +41,13 @@ proc newCTXRender*(uPro, uCol: GLint): CTXRender =
   # Bind VAO and VBO
   glBindVertexArray(result.vao)
   glBindBuffer(GL_ARRAY_BUFFER, result.vbo)
-  # Alloc a Fixed VBO size
-  glBufferData(GL_ARRAY_BUFFER, maxSize, nil, GL_STREAM_DRAW)
+  # Alloc a Fixed Batch VBO size
+  glBufferData(GL_ARRAY_BUFFER, BATCH_SIZE, nil, GL_STREAM_DRAW)
   # Configure Attribs 0-> Verts, 1-> Textured Rect
   glVertexAttribPointer(0, 2, cGL_FLOAT, false, 0, cast[
       pointer](0))
   glVertexAttribPointer(1, 2, cGL_FLOAT, false, 0, cast[
-      pointer](rectSize))
+      pointer](RECT_SIZE))
   # Enable only attrib 0
   glEnableVertexAttribArray(0)
   # Unbind VBO and VAO
@@ -74,13 +74,13 @@ proc newCTXRender*(uPro, uCol: GLint): CTXRender =
 # GUI RENDER PREPARING PROCS
 # --------------------------
 
-proc viewport*(ctx: var CTXRender, w, h: int32, pro: ptr float32) =
+proc viewport*(ctx: var CTXCanvas, w, h: int32, pro: ptr float32) =
   glViewport(0, 0, w, h)
   glUniformMatrix4fv(ctx.pro, 1, false, pro)
   # Set new height
   ctx.height = h
 
-proc makeCurrent*(ctx: var CTXRender) =
+proc makeCurrent*(ctx: var CTXCanvas) =
   # Clear levels
   ctx.levels.setLen(0)
   # Disable Scissor Test
@@ -93,7 +93,7 @@ proc makeCurrent*(ctx: var CTXRender) =
   glClearColor(0.0, 0.0, 0.0, 1.0)
   glUniform4f(cast[GLint](ctx.color), 0.0, 0.0, 0.0, 1.0)
 
-proc clearCurrent*(ctx: var CTXRender) =
+proc clearCurrent*(ctx: var CTXCanvas) =
   # Disable Scissor Test
   glDisable(GL_SCISSOR_TEST)
   # Unbinf VAO and VBO
@@ -106,7 +106,7 @@ proc clearCurrent*(ctx: var CTXRender) =
 # GUI PAINTER HELPER PROCS
 # ------------------------
 
-proc intersect(ctx: ptr CTXRender, rect: var GUIRect): GUIRect =
+proc intersect(ctx: ptr CTXCanvas, rect: var GUIRect): GUIRect =
   let
     prev = addr ctx.levels[^1].rect
     x1 = clamp(rect.x, prev.x, prev.x + prev.w)
@@ -122,7 +122,7 @@ proc intersect(ctx: ptr CTXRender, rect: var GUIRect): GUIRect =
 # GUI CLIP/COLOR PROCS
 # -----------------------
 
-proc clip*(ctx: ptr CTXRender, rect: var GUIRect) =
+proc clip*(ctx: ptr CTXCanvas, rect: var GUIRect) =
   if ctx.levels.len > 0:
     let nclip = ctx.intersect(rect)
     glScissor(nclip.x, ctx.height - nclip.y - nclip.h, nclip.w, nclip.h)
@@ -130,16 +130,16 @@ proc clip*(ctx: ptr CTXRender, rect: var GUIRect) =
     glEnable(GL_SCISSOR_TEST)
     glScissor(rect.x, ctx.height - rect.y - rect.h, rect.w, rect.h)
 
-proc color*(ctx: ptr CTXRender, color: var GUIColor) =
+proc color*(ctx: ptr CTXCanvas, color: var GUIColor) =
   glClearColor(color.r, color.g, color.b, color.a)
   glUniform4f(cast[GLint](ctx.color),
     color.r, color.g, color.b, color.a
   )
 
-proc clear*(ctx: ptr CTXRender) {.inline.} =
+proc clear*(ctx: ptr CTXCanvas) {.inline.} =
   glClear(GL_COLOR_BUFFER_BIT)
 
-proc reset*(ctx: ptr CTXRender) =
+proc reset*(ctx: ptr CTXCanvas) =
   if ctx.levels.len > 0:
     let level = addr ctx.levels[^1]
     block: # Reset Scissor
@@ -162,7 +162,7 @@ proc reset*(ctx: ptr CTXRender) =
 # GUI CLIP/COLOR LEVELS PROCS
 # -----------------------
 
-proc push*(ctx: ptr CTXRender, rect: var GUIRect, color: var GUIColor) =
+proc push*(ctx: ptr CTXCanvas, rect: var GUIRect, color: var GUIColor) =
   var level: CTXLevel
   # Copy Color
   level.color = color
@@ -175,7 +175,7 @@ proc push*(ctx: ptr CTXRender, rect: var GUIRect, color: var GUIColor) =
   ctx.levels.add(level)
   ctx.reset()
 
-proc pop*(ctx: ptr CTXRender) =
+proc pop*(ctx: ptr CTXCanvas) =
   ctx.levels.setLen(ctx.levels.len - 1)
   ctx.reset()
 
@@ -183,12 +183,12 @@ proc pop*(ctx: ptr CTXRender) =
 # GUI BASIC DRAW PROCS
 # --------------
 
-proc fill*(ctx: ptr CTXRender, rect: var GUIRect) =
+proc fill*(ctx: ptr CTXCanvas, rect: var GUIRect) =
   let rectArray = [
     float32 rect.x, float32 rect.y,
     float32(rect.x + rect.w), float32 rect.y,
     float32 rect.x, float32(rect.y + rect.h),
     float32(rect.x + rect.w), float32(rect.y + rect.h)
   ]
-  glBufferSubData(GL_ARRAY_BUFFER, 0, rectSize, rectArray[0].unsafeAddr)
+  glBufferSubData(GL_ARRAY_BUFFER, 0, RECT_SIZE, rectArray[0].unsafeAddr)
   glDrawArrays(GL_TRIANGLE_STRIP, 0, 4)

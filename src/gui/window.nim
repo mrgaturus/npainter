@@ -562,7 +562,7 @@ proc tick*(win: var GUIWindow): bool =
     # Redraw Widget if is needed
     if test(widget, wDraw):
       makeCurrent(win.ctx, widget.surf)
-      draw(widget, render(win.ctx))
+      draw(widget, canvas(win.ctx))
       clearCurrent(win.ctx)
     # Render Widget
     render(win.ctx, widget.surf)

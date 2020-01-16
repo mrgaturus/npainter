@@ -1,7 +1,7 @@
 # GUI Objects
 from builder import signal
 from event import GUIState, GUISignal, pushSignal
-from render import CTXRender, GUIRect
+from render import CTXCanvas, GUIRect
 from context import CTXFrame
 
 const # For now is better use traditional flags
@@ -181,5 +181,5 @@ method trigger*(widget: GUIWidget, signal: GUISignal) {.base.} = discard
 method update*(widget: GUIWidget) {.base.} = discard
 method layout*(widget: GUIWidget) {.base.} = discard
 # 3 -- Draw Method
-method draw*(widget: GUIWidget, ctx: ptr CTXRender) {.base.} =
+method draw*(widget: GUIWidget, ctx: ptr CTXCanvas) {.base.} =
   widget.clear(wDraw)

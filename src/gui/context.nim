@@ -15,7 +15,7 @@ type
   GUIContext* = object
     # CTX GUI Renderer
     program: GLuint
-    render: CTXRender
+    canvas: CTXCanvas
     # Root Regions
     vao, vbo: GLuint
     tex, fbo: GLuint
@@ -49,7 +49,7 @@ proc newGUIContext*(): GUIContext =
   result.program = newProgram("shaders/gui.vert", "shaders/gui.frag")
   # Initialize Uniforms
   glUseProgram(result.program)
-  result.render = newCTXRender(
+  result.canvas = newCTXCanvas(
     glGetUniformLocation(result.program, "uPro"),
     glGetUniformLocation(result.program, "uCol")
   )
@@ -156,11 +156,11 @@ proc resize*(ctx: var GUIContext, rect: ptr GUIRect) =
   ctx.vHeight = rect.h
 
 # -------------------
-# CONTEXT RENDER PROCS
+# CONTEXT RENDERING PROCS
 # -------------------
 
-template render*(ctx: var GUIContext): ptr CTXRender =
-  addr ctx.render
+template canvas*(ctx: var GUIContext): ptr CTXCanvas =
+  addr ctx.canvas
 
 proc start*(ctx: var GUIContext) =
   # Use GUI program
@@ -176,28 +176,28 @@ proc makeCurrent*(ctx: var GUIContext, frame: CTXFrame) =
     # Bind Root FBO & Use Viewport
     glBindFramebuffer(GL_FRAMEBUFFER, ctx.fbo)
     # Set Root Viewport
-    viewport(ctx.render, ctx.vWidth, ctx.vHeight,
+    viewport(ctx.canvas, ctx.vWidth, ctx.vHeight,
       cast[ptr float32](addr ctx.vCache)
     )
   else: # Make Frame Current
     # Bind Frame's FBO
     glBindFramebuffer(GL_FRAMEBUFFER, frame.fbo)
     # Set Frame Viewport
-    viewport(ctx.render, frame.vWidth, frame.vHeight,
+    viewport(ctx.canvas, frame.vWidth, frame.vHeight,
       cast[ptr float32](addr frame.vCache)
     )
   # Make Renderer ready for GUI Drawing
-  makeCurrent(ctx.render)
+  makeCurrent(ctx.canvas)
 
 proc clearCurrent*(ctx: var GUIContext) =
   # Bind to Framebuffer Screen
   glBindFramebuffer(GL_FRAMEBUFFER, 0)
   # Set Root Viewport
-  viewport(ctx.render, ctx.vWidth, ctx.vHeight,
+  viewport(ctx.canvas, ctx.vWidth, ctx.vHeight,
     cast[ptr float32](addr ctx.vCache)
   )
   # Set To White Pixel
-  clearCurrent(ctx.render)
+  clearCurrent(ctx.canvas)
 
 proc render*(ctx: var GUIContext, frame: CTXFrame) =
   if isNil(frame): # Draw Root Regions

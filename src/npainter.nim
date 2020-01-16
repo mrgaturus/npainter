@@ -23,7 +23,7 @@ proc release*(g: ptr Counter, d: pointer) =
   pushSignal(ExampleID, msgB, nil, 0)
   echo "Released Count: ", g.clicked
 
-method draw*(widget: GUIBlank, ctx: ptr CTXRender) =
+method draw*(widget: GUIBlank, ctx: ptr CTXCanvas) =
   #echo "reached lol"
   var color = if widget.test(wHover):
     GUIColor(r: 0.4, g: 0.4, b: 0.4, a: 1.0)

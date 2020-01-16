@@ -83,7 +83,7 @@ proc reactive(self: GUIContainer, widget: GUIWidget) =
     widget.clear(wFocus) # Invalid focus
 
 # CONTAINER METHODS
-method draw(self: GUIContainer, ctx: ptr CTXRender) =
+method draw(self: GUIContainer, ctx: ptr CTXCanvas) =
   self.clear(wDraw)
   # Push Clipping and Color Level
   ctx.push(self.rect, self.color)
