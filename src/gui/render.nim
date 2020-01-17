@@ -1,8 +1,9 @@
 import ../libs/gl
 
 const
-  BATCH_SIZE = 4096 * sizeof(float32)*2 #32KB
-  RECT_SIZE = 8 * sizeof(float32)
+  BATCH_SIZE = 1024 * 1024 # 1MB/1024KB
+  FILL_SIZE = 8 * sizeof(float32)
+  RECT_SIZE = 26 * sizeof(float32)
 
 type
   # GUI RECT AND COLOR
@@ -20,39 +21,45 @@ type
   CTXCanvas* = object
     # Color Uniform
     pro, color: GLint
-    # White Pixel and Stream Size
-    white, vao, vbo: GLuint
+    # Solid/Atlas VAOs
+    vao0, vao1: GLuint
+    # Buffer/White Pixel
+    vbo, white: GLuint
     # Viewport Height
     height: int32
     # Clipping and Color levels
     levels: seq[CTXLevel]
 
 # -------------------------
-# GUI RENDER CREATION PROCS
+# GUI CANVAS CREATION PROCS
 # -------------------------
 
 proc newCTXCanvas*(uPro, uCol: GLint): CTXCanvas =
   # -- Projection and Color Uniform
   result.pro = uPro
   result.color = uCol
-  # -- Gen Batch VAO and VBO
-  glGenVertexArrays(1, addr result.vao)
+  # -- Gen VAOs and Batch VBO
+  glGenVertexArrays(2, addr result.vao0)
   glGenBuffers(1, addr result.vbo)
-  # Bind VAO and VBO
-  glBindVertexArray(result.vao)
+  # Bind Batch VBO and alloc fixed size
   glBindBuffer(GL_ARRAY_BUFFER, result.vbo)
-  # Alloc a Fixed Batch VBO size
   glBufferData(GL_ARRAY_BUFFER, BATCH_SIZE, nil, GL_STREAM_DRAW)
-  # Configure Attribs 0-> Verts, 1-> Textured Rect
+  # 1- Solid VAO
+  glBindVertexArray(result.vao0)
   glVertexAttribPointer(0, 2, cGL_FLOAT, false, 0, cast[
-      pointer](0))
-  glVertexAttribPointer(1, 2, cGL_FLOAT, false, 0, cast[
-      pointer](RECT_SIZE))
-  # Enable only attrib 0
+    pointer](0))
   glEnableVertexAttribArray(0)
-  # Unbind VBO and VAO
-  glBindBuffer(GL_ARRAY_BUFFER, 0)
+  # 2- Atlas VAO
+  glBindVertexArray(result.vao1)
+  glVertexAttribPointer(0, 2, cGL_FLOAT, false, sizeof(float32)*4, cast[
+    pointer](0))
+  glVertexAttribPointer(0, 2, cGL_FLOAT, false, sizeof(float32)*4, cast[
+    pointer](sizeof(float32)*2))
+  glEnableVertexAttribArray(0)
+  glEnableVertexAttribArray(1)
+  # Unbind VAO and VBO
   glBindVertexArray(0)
+  glBindBuffer(GL_ARRAY_BUFFER, 0)
   # -- Gen White Pixel Texture
   glGenTextures(1, addr result.white)
   glBindTexture(GL_TEXTURE_2D, result.white)
@@ -86,7 +93,7 @@ proc makeCurrent*(ctx: var CTXCanvas) =
   # Disable Scissor Test
   glDisable(GL_SCISSOR_TEST)
   # Bind Batch VAO and White Pixel
-  glBindVertexArray(ctx.vao)
+  glBindVertexArray(ctx.vao0)
   glBindBuffer(GL_ARRAY_BUFFER, ctx.vbo)
   glBindTexture(GL_TEXTURE_2D, ctx.white)
   # Set Default Color (Black)
@@ -184,11 +191,49 @@ proc pop*(ctx: ptr CTXCanvas) =
 # --------------
 
 proc fill*(ctx: ptr CTXCanvas, rect: var GUIRect) =
-  let rectArray = [
-    float32 rect.x, float32 rect.y,
-    float32(rect.x + rect.w), float32 rect.y,
-    float32 rect.x, float32(rect.y + rect.h),
-    float32(rect.x + rect.w), float32(rect.y + rect.h)
-  ]
-  glBufferSubData(GL_ARRAY_BUFFER, 0, RECT_SIZE, rectArray[0].unsafeAddr)
+  let
+    x = float32 rect.x
+    y = float32 rect.y
+    xw = x + float32 rect.w
+    yh = y + float32 rect.h
+    map = cast[CTXBufferMap](glMapBufferRange(
+      GL_ARRAY_BUFFER, 0, FILL_SIZE, GL_MAP_WRITE_BIT
+    ))
+  # Put Rect Coords
+  map[0] = x; map[1] = y
+  map[2] = xw; map[3] = y
+  map[4] = x; map[5] = yh
+  map[6] = xw; map[7] = yh
+  # Unmap Coords
+  discard glUnmapBuffer(GL_ARRAY_BUFFER)
   glDrawArrays(GL_TRIANGLE_STRIP, 0, 4)
+
+proc rectangle*(ctx: ptr CTXCanvas, rect: var GUIRect, b: float32) =
+  let
+    x = float32 rect.x
+    y = float32 rect.y
+    xw = x + float32 rect.w
+    yh = y + float32 rect.h
+    map = cast[CTXBufferMap](glMapBufferRange(
+      GL_ARRAY_BUFFER, 0, RECT_SIZE, GL_MAP_WRITE_BIT
+    ))
+  # UPPER Line
+  map[0] = x; map[1] = y
+  map[2] = x; map[3] = y + b
+  map[4] = xw; map[5] = y
+  map[6] = xw; map[7] = y + b
+  # RIGHT Line
+  map[8] = xw - b; map[9] = y + b
+  map[10] = xw; map[11] = yh
+  map[12] = xw - b; map[13] = yh
+  # BOTTOM Line
+  map[14] = xw - b; map[15] = yh - b
+  map[16] = x; map[17] = yh
+  map[18] = x; map[19] = yh - b
+  # LEFT Line
+  map[20] = x + b; map[21] = yh - b
+  map[22] = x; map[23] = y + b
+  map[24] = x + b; map[25] = y + b
+  # Unmap Coords
+  discard glUnmapBuffer(GL_ARRAY_BUFFER)
+  glDrawArrays(GL_TRIANGLE_STRIP, 0, 13)

@@ -36,6 +36,9 @@ method draw*(widget: GUIBlank, ctx: ptr CTXCanvas) =
 
   color(ctx, color)
   fill(ctx, widget.rect)
+  color = GUIColor(r: 0, g: 1.0, b: 0, a: 0)
+  color(ctx, color)
+  rectangle(ctx, widget.rect, 1)
   widget.clear(wDraw)
 
 
@@ -69,8 +72,8 @@ method update*(widget: GUIBlank) =
     widget.clear(wUpdate)
 
 method handle*(widget: GUIBlank, kind: GUIHandle) =
-  echo "handle done: ", kind.repr
-  echo "by: ", cast[uint](widget)
+  #echo "handle done: ", kind.repr
+  #echo "by: ", cast[uint](widget)
   if kind == outHold:
     close(widget.frame)
   widget.set(wDraw)
