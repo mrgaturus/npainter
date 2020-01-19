@@ -1,7 +1,6 @@
 import ../libs/gl
 
-const
-  BATCH_SIZE = 65536*20 # 1.31MB
+const # XYUVRGBA 20bytes
   STRIDE_SIZE = sizeof(float32)*4 + sizeof(uint32)
 type
   # GUI RECT AND COLOR
@@ -51,11 +50,10 @@ proc newCTXCanvas*(uPro: GLint): CTXCanvas =
   # -- Gen VAOs and Batch VBO
   glGenVertexArrays(1, addr result.vao)
   glGenBuffers(2, addr result.ebo)
-  # Bind Batch VBO and alloc fixed size
-  glBindBuffer(GL_ARRAY_BUFFER, result.vbo)
-  glBufferData(GL_ARRAY_BUFFER, BATCH_SIZE, nil, GL_STREAM_DRAW)
-  # 2- Buffer VAO
+  # Bind Batch VAO
   glBindVertexArray(result.vao)
+  glBindBuffer(GL_ARRAY_BUFFER, result.vbo)
+  # Vertex Attribs XYVUVRGBA 20bytes
   glVertexAttribPointer(0, 2, cGL_FLOAT, false, STRIDE_SIZE, 
     cast[pointer](0)) # VERTEX
   glVertexAttribPointer(1, 2, cGL_FLOAT, false, STRIDE_SIZE, 
@@ -117,9 +115,9 @@ proc clearCurrent*(ctx: var CTXCanvas) =
     len(ctx.elements)*sizeof(uint16),
     addr ctx.elements[0], GL_STREAM_DRAW)
   # Upload Verts
-  glBufferSubData(GL_ARRAY_BUFFER, 0,
+  glBufferData(GL_ARRAY_BUFFER,
     len(ctx.verts)*sizeof(CTXVertex),
-    addr ctx.verts[0])
+    addr ctx.verts[0], GL_STREAM_DRAW)
   # Draw Clipping Commands
   if len(ctx.cmds) > 0:
     glEnable(GL_SCISSOR_TEST)
@@ -130,8 +128,7 @@ proc clearCurrent*(ctx: var CTXCanvas) =
           clip.x, ctx.height - clip.y - clip.h, 
           clip.w, clip.h # Clip With Correct Y
         )
-      # Draw Triangles
-      glDrawElements(
+      glDrawElements( # Draw Command Elements
         GL_TRIANGLES, cmd.size, GL_UNSIGNED_SHORT,
         cast[pointer](cmd.offset * sizeof(uint16))
       )

@@ -148,7 +148,7 @@ proc resize*(ctx: var GUIContext, rect: ptr GUIRect) =
   # Unbind Texture
   glBindTexture(GL_TEXTURE_2D, 0)
   # Change viewport
-  guiProjection(addr ctx.vCache, 0, float32 rect.w, float32 rect.h, 0)
+  guiProjection(addr ctx.vCache, float32 rect.w, float32 rect.h)
   ctx.vWidth = rect.w
   ctx.vHeight = rect.h
 
@@ -166,6 +166,8 @@ proc start*(ctx: var GUIContext) =
   glDisable(GL_CULL_FACE)
   glDisable(GL_DEPTH_TEST)
   glDisable(GL_STENCIL_TEST)
+  # Set Clear Color to Nothing
+  glClearColor(0,0,0,0)
   # Enable Alpha Blending
   glEnable(GL_BLEND)
   glBlendEquation(GL_FUNC_ADD)
@@ -219,6 +221,8 @@ proc finish*() =
   # Set program to None program
   glBindTexture(GL_TEXTURE_2D, 0)
   glBindVertexArray(0)
+  # Disable Alpha Blend
+  glDisable(GL_BLEND)
   glUseProgram(0)
 
 # ---------------------------
@@ -277,9 +281,8 @@ proc unuseFrame*(ctx: var GUIContext, frame: var CTXFrame) {.inline.} =
   frame = nil
 
 proc region*(frame: CTXFrame, rect: GUIRect): bool {.discardable.} =
-  # Check if resize is needed
   result = rect.w != frame.vWidth or rect.h != frame.vHeight
-  if result:
+  if result: # Check if resize is needed
     # Bind Texture
     glBindTexture(GL_TEXTURE_2D, frame.tex)
     # Resize Texture
@@ -288,7 +291,7 @@ proc region*(frame: CTXFrame, rect: GUIRect): bool {.discardable.} =
     # Unbind Texture
     glBindTexture(GL_TEXTURE_2D, 0)
     # Resize Viewport
-    guiProjection(addr frame.vCache, 0, float32 rect.w, float32 rect.h, 0)
+    guiProjection(addr frame.vCache, float32 rect.w, float32 rect.h)
     frame.vWidth = rect.w
     frame.vHeight = rect.h
   # Replace VBO with new rect
