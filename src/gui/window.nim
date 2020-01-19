@@ -351,8 +351,9 @@ proc grab(win: var GUIWindow, widget: GUIWidget, evtype: int32) =
     widget.clear(wGrab)
 
 proc checkHandlers(win: var GUIWindow, widget: GUIWidget) =
+  var check = win.aux xor widget.flags
   # -- Check/Change Hold
-  if ((win.aux xor widget.flags) and wHold) == wHold:
+  if (check and wHold) == wHold:
     if (widget.flags and wHold) == wHold:
       # Change Hold is not stacked
       if not widget.test(wStacked) and widget != win.hold:
@@ -377,25 +378,26 @@ proc checkHandlers(win: var GUIWindow, widget: GUIWidget) =
       if widget == win.hold:
         win.hold = nil
   # -- Check/Change Focus
-  let check = # Check if is enabled and visible
-    (widget.flags and 0x4b0) xor 0x30'u16
-  if check == wFocus:
-    if widget != win.focus:
-      let focus = win.focus
-      # Unfocus prev widget
-      if not isNil(focus):
-        focus.handle(outFocus)
-        focus.clear(wFocus)
-      # Change Current Focus
-      widget.handle(inFocus)
-      win.focus = widget
-  elif widget == win.focus:
-    widget.handle(outFocus)
-    widget.clear(wFocus)
-    # Remove current focus
-    win.focus = nil
-  elif (check and wFocus) == wFocus and check > wFocus:
-    widget.clear(wFocus) # Invalid focus
+  if (check and wFocus) == wFocus:
+    # Check if is enabled and visible
+    check = (widget.flags and 0x4b0) xor 0x30'u16
+    if check == wFocus:
+      if widget != win.focus:
+        let focus = win.focus
+        # Unfocus prev widget
+        if not isNil(focus):
+          focus.handle(outFocus)
+          focus.clear(wFocus)
+        # Change Current Focus
+        widget.handle(inFocus)
+        win.focus = widget
+    elif widget == win.focus:
+      widget.handle(outFocus)
+      widget.clear(wFocus)
+      # Remove current focus
+      win.focus = nil
+    elif (check and wFocus) == wFocus and check > wFocus:
+      widget.clear(wFocus) # Invalid focus
 
 proc findWidget(win: var GUIWindow, state: ptr GUIState,
     tabbed: bool): GUIWidget =
