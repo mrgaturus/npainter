@@ -2,10 +2,10 @@
 
 // TEXTURE
 uniform sampler2D uTex;
-// INPUT
-uniform vec4 uCol;
-in vec2 uvColorPos;
+// INPUT FROM VERTEX
+in vec2 nTexPos;
+in vec4 nColor;
 
 void main() {
-  gl_FragColor = texture(uTex, uvColorPos) * uCol;
+  gl_FragColor = texture(uTex, nTexPos) * nColor;
 }

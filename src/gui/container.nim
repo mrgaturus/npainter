@@ -86,11 +86,13 @@ proc reactive(self: GUIContainer, widget: GUIWidget) =
 method draw(self: GUIContainer, ctx: ptr CTXCanvas) =
   self.clear(wDraw)
   # Push Clipping and Color Level
-  ctx.push(self.rect, self.color)
+  ctx.push(self.rect)
   # Clear color if it was dirty
   if self.test(cDraw):
     self.clear(cDraw)
-    ctx.clear()
+    # Draw Background
+    ctx.color = self.color
+    ctx.fill(self.rect)
   # Draw Widgets
   for widget in forward(self.first):
     if widget.test(wDraw):

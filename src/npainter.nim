@@ -25,20 +25,14 @@ proc release*(g: ptr Counter, d: pointer) =
 
 method draw*(widget: GUIBlank, ctx: ptr CTXCanvas) =
   #echo "reached lol"
-  var color = if widget.test(wHover):
-    GUIColor(r: 0.4, g: 0.4, b: 0.4, a: 1.0)
-  elif widget.test(wGrab):
-    GUIColor(r: 1.0, g: 0.0, b: 1.0, a: 1.0)
-  elif widget.test(wFocus):
-    GUIColor(r: 1.0, g: 1.0, b: 0.0, a: 1.0)
-  else:
-    GUIColor(r: 1.0, g: 1.0, b: 1.0, a: 1.0)
+  let color = # Test Color
+    if widget.test(wHover): 0xFF252525'u32
+    elif widget.test(wGrab): 0xFFFF00FF'u32
+    elif widget.test(wFocus): 0xFFFFFF00'u32
+    else: 0xFFFFFFFF'u32
 
-  color(ctx, color)
+  ctx.color = color
   fill(ctx, widget.rect)
-  color = GUIColor(r: 0, g: 1.0, b: 0, a: 0)
-  color(ctx, color)
-  rectangle(ctx, widget.rect, 1)
   widget.clear(wDraw)
 
 
@@ -107,7 +101,7 @@ when isMainModule:
     blank.rect = GUIRect(x: 20, y: 20, w: 100, h: 100)
     block: # Menu Blank #2
       con = new GUIContainer
-      con.color = GUIColor(r: 0.2, g: 0.2, b: 0.2, a: 0.2)
+      con.color = 0xff637a90'u32
       con.flags = wPopup
       con.rect.w = 200
       con.rect.h = 100
@@ -117,7 +111,7 @@ when isMainModule:
       sub.rect = GUIRect(x: 10, y: 10, w: 20, h: 20)
       block: # Sub Menu #1
         let subcon = new GUIContainer
-        subcon.color = GUIColor(r: 0.5, g: 0.2, b: 0.2, a: 0.2)
+        subcon.color = 0xff676466'u32
         subcon.flags = wPopup
         subcon.rect.w = 200
         subcon.rect.h = 80
@@ -140,7 +134,7 @@ when isMainModule:
       sub.rect = GUIRect(x: 40, y: 10, w: 20, h: 20)
       block: # Sub Menu #1
         let subcon = new GUIContainer
-        subcon.color = GUIColor(r: 0.2, g: 0.2, b: 0.8, a: 0.2)
+        subcon.color = 0xffbdb88f'u32
         subcon.flags = wEnabled
         subcon.rect.w = 200
         subcon.rect.h = 80

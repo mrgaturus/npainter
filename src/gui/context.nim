@@ -6,6 +6,8 @@ import render
 
 type
   # Floating Frames
+  CTXBufferMap = # For glMap
+    ptr UncheckedArray[float32]
   CTXFrame* = ref object
     vao, vbo, tex, fbo: GLuint
     # Frame viewport cache
@@ -49,13 +51,8 @@ proc newGUIContext*(): GUIContext =
   result.program = newProgram("shaders/gui.vert", "shaders/gui.frag")
   # Initialize Uniforms
   glUseProgram(result.program)
-  result.canvas = newCTXCanvas(
-    glGetUniformLocation(result.program, "uPro"),
-    glGetUniformLocation(result.program, "uCol")
-  )
-  glUniform1i(
-    glGetUniformLocation(result.program, "uTex"), 0
-  )
+  result.canvas = newCTXCanvas(glGetUniformLocation(result.program, "uPro"))
+  glUniform1i(glGetUniformLocation(result.program, "uTex"), 0)
   glUseProgram(0)
   # Initialize Root Frame
   glGenTextures(1, addr result.tex)
@@ -165,9 +162,14 @@ template canvas*(ctx: var GUIContext): ptr CTXCanvas =
 proc start*(ctx: var GUIContext) =
   # Use GUI program
   glUseProgram(ctx.program)
-  # Prepare OpenGL Flags
+  # Disable 3D OpenGL Flags
+  glDisable(GL_CULL_FACE)
   glDisable(GL_DEPTH_TEST)
   glDisable(GL_STENCIL_TEST)
+  # Enable Alpha Blending
+  glEnable(GL_BLEND)
+  glBlendEquation(GL_FUNC_ADD)
+  glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
   # Modify Only Texture 0
   glActiveTexture(GL_TEXTURE0)
 
@@ -190,16 +192,17 @@ proc makeCurrent*(ctx: var GUIContext, frame: CTXFrame) =
   makeCurrent(ctx.canvas)
 
 proc clearCurrent*(ctx: var GUIContext) =
+  # Draw Commands
+  clearCurrent(ctx.canvas)
   # Bind to Framebuffer Screen
   glBindFramebuffer(GL_FRAMEBUFFER, 0)
   # Set Root Viewport
   viewport(ctx.canvas, ctx.vWidth, ctx.vHeight,
     cast[ptr float32](addr ctx.vCache)
   )
-  # Set To White Pixel
-  clearCurrent(ctx.canvas)
 
 proc render*(ctx: var GUIContext, frame: CTXFrame) =
+  glVertexAttrib4f(2, 1,1,1,1) # White Pixel
   if isNil(frame): # Draw Root Regions
     glBindVertexArray(ctx.vao)
     glBindTexture(GL_TEXTURE_2D, ctx.tex)
@@ -210,6 +213,9 @@ proc render*(ctx: var GUIContext, frame: CTXFrame) =
     glDrawArrays(GL_TRIANGLE_STRIP, 0, 4)
 
 proc finish*() =
+  # Back Default Color to Black
+  glVertexAttrib4f(2, 0,0,0,1)
+  glClearColor(0,0,0,1)
   # Set program to None program
   glBindTexture(GL_TEXTURE_2D, 0)
   glBindVertexArray(0)
