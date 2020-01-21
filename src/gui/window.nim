@@ -357,15 +357,14 @@ proc checkHandlers(win: var GUIWindow, widget: GUIWidget) =
     if (widget.flags and wHold) == wHold:
       # Change Hold is not stacked
       if not widget.test(wStacked) and widget != win.hold:
-        let hold = win.hold
         # Unhold prev widget
-        if not isNil(hold):
-          hold.handle(outHold)
-          hold.clear(wHold)
+        if not isNil(win.hold):
+          handle(win.hold, outHold)
+          clear(win.hold, wHold)
         # Change Current Hold
         win.hold = widget
-      # Unfocus if not equal
-      if widget != win.focus and not isNil(win.focus):
+      # Unfocus if is focused
+      if not isNil(win.focus):
         handle(win.focus, outFocus)
         clear(win.focus, wFocus)
         # Remove current focus
