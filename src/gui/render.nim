@@ -9,7 +9,7 @@ type
   GUIColor* = uint32
   # Clip Levels
   CTXCommand = object
-    offset, size: int32
+    offset, size, base: int32
     clip: GUIRect
   # Vertex Format XYUVRGBA
   CTXVertex = object
@@ -30,7 +30,8 @@ type
     color*: uint32
     levels: seq[GUIRect]
     # Vertex index
-    current: uint16
+    pivot: int32
+    cursor: uint16
     # Write Pointers
     pVert: CTXVertexMap
     pElement: CTXElementMap
@@ -95,7 +96,8 @@ proc makeCurrent*(ctx: var CTXCanvas) =
   setLen(ctx.cmds, 0)
   setLen(ctx.elements, 0)
   setLen(ctx.verts, 0)
-  ctx.current = 0 # Reset Index
+  # Reset Pivot
+  ctx.pivot = 0
   # Clear Clipping Levels
   setLen(ctx.levels, 0)
   ctx.color = 0 # Nothing Color
@@ -117,21 +119,14 @@ proc clearCurrent*(ctx: var CTXCanvas) =
   if len(ctx.cmds) > 0:
     glEnable(GL_SCISSOR_TEST)
     for cmd in mitems(ctx.cmds):
-      block: # Clipping
-        let clip = addr cmd.clip
-        glScissor(
-          clip.x, ctx.h - clip.y - clip.h, 
-          clip.w, clip.h # Clip With Correct Y
-        )
-      glDrawElements( # Draw Command Elements
+      glScissor( # Clip Region
+        cmd.clip.x, ctx.h - cmd.clip.y - cmd.clip.h, 
+        cmd.clip.w, cmd.clip.h) # Clip With Correct Y
+      glDrawElementsBaseVertex( # Draw Command
         GL_TRIANGLES, cmd.size, GL_UNSIGNED_SHORT,
-        cast[pointer](cmd.offset * sizeof(uint16))
-      )
+        cast[pointer](cmd.offset * sizeof(uint16)),
+        cmd.base) # Base Vertex Index
     glDisable(GL_SCISSOR_TEST)
-  else: glDrawElements(
-    GL_TRIANGLES, cast[int32](len(ctx.elements)), 
-    GL_UNSIGNED_SHORT, cast[pointer](0)
-  )
   # Unbind Texture, VBO and VAO
   glBindTexture(GL_TEXTURE_2D, 0)
   glBindBuffer(GL_ARRAY_BUFFER, 0)
@@ -141,28 +136,11 @@ proc clearCurrent*(ctx: var CTXCanvas) =
 # GUI PAINTER HELPER PROCS
 # ------------------------
 
-# Last Vert Index + Offset
-template triangle(emap: CTXElementMap, offset: int, a,b,c: uint16) =
-  emap[offset + 0] = ctx.current + a
-  emap[offset + 1] = ctx.current + b
-  emap[offset + 2] = ctx.current + c
-
-## X,Y,U,V,COLOR
-template vertex(a,b,c,d: float32, col: uint32): CTXVertex =
-  CTXVertex(x:a,y:b,u:c,v:d,color:col)
-
-proc addVerts(ctx: ptr CTXCanvas, vSize, eSize: int32) =
-  # Set Current Vertex Index
-  ctx.current = cast[uint16](ctx.verts.len)
-  # Set New Vertex and Elements Lenght
-  ctx.verts.setLen(len(ctx.verts) + vSize)
-  ctx.elements.setLen(len(ctx.elements) + eSize)
-  block: # Add Elements Count to CMD
-    let peek = addr ctx.cmds[^1]
-    peek.size += eSize
-  # Set Write Pointers
-  ctx.pVert = cast[CTXVertexMap](addr ctx.verts[^vSize])
-  ctx.pElement = cast[CTXElementMap](addr ctx.elements[^eSize])
+proc defaultCMD(ctx: ptr CTXCanvas, eSize: int32) =
+  ctx.cmds.add( # Default CMD if is not Defined
+    CTXCommand( # Viewport Same Clip
+      size: eSize, # Initial Size
+      clip: GUIRect(w: ctx.w, h: ctx.h)))
 
 proc addCMD(ctx: ptr CTXCanvas, clip: var GUIRect) =
   let size = # Check if last CMD has size
@@ -170,16 +148,43 @@ proc addCMD(ctx: ptr CTXCanvas, clip: var GUIRect) =
       ctx.cmds[^1].size
     else: 0
   if size == 0:
+    ctx.pivot = 
+      int32(ctx.verts.len)
     ctx.cmds.add(
       CTXCommand(
         offset: int32(
           len(ctx.elements)
-        ), size: 0,
-        clip: clip
-      )
-    )
+        ), base: ctx.pivot, 
+        clip: clip))
   else: # Change Clip of last
     ctx.cmds[^1].clip = clip
+
+proc addVerts(ctx: ptr CTXCanvas, vSize, eSize: int32) =
+  # Set Current Vertex Index
+  ctx.cursor = uint16(len(ctx.verts) - ctx.pivot)
+  # Set New Vertex and Elements Lenght
+  ctx.verts.setLen(len(ctx.verts) + vSize)
+  ctx.elements.setLen(len(ctx.elements) + eSize)
+  # Add Elements Count to CMD
+  if len(ctx.cmds) > 0: ctx.cmds[^1].size += eSize
+  else: defaultCMD(ctx, eSize) # Aux CMD
+  # Set Write Pointers
+  ctx.pVert = cast[CTXVertexMap](addr ctx.verts[^vSize])
+  ctx.pElement = cast[CTXElementMap](addr ctx.elements[^eSize])
+
+# ----------------------
+# GUI DRAWING TEMPLATES
+# ----------------------
+
+# Last Vert Index + Offset
+template triangle(emap: CTXElementMap, o,a,b,c: int32) =
+  emap[o] = ctx.cursor + a
+  emap[o+1] = ctx.cursor + b
+  emap[o+2] = ctx.cursor + c
+
+## X,Y,U,V,COLOR
+template vertex(a,b,c,d: float32, col: uint32): CTXVertex =
+  CTXVertex(x:a,y:b,u:c,v:d,color:col)
 
 # -----------------------
 # GUI CLIP/COLOR LEVELS PROCS

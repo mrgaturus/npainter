@@ -254,6 +254,8 @@ proc viewport(ctx: var GUIContext, frame: CTXFrame) =
 proc canvasBegin*(ctx: var GUIContext, frame: CTXFrame) =
   # Bind Frame's FBO
   glBindFramebuffer(GL_FRAMEBUFFER, frame.fbo)
+  # Disable Alpha Blending
+  glDisable(GL_BLEND)
   # Set Viewport to Frame
   viewport(ctx, frame)
   # Clear FBO if Dirty
@@ -268,6 +270,8 @@ proc canvasEnd*(ctx: var GUIContext) =
   clearCurrent(ctx.canvas)
   # Bind to Framebuffer Screen
   glBindFramebuffer(GL_FRAMEBUFFER, 0)
+  # Enable Alpha Blending
+  glEnable(GL_BLEND)
   # Set Viewport to Root
   viewport(ctx, ctx.root)
   # Set White Pixel Uniform

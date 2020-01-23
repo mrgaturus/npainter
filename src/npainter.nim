@@ -26,10 +26,10 @@ proc release*(g: ptr Counter, d: pointer) =
 method draw*(widget: GUIBlank, ctx: ptr CTXCanvas) =
   #echo "reached lol"
   let color = # Test Color
-    if widget.test(wHover): 0xFF252525'u32
-    elif widget.test(wGrab): 0xFFFF00FF'u32
-    elif widget.test(wFocus): 0xFFFFFF00'u32
-    else: 0xFFFFFFFF'u32
+    if widget.test(wHover): 0xAA252525'u32
+    elif widget.test(wGrab): 0xAAFF00FF'u32
+    elif widget.test(wFocus): 0xAAFFFF00'u32
+    else: 0xAAFFFFFF'u32
 
   ctx.color = color
   fill(ctx, widget.rect)
@@ -101,7 +101,7 @@ when isMainModule:
     blank.rect = GUIRect(x: 20, y: 20, w: 100, h: 100)
     block: # Menu Blank #2
       con = new GUIContainer
-      con.color = 0xff637a90'u32
+      con.color = 0x77637a90'u32
       con.flags = wPopup
       con.rect.w = 200
       con.rect.h = 100
@@ -111,7 +111,7 @@ when isMainModule:
       sub.rect = GUIRect(x: 10, y: 10, w: 20, h: 20)
       block: # Sub Menu #1
         let subcon = new GUIContainer
-        subcon.color = 0xff676466'u32
+        subcon.color = 0x77676466'u32
         subcon.flags = wPopup
         subcon.rect.w = 200
         subcon.rect.h = 80
@@ -134,7 +134,7 @@ when isMainModule:
       sub.rect = GUIRect(x: 40, y: 10, w: 20, h: 20)
       block: # Sub Menu #1
         let subcon = new GUIContainer
-        subcon.color = 0xffbdb88f'u32
+        subcon.color = 0x77bdb88f'u32
         subcon.flags = wEnabled
         subcon.rect.w = 200
         subcon.rect.h = 80
