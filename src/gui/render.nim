@@ -47,9 +47,11 @@ proc newCTXCanvas*(): CTXCanvas =
   # -- Gen VAOs and Batch VBO
   glGenVertexArrays(1, addr result.vao)
   glGenBuffers(2, addr result.ebo)
-  # Bind Batch VAO
+  # Bind Batch VAO and VBO
   glBindVertexArray(result.vao)
   glBindBuffer(GL_ARRAY_BUFFER, result.vbo)
+  # Bind Elements Buffer to current VAO
+  glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, result.ebo)
   # Vertex Attribs XYVUVRGBA 20bytes
   glVertexAttribPointer(0, 2, cGL_FLOAT, false, STRIDE_SIZE, 
     cast[pointer](0)) # VERTEX
@@ -99,7 +101,6 @@ proc makeCurrent*(ctx: var CTXCanvas) =
   ctx.color = 0 # Nothing Color
   # Bind Batch VAO and Atlas
   glBindVertexArray(ctx.vao)
-  glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ctx.ebo)
   glBindBuffer(GL_ARRAY_BUFFER, ctx.vbo)
   glBindTexture(GL_TEXTURE_2D, ctx.white)
 
@@ -131,10 +132,9 @@ proc clearCurrent*(ctx: var CTXCanvas) =
     GL_TRIANGLES, cast[int32](len(ctx.elements)), 
     GL_UNSIGNED_SHORT, cast[pointer](0)
   )
-  # Unbind Texture, VBO, EBO and VAO
+  # Unbind Texture, VBO and VAO
   glBindTexture(GL_TEXTURE_2D, 0)
   glBindBuffer(GL_ARRAY_BUFFER, 0)
-  glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0)
   glBindVertexArray(0)
 
 # ------------------------

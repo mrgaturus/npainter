@@ -178,6 +178,51 @@ proc unmapRegions*(ctx: var GUIContext, map: var CTXMap) {.inline.} =
   ctx.visible = map.cursor
 
 # -------------------
+# CONTEXT FRAME PROCS
+# -------------------
+
+proc useFrame*(ctx: var GUIContext, frame: var CTXFrame) {.inline.} =
+  if len(ctx.unused) > 0: frame = pop(ctx.unused)
+  else: frame = newCTXFrame(true)
+
+proc unuseFrame*(ctx: var GUIContext, frame: var CTXFrame) {.inline.} =
+  # Mark Frame as Nil and save for reuse
+  add(ctx.unused, frame); frame = nil
+
+proc region*(frame: CTXFrame, rect: GUIRect): bool {.discardable.} =
+  result = rect.w != frame.vWidth or rect.h != frame.vHeight
+  if result: # Check if resize is needed
+    # Bind Texture
+    glBindTexture(GL_TEXTURE_2D, frame.tex)
+    # Resize Texture
+    glTexImage2D(GL_TEXTURE_2D, 0, cast[int32](GL_RGBA8), rect.w, rect.h, 0,
+        GL_RGBA, GL_UNSIGNED_BYTE, nil)
+    # Unbind Texture
+    glBindTexture(GL_TEXTURE_2D, 0)
+    # Recalculate GUI Projection
+    guiProjection(addr frame.vCache, float32 rect.w, float32 rect.h)
+    frame.vWidth = rect.w; frame.vHeight = rect.h
+    # Invalidate Texture
+    frame.dirty = true
+  if frame.fixed: # Replace VBO with new rect
+    glBindBuffer(GL_ARRAY_BUFFER, frame.vbo) # Bind VBO
+    let
+      x = float32 rect.x
+      y = float32 rect.y
+      xw = x + float32 rect.w
+      yh = y + float32 rect.h
+      map = cast[CTXVertexMap]( # Map VBO
+        glMapBuffer(GL_ARRAY_BUFFER, GL_WRITE_ONLY))
+    # Update Rect
+    map[0] = vertex(x, y, 0, 1)
+    map[1] = vertex(xw, y, 1, 1)
+    map[2] = vertex(x, yh, 0, 0)
+    map[3] = vertex(xw, yh, 1, 0)
+    # Unmap and Unbind VBO
+    discard glUnmapBuffer(GL_ARRAY_BUFFER)
+    glBindBuffer(GL_ARRAY_BUFFER, 0)
+
+# -------------------
 # CONTEXT RENDERING PROCS
 # -------------------
 
@@ -247,48 +292,3 @@ proc ctxEnd*() =
   glDisable(GL_BLEND)
   # Unbind Program
   glUseProgram(0)
-
-# -------------------
-# CONTEXT FRAME PROCS
-# -------------------
-
-proc useFrame*(ctx: var GUIContext, frame: var CTXFrame) {.inline.} =
-  if len(ctx.unused) > 0: frame = pop(ctx.unused)
-  else: frame = newCTXFrame(true)
-
-proc unuseFrame*(ctx: var GUIContext, frame: var CTXFrame) {.inline.} =
-  # Mark Frame as Nil and save for reuse
-  add(ctx.unused, frame); frame = nil
-
-proc region*(frame: CTXFrame, rect: GUIRect): bool {.discardable.} =
-  result = rect.w != frame.vWidth or rect.h != frame.vHeight
-  if result: # Check if resize is needed
-    # Bind Texture
-    glBindTexture(GL_TEXTURE_2D, frame.tex)
-    # Resize Texture
-    glTexImage2D(GL_TEXTURE_2D, 0, cast[int32](GL_RGBA8), rect.w, rect.h, 0,
-        GL_RGBA, GL_UNSIGNED_BYTE, nil)
-    # Unbind Texture
-    glBindTexture(GL_TEXTURE_2D, 0)
-    # Recalculate GUI Projection
-    guiProjection(addr frame.vCache, float32 rect.w, float32 rect.h)
-    frame.vWidth = rect.w; frame.vHeight = rect.h
-    # Invalidate Texture
-    frame.dirty = true
-  if frame.fixed: # Replace VBO with new rect
-    glBindBuffer(GL_ARRAY_BUFFER, frame.vbo) # Bind VBO
-    let
-      x = float32 rect.x
-      y = float32 rect.y
-      xw = x + float32 rect.w
-      yh = y + float32 rect.h
-      map = cast[CTXVertexMap]( # Map VBO
-        glMapBuffer(GL_ARRAY_BUFFER, GL_WRITE_ONLY))
-    # Update Rect
-    map[0] = vertex(x, y, 0, 1)
-    map[1] = vertex(xw, y, 1, 1)
-    map[2] = vertex(x, yh, 0, 0)
-    map[3] = vertex(xw, yh, 1, 0)
-    # Unmap and Unbind VBO
-    discard glUnmapBuffer(GL_ARRAY_BUFFER)
-    glBindBuffer(GL_ARRAY_BUFFER, 0)
