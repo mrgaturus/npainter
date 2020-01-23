@@ -193,10 +193,10 @@ proc exec*(win: var GUIWindow): bool =
   var count = 0'i32 # Count Root Widgets
   for widget in forward(win.root.first):
     inc(count) # Dirty but only once
+  # Create new Root frame for Root Widget
+  win.root.surf = newCTXRoot(win.ctx, count)
   # Initial Size for Root FBO
-  resize(win.ctx, addr win.root.rect)
-  # Alloc Max Number of Regions
-  allocRegions(win.ctx, count)
+  region(win.root.surf, win.root.rect)
   # Mark root as Dirty
   set(win.root, wDirty)
 
@@ -221,13 +221,13 @@ proc exit*(win: var GUIWindow) =
 
 proc regions*(win: var GUIWindow) =
   # Map Regions
-  let map = mapRegions(win.ctx)
+  var map = mapRegions(win.ctx)
   # Redefine Regions
   for widget in forward(win.root.first):
     if (widget.flags and (wVisible or wOpaque)) == wVisible:
-      addRegion(win.ctx, map, widget.rect)
+      addRegion(map, widget.rect)
   # Unmap Regions
-  unmapRegions(win.ctx)
+  unmapRegions(win.ctx, map)
 
 # --------------------
 # WINDOW FLOATING PRIVATE PROCS
@@ -463,8 +463,8 @@ proc handleEvents(win: var GUIWindow) =
           event.xconfigure.height != rect.h):
         rect.w = event.xconfigure.width
         rect.h = event.xconfigure.height
-        # Resize CTX Root Texture
-        resize(win.ctx, rect)
+        # Resize CTX Root Region and VBO
+        region(win.root.surf, win.root.rect)
         # Relayout and Redraw GUI
         set(win.root, wDirty)
     else: # Check if the event is valid for be processed by a widget
@@ -540,7 +540,7 @@ proc tick*(win: var GUIWindow): bool =
   handleEvents(win)
   result = handleSignals(win)
   # Begin GUI Rendering
-  start(win.ctx)
+  ctxBegin(win.ctx)
   # Update -> Layout -> Render
   for widget in forward(win.root):
     # is Update and/or Layout marked?
@@ -553,7 +553,7 @@ proc tick*(win: var GUIWindow): bool =
       if any(widget, 0x0C):
         layout(widget)
         # Update Root Regions
-        if isNil(widget.surf):
+        if widget == win.root:
           regions(win)
         # Remove flags
         widget.flags = # Unmark as layout and force draw
@@ -562,13 +562,13 @@ proc tick*(win: var GUIWindow): bool =
       checkHandlers(win, widget)
     # Redraw Widget if is needed
     if test(widget, wDraw):
-      makeCurrent(win.ctx, widget.surf)
+      canvasBegin(win.ctx, widget.surf)
       draw(widget, canvas(win.ctx))
-      clearCurrent(win.ctx)
+      canvasEnd(win.ctx)
     # Render Widget
     render(win.ctx, widget.surf)
   # End GUI Rendering
-  finish()
+  ctxEnd()
   # Present to X11/EGL Window
   discard eglSwapBuffers(win.eglDsp, win.eglSur)
   # TODO: FPS Strategy

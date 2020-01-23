@@ -24,9 +24,8 @@ type
     # Buffer Objects
     vao, ebo, vbo: GLuint
     white: GLuint
-    # Projection
-    pro: GLint
-    height: int32
+    # Viewport
+    w, h: int32
     # Color and Clips
     color*: uint32
     levels: seq[GUIRect]
@@ -44,9 +43,7 @@ type
 # GUI CANVAS CREATION PROCS
 # -------------------------
 
-proc newCTXCanvas*(uPro: GLint): CTXCanvas =
-  # -- Projection and Color Uniform
-  result.pro = uPro
+proc newCTXCanvas*(): CTXCanvas =
   # -- Gen VAOs and Batch VBO
   glGenVertexArrays(1, addr result.vao)
   glGenBuffers(2, addr result.ebo)
@@ -88,11 +85,8 @@ proc newCTXCanvas*(uPro: GLint): CTXCanvas =
 # GUI RENDER PREPARING PROCS
 # --------------------------
 
-proc viewport*(ctx: var CTXCanvas, w, h: int32, pro: ptr float32) =
-  glViewport(0, 0, w, h)
-  glUniformMatrix4fv(ctx.pro, 1, false, pro)
-  # Set new height
-  ctx.height = h
+proc viewport*(ctx: var CTXCanvas, w, h: int32) =
+  ctx.w = w; ctx.h = h
 
 proc makeCurrent*(ctx: var CTXCanvas) =
   # Clear Buffers
@@ -102,7 +96,7 @@ proc makeCurrent*(ctx: var CTXCanvas) =
   ctx.current = 0 # Reset Index
   # Clear Clipping Levels
   setLen(ctx.levels, 0)
-  ctx.color = 0 # Black
+  ctx.color = 0 # Nothing Color
   # Bind Batch VAO and Atlas
   glBindVertexArray(ctx.vao)
   glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ctx.ebo)
@@ -125,7 +119,7 @@ proc clearCurrent*(ctx: var CTXCanvas) =
       block: # Clipping
         let clip = addr cmd.clip
         glScissor(
-          clip.x, ctx.height - clip.y - clip.h, 
+          clip.x, ctx.h - clip.y - clip.h, 
           clip.w, clip.h # Clip With Correct Y
         )
       glDrawElements( # Draw Command Elements
