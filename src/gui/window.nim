@@ -498,15 +498,14 @@ proc handleSignals(win: var GUIWindow): bool =
       continue
     # is GUI Signal?
     case signal.id:
-    of WindowID:
+    of WindowID: # Window Signal
       case WindowMsg(signal.msg):
       of msgTerminate: return false
       of msgFocusIM: XSetICFocus(win.xic)
       of msgUnfocusIM: XUnsetICFocus(win.xic)
-    of FrameID:
-      let frame =
-        convert(signal.data, GUIWidget)[]
-      if frame != nil:
+    of FrameID: # Frame Signal Operations
+      let frame = convert(signal.data, GUIWidget)[]
+      if not isNil(frame) and frame != win.root:
         case FrameMsg(signal.msg)
         of msgRegion: # Move or resize
           if not isNil(frame.surf):
