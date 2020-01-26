@@ -1,4 +1,4 @@
-import widget, event, context, render, container
+import widget, event, render
 import x11/xlib, x11/x
 import ../libs/egl
 
@@ -39,10 +39,10 @@ type
     eglCtx: EGLContext
     eglSur: EGLSurface
     # GUI Render Context & State
-    ctx: GUIContext
+    ctx: CTXRender
     state: GUIState
     # GUI Widgets and frames
-    root: GUIContainer
+    root: GUIWidget
     above: GUIWidget
     last: GUIWidget
     # Cache Frames
@@ -154,7 +154,7 @@ proc createEGL(win: var GUIWindow) =
 # WINDOW CREATION PROCS
 # --------------------
 
-proc newGUIWindow*(root: GUIContainer, global: pointer): GUIWindow =
+proc newGUIWindow*(root: GUIWidget, global: pointer): GUIWindow =
   # Create new X11 Display
   result.display = XOpenDisplay(nil)
   if result.display.isNil:
@@ -169,12 +169,12 @@ proc newGUIWindow*(root: GUIContainer, global: pointer): GUIWindow =
   result.state.utf8buffer(32)
   # Initialize EGL and GL
   result.createEGL()
-  result.ctx = newGUIContext()
+  result.ctx = newCTXRender()
   # Disable VSync - Avoid Input Lag
   discard eglSwapInterval(result.eglDsp, 0)
   # Root has Window and Frame Signals
   root.signals = {WindowID, FrameID}
-  root.flags = wStandard
+  root.flags = wStandard or wOpaque
   # Set the new root at first and next
   result.root = root
   result.last = root
@@ -189,14 +189,8 @@ proc exec*(win: var GUIWindow): bool =
   # Shows the win on the screen
   result = XMapWindow(win.display, win.xID) != BadWindow
   discard XSync(win.display, 0) # Wait for show it
-  # Declare Root Regions
-  var count = 0'i32 # Count Root Widgets
-  for widget in forward(win.root.first):
-    inc(count) # Dirty but only once
-  # Create new Root frame for Root Widget
-  win.root.surf = newCTXRoot(win.ctx, count)
-  # Initial Size for Root FBO
-  region(win.root.surf, win.root.rect)
+  # Set Viewport To Rect for First Time
+  viewport(win.ctx, win.root.rect.w, win.root.rect.h)
   # Mark root as Dirty
   set(win.root, wDirty)
 
@@ -214,20 +208,6 @@ proc exit*(win: var GUIWindow) =
   discard XCloseIM(win.xim)
   discard XDestroyWindow(win.display, win.xID)
   discard XCloseDisplay(win.display)
-
-# ------------------------
-# WINDOW ROOT REGIONS PROC
-# ------------------------
-
-proc regions*(win: var GUIWindow) =
-  # Map Regions
-  var map = mapRegions(win.ctx)
-  # Redefine Regions
-  for widget in forward(win.root.first):
-    if (widget.flags and (wVisible or wOpaque)) == wVisible:
-      addRegion(map, widget.rect)
-  # Unmap Regions
-  unmapRegions(win.ctx, map)
 
 # --------------------
 # WINDOW FLOATING PRIVATE PROCS
@@ -251,30 +231,19 @@ proc addLast(last: var GUIWidget, frame: GUIWidget) {.inline.} =
   # Last is frame
   last = frame
 
-# --- Add / Remove Procs ---
-proc addStacked(win: var GUIWindow, frame: GUIWidget) =
-  # Mark popup stack
-  if isNil(win.above):
-    win.above = frame
-  # Add to last
-  addLast(win.last, frame)
-  # Alloc or Reuse a CTXFrame
-  useFrame(win.ctx, frame.surf)
-  # Handle FrameIn
-  handle(frame, inFrame)
-  # Mark Visible and Dirty
-  set(frame, 0x18)
-
 proc addFrame(win: var GUIWindow, frame: GUIWidget) =
   # Add to left of head of stack or to tail
-  if isNil(win.above): addLast(win.last, frame)
+  if test(frame, wStacked):
+    if isNil(win.above):
+      win.above = frame
+    addLast(win.last, frame)
+  elif isNil(win.above): 
+    addLast(win.last, frame)
   else: addLeft(win.above, frame)
-  # Alloc or Reuse a CTXFrame
-  useFrame(win.ctx, frame.surf)
   # Handle FrameIn
   handle(frame, inFrame)
   # Mark Visible and Dirty
-  set(frame, 0x18)
+  set(frame, 0x19)
 
 proc delFrame(win: var GUIWindow, frame: GUIWidget) =
   # Unfocus if was focused
@@ -299,9 +268,7 @@ proc delFrame(win: var GUIWindow, frame: GUIWidget) =
   # Handle FrameOut
   handle(frame, outFrame)
   # Unmark Visible
-  clear(frame, 0x18)
-  # Unuse CTX Frame
-  unuseFrame(win.ctx, frame.surf)
+  clear(frame, 0x19)
   # Check if above is removed
   if frame == win.above:
     win.above = frame.next
@@ -463,8 +430,8 @@ proc handleEvents(win: var GUIWindow) =
           event.xconfigure.height != rect.h):
         rect.w = event.xconfigure.width
         rect.h = event.xconfigure.height
-        # Resize CTX Root Region and VBO
-        region(win.root.surf, win.root.rect)
+        # Set Renderer Viewport
+        viewport(win.ctx, rect.w, rect.h)
         # Relayout and Redraw GUI
         set(win.root, wDirty)
     else: # Check if the event is valid for be processed by a widget
@@ -507,20 +474,14 @@ proc handleSignals(win: var GUIWindow): bool =
       let frame = convert(signal.data, GUIWidget)[]
       if not isNil(frame) and frame != win.root:
         case FrameMsg(signal.msg)
-        of msgRegion: # Move or resize
-          if not isNil(frame.surf):
-            if region(frame.surf, frame.region):
-              frame.set(wDirty)
         of msgClose: # Remove frame from window
-          if not isNil(frame.surf):
+          if test(frame, wFramed):
             delFrame(win, frame)
         of msgOpen: # Add frame to window
-          if isNil(frame.surf):
-            if test(frame, wStacked):
-              addStacked(win, frame)
-            else: addFrame(win, frame)
-            # Update frame region after added
-            region(frame.surf, frame.region)
+          if not test(frame, wFramed):
+            addFrame(win, frame)
+            # Update Frame Layout
+            frame.set(wDirty)
     else: # Process signal to widgets
       for widget in forward(win.root):
         if signal.id in widget:
@@ -538,8 +499,7 @@ proc tick*(win: var GUIWindow): bool =
   # Event -> Signal
   handleEvents(win)
   result = handleSignals(win)
-  # Begin GUI Rendering
-  ctxBegin(win.ctx)
+  begin(win.ctx) # -- Begin GUI Rendering
   # Update -> Layout -> Render
   for widget in forward(win.root):
     # is Update and/or Layout marked?
@@ -551,23 +511,16 @@ proc tick*(win: var GUIWindow): bool =
         update(widget)
       if any(widget, 0x0C):
         layout(widget)
-        # Update Root Regions
-        if widget == win.root:
-          regions(win)
-        # Remove flags
-        widget.flags = # Unmark as layout and force draw
-          widget.flags and not 0x0C'u16 or wDraw
+        # Remove layout/dirty flags
+        widget.flags = # Unmark layout
+          widget.flags and not 0x0C'u16
       # Check Handlers
       checkHandlers(win, widget)
-    # Redraw Widget if is needed
-    if test(widget, wDraw):
-      canvasBegin(win.ctx, widget.surf)
-      draw(widget, canvas(win.ctx))
-      canvasEnd(win.ctx)
-    # Render Widget
-    render(win.ctx, widget.surf)
-  # End GUI Rendering
-  ctxEnd()
+    # Draw and Render Widget
+    clear(win.ctx) # Clear Vertex
+    draw(widget, addr win.ctx)
+    render(win.ctx) # Render VAO
+  finish() # -- End GUI Rendering
   # Present to X11/EGL Window
   discard eglSwapBuffers(win.eglDsp, win.eglSur)
   # TODO: FPS Strategy

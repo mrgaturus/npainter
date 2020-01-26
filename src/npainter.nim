@@ -23,7 +23,7 @@ proc release*(g: ptr Counter, d: pointer) =
   pushSignal(ExampleID, msgB, nil, 0)
   echo "Released Count: ", g.clicked
 
-method draw*(widget: GUIBlank, ctx: ptr CTXCanvas) =
+method draw*(widget: GUIBlank, ctx: ptr CTXRender) =
   #echo "reached lol"
   ctx.push(widget.rect)
   let color = # Test Color
@@ -49,7 +49,6 @@ method draw*(widget: GUIBlank, ctx: ptr CTXCanvas) =
   ctx.color = 0xAACCCCCC'u32
   triangle(ctx, widget.rect, toDown)
   ctx.pop()
-  widget.clear(wDraw)
 
 
 method event*(widget: GUIBlank, state: ptr GUIState) =
@@ -67,8 +66,6 @@ method event*(widget: GUIBlank, state: ptr GUIState) =
   if not isNil(widget.frame) and not test(widget.frame, wVisible):
     move(widget.frame, state.mx + 5, state.my + 5)
 
-  widget.set(wDraw)
-
 method trigger*(widget: GUIWidget, signal: GUISignal) =
   case ExampleMsg(signal.msg)
   of msgA: echo "Recived A"
@@ -84,9 +81,7 @@ method update*(widget: GUIBlank) =
 method handle*(widget: GUIBlank, kind: GUIHandle) =
   #echo "handle done: ", kind.repr
   #echo "by: ", cast[uint](widget)
-  if kind == outHold:
-    close(widget.frame)
-  widget.set(wDraw)
+  if kind == outHold: close(widget.frame)
 
 when isMainModule:
   # Create Counter
@@ -106,6 +101,8 @@ when isMainModule:
     let root = new GUIContainer
     root.rect.w = 1024
     root.rect.h = 600
+    root.color = 0xFF000000'u32
+    root.flags = wStandard or wOpaque
     # --- Blank #1 ---
     blank = new GUIBlank
     blank.flags = wStandard
@@ -117,7 +114,7 @@ when isMainModule:
     blank.rect = GUIRect(x: 20, y: 20, w: 100, h: 100)
     block: # Menu Blank #2
       con = new GUIContainer
-      con.color = 0x77637a90'u32
+      con.color = 0xAA637a90'u32
       con.flags = wPopup
       con.rect.w = 200
       con.rect.h = 100
@@ -127,7 +124,7 @@ when isMainModule:
       sub.rect = GUIRect(x: 10, y: 10, w: 20, h: 20)
       block: # Sub Menu #1
         let subcon = new GUIContainer
-        subcon.color = 0x77676466'u32
+        subcon.color = 0xAA676466'u32
         subcon.flags = wPopup
         subcon.rect.w = 200
         subcon.rect.h = 80
@@ -150,7 +147,7 @@ when isMainModule:
       sub.rect = GUIRect(x: 40, y: 10, w: 20, h: 20)
       block: # Sub Menu #1
         let subcon = new GUIContainer
-        subcon.color = 0x77bdb88f'u32
+        subcon.color = 0xFFbdb88f'u32
         subcon.flags = wEnabled
         subcon.rect.w = 200
         subcon.rect.h = 80

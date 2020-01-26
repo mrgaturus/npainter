@@ -1,3 +1,6 @@
+from ../math import guiProjection
+from ../shader import newProgram
+# OpenGL 3.2+
 import ../libs/gl
 
 const # XYUVRGBA 20bytes
@@ -24,12 +27,16 @@ type
   CTXElementMap = # Elements
     ptr UncheckedArray[uint16]
   # Allocated Buffers
-  CTXCanvas* = object
+  CTXRender* = object
+    # Shader Program
+    program: GLuint
+    projection: GLint
+    # Frame viewport cache
+    vWidth, vHeight: int32
+    vCache: array[16, float32]
     # Buffer Objects
     vao, ebo, vbo: GLuint
     white: GLuint
-    # Viewport
-    w, h: int32
     # Color and Clips
     color*: uint32
     levels: seq[GUIRect]
@@ -47,7 +54,16 @@ type
 # GUI CANVAS CREATION PROCS
 # -------------------------
 
-proc newCTXCanvas*(): CTXCanvas =
+proc newCTXRender*(): CTXRender =
+  # -- Create new Program
+  result.program = newProgram("shaders/gui.vert", "shaders/gui.frag")
+  # Use Program for Define Uniforms
+  glUseProgram(result.program)
+  # Define Projection and Texture Uniforms
+  result.projection = glGetUniformLocation(result.program, "uPro")
+  glUniform1i(glGetUniformLocation(result.program, "uTex"), 0)
+  # Unuse Program
+  glUseProgram(0)
   # -- Gen VAOs and Batch VBO
   glGenVertexArrays(1, addr result.vao)
   glGenBuffers(2, addr result.ebo)
@@ -91,10 +107,35 @@ proc newCTXCanvas*(): CTXCanvas =
 # GUI RENDER PREPARING PROCS
 # --------------------------
 
-proc viewport*(ctx: var CTXCanvas, w, h: int32) =
-  ctx.w = w; ctx.h = h
+proc begin*(ctx: var CTXRender) =
+  # Use GUI program
+  glUseProgram(ctx.program)
+  # Disable 3D OpenGL Flags
+  glDisable(GL_CULL_FACE)
+  glDisable(GL_DEPTH_TEST)
+  glDisable(GL_STENCIL_TEST)
+  # Enable Scissor Test
+  glEnable(GL_SCISSOR_TEST)
+  # Enable Alpha Blending
+  glEnable(GL_BLEND)
+  glBlendEquation(GL_FUNC_ADD)
+  glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
+  # Bind VAO and VBO
+  glBindVertexArray(ctx.vao)
+  glBindBuffer(GL_ARRAY_BUFFER, ctx.vbo)
+  # Modify Only Texture 0
+  glActiveTexture(GL_TEXTURE0)
+  glBindTexture(GL_TEXTURE_2D, ctx.white)
+  # Set Viewport to Window
+  glViewport(0, 0, ctx.vWidth, ctx.vHeight)
+  glUniformMatrix4fv(ctx.projection, 1, false,
+    cast[ptr float32](addr ctx.vCache))
 
-proc makeCurrent*(ctx: var CTXCanvas) =
+proc viewport*(ctx: var CTXRender, w, h: int32) =
+  guiProjection(addr ctx.vCache, float32 w, float32 h)
+  ctx.vWidth = w; ctx.vHeight = h
+
+proc clear*(ctx: var CTXRender) =
   # Reset Cursor
   ctx.size = 0
   # Clear Buffers
@@ -104,12 +145,8 @@ proc makeCurrent*(ctx: var CTXCanvas) =
   # Clear Clipping Levels
   setLen(ctx.levels, 0)
   ctx.color = 0 # Nothing Color
-  # Bind Batch VAO and Atlas
-  glBindVertexArray(ctx.vao)
-  glBindBuffer(GL_ARRAY_BUFFER, ctx.vbo)
-  glBindTexture(GL_TEXTURE_2D, ctx.white)
 
-proc clearCurrent*(ctx: var CTXCanvas) =
+proc render*(ctx: var CTXRender) =
   # Upload Elements
   glBufferData(GL_ELEMENT_ARRAY_BUFFER, 
     len(ctx.elements)*sizeof(uint16),
@@ -120,36 +157,42 @@ proc clearCurrent*(ctx: var CTXCanvas) =
     addr ctx.verts[0], GL_STREAM_DRAW)
   # Draw Clipping Commands
   if len(ctx.cmds) > 0:
-    glEnable(GL_SCISSOR_TEST)
     for cmd in mitems(ctx.cmds):
       glScissor( # Clip Region
-        cmd.clip.x, ctx.h - cmd.clip.y - cmd.clip.h, 
+        cmd.clip.x, ctx.vHeight - cmd.clip.y - cmd.clip.h, 
         cmd.clip.w, cmd.clip.h) # Clip With Correct Y
       glDrawElementsBaseVertex( # Draw Command
         GL_TRIANGLES, cmd.size, GL_UNSIGNED_SHORT,
         cast[pointer](cmd.offset * sizeof(uint16)),
         cmd.base) # Base Vertex Index
-    glDisable(GL_SCISSOR_TEST)
-  # Unbind Texture, VBO and VAO
+
+proc finish*() =
+  # Unbind Texture and VAO
   glBindTexture(GL_TEXTURE_2D, 0)
   glBindBuffer(GL_ARRAY_BUFFER, 0)
   glBindVertexArray(0)
+  # Disable Scissor Test
+  glDisable(GL_SCISSOR_TEST)
+  # Disable Alpha Blend
+  glDisable(GL_BLEND)
+  # Unbind Program
+  glUseProgram(0)
 
 # ------------------------
 # GUI PAINTER HELPER PROCS
 # ------------------------
 
-proc defaultCMD(ctx: ptr CTXCanvas, eSize: int32) =
+proc defaultCMD(ctx: ptr CTXRender, eSize: int32) =
   ctx.size = 0 # Reset Size
   ctx.cmds.add( # Default CMD if is not Defined
     CTXCommand( # Viewport Same Clip
       size: eSize, # Initial Size
       clip: if len(ctx.levels) > 0: ctx.levels[^1]
-        else: GUIRect(w: ctx.w, h: ctx.h)
+        else: GUIRect(w: ctx.vWidth, h: ctx.vHeight)
     ) # End New Command
   ) # End Add
 
-proc addCMD(ctx: ptr CTXCanvas, clip: var GUIRect) =
+proc addCMD(ctx: ptr CTXRender, clip: var GUIRect) =
   let size = # Check if last CMD has size
     if len(ctx.cmds) > 0: 
       ctx.cmds[^1].size
@@ -166,7 +209,7 @@ proc addCMD(ctx: ptr CTXCanvas, clip: var GUIRect) =
   elif size == 0: # Change Clip of last
     ctx.cmds[^1].clip = clip
 
-proc addVerts(ctx: ptr CTXCanvas, vSize, eSize: int32) =
+proc addVerts(ctx: ptr CTXRender, vSize, eSize: int32) =
   # Set New Vertex and Elements Lenght
   ctx.verts.setLen(len(ctx.verts) + vSize)
   ctx.elements.setLen(len(ctx.elements) + eSize)
@@ -200,33 +243,32 @@ template triangle(o: int32, a,b,c: int32) =
 # GUI CLIP/COLOR LEVELS PROCS
 # -----------------------
 
-proc intersect(ctx: ptr CTXCanvas, rect: var GUIRect): GUIRect =
+proc intersect(ctx: ptr CTXRender, rect: var GUIRect): GUIRect =
   let prev = addr ctx.levels[^1]
   result.x = max(prev.x, rect.x)
   result.y = max(prev.y, rect.y)
   result.w = min(prev.x + prev.w, rect.x + rect.w) - result.x
   result.h = min(prev.y + prev.h, rect.y + rect.h) - result.y
 
-proc push*(ctx: ptr CTXCanvas, rect: var GUIRect) =
+proc push*(ctx: ptr CTXRender, rect: var GUIRect) =
   var clip = if len(ctx.levels) > 0:
     ctx.intersect(rect)
   else: rect # First Level
   ctx.addCMD(clip) # New Command
   ctx.levels.add(clip) # New level
 
-proc pop*(ctx: ptr CTXCanvas) {.inline.} =
+proc pop*(ctx: ptr CTXRender) {.inline.} =
   ctx.levels.setLen(max(len(ctx.levels) - 1, 0))
   var clip = # Prev Clip
-    if len(ctx.levels) > 0:
-      ctx.levels[^1]
-    else: GUIRect(w: ctx.w, h: ctx.h)
+    if len(ctx.levels) > 0: ctx.levels[^1]
+    else: GUIRect(w: ctx.vWidth, h: ctx.vHeight)
   ctx.addCMD(clip) # New Command
 
 # --------------
 # GUI BASIC DRAW
 # --------------
 
-proc fill*(ctx: ptr CTXCanvas, rect: var GUIRect) =
+proc fill*(ctx: ptr CTXRender, rect: var GUIRect) =
   ctx.addVerts(4, 6)
   block: # Rect Triangles
     let
@@ -242,7 +284,7 @@ proc fill*(ctx: ptr CTXCanvas, rect: var GUIRect) =
   triangle(0, 0,1,2)
   triangle(3, 1,2,3)
 
-proc rectangle*(ctx: ptr CTXCanvas, rect: var GUIRect, s: float32) =
+proc rectangle*(ctx: ptr CTXRender, rect: var GUIRect, s: float32) =
   ctx.addVerts(12, 24)
   block: # Box Vertex
     let
@@ -279,7 +321,7 @@ proc rectangle*(ctx: ptr CTXCanvas, rect: var GUIRect, s: float32) =
   triangle(18, 10,9,1)
   triangle(21, 1,2,9)
 
-proc triangle*(ctx: ptr CTXCanvas, rect: var GUIRect, o: CTXOrientation) =
+proc triangle*(ctx: ptr CTXRender, rect: var GUIRect, o: CTXOrientation) =
   ctx.addVerts(3, 3)
   block:
     let

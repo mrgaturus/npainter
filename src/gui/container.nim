@@ -4,9 +4,8 @@ import widget, render
 const
   # Partial Layout Handling
   cDirty* = uint16(1 shl 11)
-  cDraw* = uint16(1 shl 12)
   # Reactive for Indicators
-  cReactive = 0x07'u16
+  cReactive = 0x0e'u16
 
 type
   # GUIContainer, Base class for Layout creation
@@ -83,24 +82,19 @@ proc reactive(self: GUIContainer, widget: GUIWidget) =
     widget.clear(wFocus) # Invalid focus
 
 # CONTAINER METHODS
-method draw(self: GUIContainer, ctx: ptr CTXCanvas) =
-  self.clear(wDraw)
-  # Push Clipping and Color Level
+method draw(self: GUIContainer, ctx: ptr CTXRender) =
+  # Push Clipping
   ctx.push(self.rect)
-  # Clear color if it was dirty
-  if self.test(cDraw):
-    self.clear(cDraw)
-    # Draw Background
+  # Draw Background
+  if (self.flags and wOpaque) == 0:
     ctx.color = self.color
     ctx.fill(self.rect)
   # Draw Widgets
   for widget in forward(self.first):
-    if widget.test(wDraw):
+    # Draw Widget if is Visible
+    if (widget.flags and wVisible) == wVisible:
       widget.draw(ctx)
-      # Check if there is a draw activated
-      self.flags = self.flags or
-        (widget.flags and wDraw)
-  # Pop Clipping and Color Level
+  # Pop Clipping
   ctx.pop()
 
 method update(self: GUIContainer) =
@@ -186,12 +180,10 @@ method step(self: GUIContainer, back: bool) =
   self.clear(wFocus)
 
 method layout(self: GUIContainer) =
-  # Check if is Root Dirty or Partially Dirty
-  let dirty =
+  let dirty = # Check Partial/Root Dirty
     self.any(wDirty or cDirty)
-  if dirty:
-    arrange(self) # Arrange Widgets
-    self.set(cDraw) # BG Draw
+  if dirty: # Arrange Widgets
+    arrange(self)
   for widget in forward(self.first):
     # Mark as dirty if is dirty
     widget.set(
@@ -199,10 +191,8 @@ method layout(self: GUIContainer) =
     ) # Layout or Dirty?
     if widget.any(0x0C):
       widget.layout()
-      widget.clear(0x0D)
-      # Draw if visible
-      if widget.test(wVisible):
-        widget.set(wDraw)
+      widget.clear(0x0C)
+      # TODO: Test Visibility
       # React To Flag Changes
       self.reactive(widget)
 

@@ -1,12 +1,12 @@
 # GUI Objects
 from builder import signal
 from event import GUIState, GUISignal, pushSignal
-from render import CTXCanvas, GUIRect
-from context import CTXFrame
+from render import CTXRender, GUIRect
 
 const # For now is better use traditional flags
-  # Indicators - Update -> Layout -> Draw
-  wDraw* = uint16(1 shl 0)
+  # Rendering on Screen
+  wFramed* = uint16(1 shl 0)
+  # Indicators - Update -> Layout
   wUpdate* = uint16(1 shl 1)
   wLayout* = uint16(1 shl 2)
   wDirty* = uint16(1 shl 3)
@@ -19,8 +19,8 @@ const # For now is better use traditional flags
   wHover* = uint16(1 shl 8)
   wGrab* = uint16(1 shl 9)
   wHold* = uint16(1 shl 10)
-  # Opaque - No Render Region for Root
-  wOpaque* = uint16(1 shl 13)
+  # Opaque - Misc Rendering
+  wOpaque* = uint16(1 shl 12)
   # ---------------------
   # Default Flags - Widget Constructor
   wStandard* = 0x30'u16 # Visible-Enabled
@@ -35,22 +35,18 @@ type
     outFocus, outHover, outHold, outFrame
   GUIFlags* = uint16
   GUISignals = set[0'u8..63'u8]
-  # A Widget can be assigned to a CTXFrame
   GUIWidget* = ref object of RootObj
-    # Widget Tree
+    # Widget Neighbords
     next*, prev*: GUIWidget
     # Widget Basic Info
     signals*: GUISignals
     flags*: GUIFlags
     # Widget Rects
     rect*, hint*: GUIRect
-    # Widget floating
-    surf*: CTXFrame
 
 signal Frame:
-  Region
-  Close
-  Open
+  Open # Open Floating
+  Close # Close Floating
 
 # ----------------
 # WIDGET ITERATORS
@@ -70,9 +66,9 @@ iterator reverse*(last: GUIWidget): GUIWidget =
     yield frame
     frame = frame.prev
 
-# ------------
-# WIDGET FLAGS
-# ------------
+# ------------------
+# WIDGET FLAGS PROCS
+# ------------------
 
 proc set*(self: GUIWidget, mask: GUIFlags) {.inline.} =
   self.flags = self.flags or mask
@@ -86,24 +82,30 @@ proc any*(self: GUIWidget, mask: GUIFlags): bool {.inline.} =
 proc test*(self: GUIWidget, mask: GUIFlags): bool {.inline.} =
   return (self.flags and mask) == mask
 
-# -------------
-# WIDGET SIGNAL
-# -------------
+# ----------------------
+# WIDGET SIGNAL CHECKING
+# ----------------------
 
 proc `in`*(signal: uint8, self: GUIWidget): bool {.inline.} =
   return signal in self.signals
 
-# ---------------------
-# WIDGET RELATIVE PROCS
-# ---------------------
+# ------------------------
+# WIDGET MOUSE EVENT PROCS
+# ------------------------
 
 proc pointOnArea*(widget: GUIWidget, x, y: int32): bool =
-  result = widget.test(wVisible)
-  if result:
-    let rect = addr widget.rect
-    result =
-      x >= rect.x and x <= rect.x + rect.w and
-      y >= rect.y and y <= rect.y + rect.h
+  return widget.test(wVisible) and # For Container
+    x >= widget.rect.x and x <= widget.rect.x + widget.rect.w and
+    y >= widget.rect.y and y <= widget.rect.y + widget.rect.h
+
+proc pointOnFrame*(widget: GUIWidget, x, y: int32): bool =
+  return # For Sub-Windows
+    x >= widget.hint.x and x <= widget.hint.x + widget.rect.w and
+    y >= widget.hint.y and y <= widget.hint.y + widget.rect.h
+
+proc relative*(widget: GUIWidget, state: ptr GUIState) =
+  state.rx = state.mx - widget.hint.x
+  state.ry = state.my - widget.hint.y
 
 # ------------------------
 # WIDGET FRAMED open/close
@@ -128,50 +130,19 @@ proc close*(widget: GUIWidget) =
 proc move*(widget: GUIWidget, x, y: int32) =
   widget.hint.x = x
   widget.hint.y = y
-  # Send Widget to Window for move
-  pushSignal(
-    FrameID, msgRegion,
-    unsafeAddr widget,
-    sizeof(GUIWidget)
-  )
 
 proc resize*(widget: GUIWidget, w, h: int32) =
   widget.rect.w = w
   widget.rect.h = h
-  # Send Widget to Window for resize
-  pushSignal(
-    FrameID, msgRegion,
-    unsafeAddr widget,
-    sizeof(GUIWidget)
-  )
-
-# ------------------------
-# WIDGET FRAMED CONTROLLED
-# ------------------------
-
-proc pointOnFrame*(widget: GUIWidget, x, y: int32): bool =
-  return
-    x >= widget.hint.x and x <= widget.hint.x + widget.rect.w and
-    y >= widget.hint.y and y <= widget.hint.y + widget.rect.h
-
-proc relative*(widget: GUIWidget, state: ptr GUIState) =
-  state.rx = state.mx - widget.hint.x
-  state.ry = state.my - widget.hint.y
-
-proc region*(widget: GUIWidget): GUIRect {.inline.} =
-  # Make sure rect x, y is always 0
-  zeroMem(addr widget.rect, sizeof(int32)*2)
-  # x, y -> hint, w, h -> rect
-  copyMem(addr result, addr widget.hint, sizeof(int32)*2)
-  copyMem(addr result.w, addr widget.rect.w, sizeof(int32)*2)
+  # Mark as Dirty
+  widget.set(wDirty)
 
 # ------------
 # WIDGET ABSTRACT METHODS - Single-Threaded
 # ------------
 
-# -- In/Out Handle Method
-method handle*(widget: GUIWidget, kind: GUIHandle) {.base.} =
-  widget.set(wDraw)
+# X -- In/Out Handle Method
+method handle*(widget: GUIWidget, kind: GUIHandle) {.base.} = discard
 # 1 -- Event Methods
 method event*(widget: GUIWidget, state: ptr GUIState) {.base.} = discard
 method step*(widget: GUIWidget, back: bool) {.base.} =
@@ -181,5 +152,4 @@ method trigger*(widget: GUIWidget, signal: GUISignal) {.base.} = discard
 method update*(widget: GUIWidget) {.base.} = discard
 method layout*(widget: GUIWidget) {.base.} = discard
 # 3 -- Draw Method
-method draw*(widget: GUIWidget, ctx: ptr CTXCanvas) {.base.} =
-  widget.clear(wDraw)
+method draw*(widget: GUIWidget, ctx: ptr CTXRender) {.base.} = discard
