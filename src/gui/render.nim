@@ -7,6 +7,10 @@ type
   GUIRect* = object
     x*, y*, w*, h*: int32
   GUIColor* = uint32
+  # Orientation
+  CTXOrientation* = enum
+    toUP, toLEFT,
+    toDOWN, toRIGHT
   # Clip Levels
   CTXCommand = object
     offset, size, base: int32
@@ -30,11 +34,10 @@ type
     color*: uint32
     levels: seq[GUIRect]
     # Vertex index
-    pivot: int32
-    cursor: uint16
+    size, cursor: uint16
     # Write Pointers
     pVert: CTXVertexMap
-    pElement: CTXElementMap
+    pElem: CTXElementMap
     # Allocated Buffer Data
     cmds: seq[CTXCommand]
     elements: seq[uint16]
@@ -92,12 +95,12 @@ proc viewport*(ctx: var CTXCanvas, w, h: int32) =
   ctx.w = w; ctx.h = h
 
 proc makeCurrent*(ctx: var CTXCanvas) =
+  # Reset Cursor
+  ctx.size = 0
   # Clear Buffers
   setLen(ctx.cmds, 0)
   setLen(ctx.elements, 0)
   setLen(ctx.verts, 0)
-  # Reset Pivot
-  ctx.pivot = 0
   # Clear Clipping Levels
   setLen(ctx.levels, 0)
   ctx.color = 0 # Nothing Color
@@ -137,31 +140,33 @@ proc clearCurrent*(ctx: var CTXCanvas) =
 # ------------------------
 
 proc defaultCMD(ctx: ptr CTXCanvas, eSize: int32) =
+  ctx.size = 0 # Reset Size
   ctx.cmds.add( # Default CMD if is not Defined
     CTXCommand( # Viewport Same Clip
       size: eSize, # Initial Size
-      clip: GUIRect(w: ctx.w, h: ctx.h)))
+      clip: if len(ctx.levels) > 0: ctx.levels[^1]
+        else: GUIRect(w: ctx.w, h: ctx.h)
+    ) # End New Command
+  ) # End Add
 
 proc addCMD(ctx: ptr CTXCanvas, clip: var GUIRect) =
   let size = # Check if last CMD has size
     if len(ctx.cmds) > 0: 
       ctx.cmds[^1].size
-    else: 0
-  if size == 0:
-    ctx.pivot = 
-      int32(ctx.verts.len)
+    else: -1
+  if size > 0:
+    ctx.size = 0
     ctx.cmds.add(
       CTXCommand(
         offset: int32(
           len(ctx.elements)
-        ), base: ctx.pivot, 
-        clip: clip))
-  else: # Change Clip of last
+        ), base: int32(
+          len(ctx.verts)
+        ), clip: clip))
+  elif size == 0: # Change Clip of last
     ctx.cmds[^1].clip = clip
 
 proc addVerts(ctx: ptr CTXCanvas, vSize, eSize: int32) =
-  # Set Current Vertex Index
-  ctx.cursor = uint16(len(ctx.verts) - ctx.pivot)
   # Set New Vertex and Elements Lenght
   ctx.verts.setLen(len(ctx.verts) + vSize)
   ctx.elements.setLen(len(ctx.elements) + eSize)
@@ -170,37 +175,37 @@ proc addVerts(ctx: ptr CTXCanvas, vSize, eSize: int32) =
   else: defaultCMD(ctx, eSize) # Aux CMD
   # Set Write Pointers
   ctx.pVert = cast[CTXVertexMap](addr ctx.verts[^vSize])
-  ctx.pElement = cast[CTXElementMap](addr ctx.elements[^eSize])
+  ctx.pElem = cast[CTXElementMap](addr ctx.elements[^eSize])
+  # Set Current Vertex Index
+  ctx.cursor = ctx.size
+  ctx.size += uint16(vSize)
 
 # ----------------------
 # GUI DRAWING TEMPLATES
 # ----------------------
 
-# Last Vert Index + Offset
-template triangle(emap: CTXElementMap, o,a,b,c: int32) =
-  emap[o] = ctx.cursor + a
-  emap[o+1] = ctx.cursor + b
-  emap[o+2] = ctx.cursor + c
+## X,Y,0,0,COLOR
+template vertex(i: int32, a,b: float32, col: uint32) =
+  ctx.pVert[i].x = a # Position X
+  ctx.pVert[i].y = b # Position Y
+  ctx.pVert[i].color = col # Color RGBA
 
-## X,Y,U,V,COLOR
-template vertex(a,b,c,d: float32, col: uint32): CTXVertex =
-  CTXVertex(x:a,y:b,u:c,v:d,color:col)
+# Last Vert Index + Offset
+template triangle(o: int32, a,b,c: int32) =
+  ctx.pElem[o] = ctx.cursor + a
+  ctx.pElem[o+1] = ctx.cursor + b
+  ctx.pElem[o+2] = ctx.cursor + c
 
 # -----------------------
 # GUI CLIP/COLOR LEVELS PROCS
 # -----------------------
 
 proc intersect(ctx: ptr CTXCanvas, rect: var GUIRect): GUIRect =
-  let
-    prev = addr ctx.levels[^1]
-    x1 = clamp(rect.x, prev.x, prev.x + prev.w)
-    y1 = clamp(rect.y, prev.y, prev.y + prev.h)
-    x2 = clamp(prev.x + prev.w, rect.x, rect.x + rect.w)
-    y2 = clamp(prev.y + prev.h, rect.y, rect.y + rect.h)
-  result.x = x1
-  result.y = y1
-  result.w = abs(x2 - x1)
-  result.h = abs(y2 - y1)
+  let prev = addr ctx.levels[^1]
+  result.x = max(prev.x, rect.x)
+  result.y = max(prev.y, rect.y)
+  result.w = min(prev.x + prev.w, rect.x + rect.w) - result.x
+  result.h = min(prev.y + prev.h, rect.y + rect.h) - result.y
 
 proc push*(ctx: ptr CTXCanvas, rect: var GUIRect) =
   var clip = if len(ctx.levels) > 0:
@@ -209,11 +214,13 @@ proc push*(ctx: ptr CTXCanvas, rect: var GUIRect) =
   ctx.addCMD(clip) # New Command
   ctx.levels.add(clip) # New level
 
-proc pop*(ctx: ptr CTXCanvas) =
-  ctx.levels.setLen(
-    max(len(ctx.levels) - 1, 0))
-  if len(ctx.levels) > 0: # Pop Level
-    ctx.addCMD(ctx.levels[^1]) # New Command
+proc pop*(ctx: ptr CTXCanvas) {.inline.} =
+  ctx.levels.setLen(max(len(ctx.levels) - 1, 0))
+  var clip = # Prev Clip
+    if len(ctx.levels) > 0:
+      ctx.levels[^1]
+    else: GUIRect(w: ctx.w, h: ctx.h)
+  ctx.addCMD(clip) # New Command
 
 # --------------
 # GUI BASIC DRAW
@@ -227,10 +234,75 @@ proc fill*(ctx: ptr CTXCanvas, rect: var GUIRect) =
       y = float32 rect.y
       xw = x + float32 rect.w
       yh = y + float32 rect.h
-    ctx.pVert[0] = vertex(x, y, 0, 0, ctx.color)
-    ctx.pVert[1] = vertex(xw, y, 0, 0, ctx.color)
-    ctx.pVert[2] = vertex(x, yh, 0, 0, ctx.color)
-    ctx.pVert[3] = vertex(xw, yh, 0, 0, ctx.color)
+    vertex(0, x, y, ctx.color)
+    vertex(1, xw, y, ctx.color)
+    vertex(2, x, yh, ctx.color)
+    vertex(3, xw, yh, ctx.color)
   # Elements Definition
-  triangle(ctx.pElement, 0, 0,1,2)
-  triangle(ctx.pElement, 3, 1,2,3)
+  triangle(0, 0,1,2)
+  triangle(3, 1,2,3)
+
+proc rectangle*(ctx: ptr CTXCanvas, rect: var GUIRect, s: float32) =
+  ctx.addVerts(12, 24)
+  block: # Box Vertex
+    let
+      x = float32 rect.x
+      y = float32 rect.y
+      xw = x + float32 rect.w
+      yh = y + float32 rect.h
+    # Top Left Corner
+    vertex(0, x, y+s, ctx.color)
+    vertex(1, x, y, ctx.color)
+    vertex(2, x+s, y, ctx.color)
+    # Top Right Corner
+    vertex(3, xw-s, y, ctx.color)
+    vertex(4, xw, y, ctx.color)
+    vertex(5, xw, y+s, ctx.color)
+    # Bottom Right Corner
+    vertex(6, xw, yh-s, ctx.color)
+    vertex(7, xw, yh, ctx.color)
+    vertex(8, xw-s, yh, ctx.color)
+    # Bottom Left Corner
+    vertex(9, x+s, yh, ctx.color)
+    vertex(10, x, yh, ctx.color)
+    vertex(11, x, yh-s, ctx.color)
+  # Top Rect
+  triangle(0, 0,1,5)
+  triangle(3, 5,4,1)
+  # Right Rect
+  triangle(6, 3,4,7)
+  triangle(9, 7,8,3)
+  # Bottom Rect
+  triangle(12, 7,6,11)
+  triangle(15, 11,10,7)
+  # Left Rect
+  triangle(18, 10,9,1)
+  triangle(21, 1,2,9)
+
+proc triangle*(ctx: ptr CTXCanvas, rect: var GUIRect, o: CTXOrientation) =
+  ctx.addVerts(3, 3)
+  block:
+    let
+      x = float32 rect.x
+      y = float32 rect.y
+      xw = x + float32 rect.w
+      yh = y + float32 rect.h
+    case o: # Orientation of Triangle
+    of toUp: # to Up
+      vertex(0, x+rect.w/2, y, ctx.color)
+      vertex(1, xw, yh, ctx.color)
+      vertex(2, x, yh, ctx.color)
+    of toRight: # to Right
+      vertex(0, xw, y+rect.h/2, ctx.color)
+      vertex(1, x, yh, ctx.color)
+      vertex(2, x, y, ctx.color)
+    of toDown: # to Down
+      vertex(0, x+rect.w/2, yh, ctx.color)
+      vertex(1, x, y, ctx.color)
+      vertex(2, xw, y, ctx.color)
+    of toLeft: # to Left
+      vertex(0, x, y+rect.h/2, ctx.color)
+      vertex(1, xw, y, ctx.color)
+      vertex(2, xw, yh, ctx.color)
+  # Elements Description
+  triangle(0, 0,1,2)

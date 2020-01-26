@@ -25,6 +25,7 @@ proc release*(g: ptr Counter, d: pointer) =
 
 method draw*(widget: GUIBlank, ctx: ptr CTXCanvas) =
   #echo "reached lol"
+  ctx.push(widget.rect)
   let color = # Test Color
     if widget.test(wHover): 0xAA252525'u32
     elif widget.test(wGrab): 0xAAFF00FF'u32
@@ -33,6 +34,21 @@ method draw*(widget: GUIBlank, ctx: ptr CTXCanvas) =
 
   ctx.color = color
   fill(ctx, widget.rect)
+  ctx.color = 0xEECCCCCC'u32
+  rectangle(ctx, widget.rect, 1)
+  ctx.pop()
+  # Rect Test
+  block:
+    var rect = widget.rect
+    rect.x += rect.w div 2
+    rect.y += rect.h div 2
+    ctx.push(rect)
+    ctx.color = 0xFF000000'u32
+    triangle(ctx, widget.rect, toLEFT)
+    ctx.pop()
+  ctx.color = 0xAACCCCCC'u32
+  triangle(ctx, widget.rect, toDown)
+  ctx.pop()
   widget.clear(wDraw)
 
 
