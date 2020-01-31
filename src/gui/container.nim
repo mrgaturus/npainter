@@ -115,7 +115,7 @@ method event(self: GUIContainer, state: ptr GUIState) =
       found = self.hover # Cached Widget
       # If is Grabbed don't find
       if self.test(wGrab) and state.eventType != evMouseClick: discard
-      elif isNil(found) or not pointOnArea(found, state.rx, state.ry):
+      elif isNil(found) or not pointOnArea(found, state.mx, state.my):
         # Handle HoverOut
         if not isNil(found):
           found.handle(outHover)
@@ -126,7 +126,7 @@ method event(self: GUIContainer, state: ptr GUIState) =
           found = nil
         # Search hovered widget
         for widget in forward(self.first):
-          if pointOnArea(widget, state.rx, state.ry):
+          if pointOnArea(widget, state.mx, state.my):
             found = widget
             # Handle HoverIn
             found.handle(inHover)
@@ -148,7 +148,7 @@ method event(self: GUIContainer, state: ptr GUIState) =
         (self.flags and wGrab)
       # Check if cursor is on boundaries
       if found.any(wGrab or wHold):
-        if pointOnArea(found, state.rx, state.ry):
+        if pointOnArea(found, state.mx, state.my):
           found.set(wHover)
         else: found.clear(wHover)
     found.event(state)
@@ -180,21 +180,23 @@ method step(self: GUIContainer, back: bool) =
   self.clear(wFocus)
 
 method layout(self: GUIContainer) =
-  let dirty = # Check Partial/Root Dirty
+  let dirty = # Check Dirty/Partial Dirty
     self.any(wDirty or cDirty)
-  if dirty: # Arrange Widgets
-    arrange(self)
+  # Arrange Widgets
+  if dirty: arrange(self)
   for widget in forward(self.first):
-    # Mark as dirty if is dirty
-    widget.set(
-      cast[uint16](dirty) shl 3'u16
-    ) # Layout or Dirty?
+    # Mark as dirty if container is dirty
+    widget.set(cast[uint16](dirty) shl 3'u16) 
+    # Layout Indicator Check
     if widget.any(0x0C):
-      widget.layout()
       widget.clear(0x0C)
-      # TODO: Test Visibility
-      # React To Flag Changes
-      self.reactive(widget)
+      if dirty: # Change Absolute Position
+        calcAbsolute(widget, self.rect)
+      # Do Layoutning if visible
+      if widget.test(wVisible):
+        widget.layout()
+        # React To Flag Changes
+        self.reactive(widget)
 
 method handle(self: GUIContainer, kind: GUIHandle) =
   var

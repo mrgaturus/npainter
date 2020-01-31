@@ -63,7 +63,7 @@ method event*(widget: GUIBlank, state: ptr GUIState) =
   elif state.eventType == evMouseRelease:
     if not checkTimer(widget.t):
       widget.clear(wUpdate)
-  if not isNil(widget.frame) and not test(widget.frame, wVisible):
+  if widget.test(wGrab) and not isNil(widget.frame):
     move(widget.frame, state.mx + 5, state.my + 5)
 
 method trigger*(widget: GUIWidget, signal: GUISignal) =
@@ -106,12 +106,12 @@ when isMainModule:
     # --- Blank #1 ---
     blank = new GUIBlank
     blank.flags = wStandard
-    blank.rect = GUIRect(x: 20, y: 150, w: 100, h: 100)
+    blank.geometry(20,150,100,100)
     root.add(blank)
     # --- Blank #2 ---
     blank = new GUIBlank
     blank.flags = wStandard
-    blank.rect = GUIRect(x: 20, y: 20, w: 100, h: 100)
+    blank.geometry(20,20,100,100)
     block: # Menu Blank #2
       con = new GUIContainer
       con.color = 0xAA637a90'u32
@@ -121,7 +121,7 @@ when isMainModule:
       # Sub-Blank #1
       sub = new GUIBlank
       sub.flags = wStandard
-      sub.rect = GUIRect(x: 10, y: 10, w: 20, h: 20)
+      sub.geometry(10,10,20,20)
       block: # Sub Menu #1
         let subcon = new GUIContainer
         subcon.color = 0xAA676466'u32
@@ -131,12 +131,12 @@ when isMainModule:
         # Sub-sub blank 1#
         var subsub = new GUIBlank
         subsub.flags = wStandard
-        subsub.rect = GUIRect(x: 10, y: 10, w: 180, h: 20)
+        subsub.geometry(10,10,180,20)
         subcon.add(subsub)
         # Sub-sub blank 2#
         subsub = new GUIBlank
         subsub.flags = wStandard
-        subsub.rect = GUIRect(x: 10, y: 40, w: 180, h: 20)
+        subsub.geometry(10,40,180,20)
         subcon.add(subsub)
         # Add to Sub
         sub.frame = subcon
@@ -144,7 +144,7 @@ when isMainModule:
       # Sub-Blank #2
       sub = new GUIBlank
       sub.flags = wStandard
-      sub.rect = GUIRect(x: 40, y: 10, w: 20, h: 20)
+      sub.geometry(40,10,20,20)
       block: # Sub Menu #1
         let subcon = new GUIContainer
         subcon.color = 0xFFbdb88f'u32
@@ -154,12 +154,12 @@ when isMainModule:
         # Sub-sub blank 1#
         var subsub = new GUIBlank
         subsub.flags = wStandard
-        subsub.rect = GUIRect(x: 10, y: 10, w: 180, h: 20)
+        subsub.geometry(10,10,180,20)
         subcon.add(subsub)
         # Sub-sub blank 2#
         subsub = new GUIBlank
         subsub.flags = wStandard
-        subsub.rect = GUIRect(x: 10, y: 40, w: 180, h: 20)
+        subsub.geometry(10,40,180,20)
         subcon.add(subsub)
         # Add to Sub
         sub.frame = subcon

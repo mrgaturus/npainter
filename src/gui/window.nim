@@ -374,14 +374,14 @@ proc findWidget(win: var GUIWindow, state: ptr GUIState,
     elif isNil(win.above): # Not Stacked
       if isNil(win.hold): # Find on frames if was not holded
         for widget in reverse(win.last):
-          if pointOnFrame(widget, state.mx, state.my):
+          if pointOnArea(widget, state.mx, state.my):
             result = widget
             break # A frame was hovered
       else: result = win.hold
     else: # Stacked
       for widget in reverse(win.last):
         if widget.next == win.above: break
-        if widget.test(wHold) or pointOnFrame(widget, state.mx, state.my):
+        if widget.test(wHold) or pointOnArea(widget, state.mx, state.my):
           result = widget
           break # A popup was hovered or is holded
       # Use Holded Widget if a popup was not found
@@ -400,7 +400,7 @@ proc findWidget(win: var GUIWindow, state: ptr GUIState,
       win.hover = result
     # If is grabbed of holded, check if is in area
     elif not isNil(result) and test(result, wGrab or wHold):
-      if pointOnFrame(result, state.mx, state.my):
+      if pointOnArea(result, state.mx, state.my):
         result.set(wHover)
       else: result.clear(wHover)
   of evKeyDown, evKeyUp:
@@ -451,14 +451,11 @@ proc handleEvents(win: var GUIWindow) =
           # Step focus or process event
           if tabbed: # Step Focused if Tabbed
             step(found, state.key == LeftTab)
-          else: # Process Event
-            relative(found, state)
-            event(found, state)
+          else: event(found, state)
           # Check Handlers -Focus and Hold-
           checkHandlers(win, found)
 
 proc handleSignals(win: var GUIWindow): bool =
-  # Signal ID Handling
   for signal in pollQueue():
     # is GUI Callback?
     if callSignal(signal):
@@ -491,7 +488,7 @@ proc handleSignals(win: var GUIWindow): bool =
           trigger(widget, signal)
           # Check if hold or focus is changed
           checkHandlers(win, widget)
-  # Event Loop isn't terminated
+  # Event Loop Still Alive
   return true
 
 # Use this in your main loop

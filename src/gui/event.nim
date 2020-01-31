@@ -33,8 +33,7 @@ type
     eventType*: GUIEvent
     key*: uint
     # Mouse Event Detail
-    mx*, my*: int32 # Absolute
-    rx*, ry*: int32 # Relative
+    mx*, my*: int32
     pressure*: float32
     # Key Event Detail
     utf8state*: int32
