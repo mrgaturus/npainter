@@ -43,6 +43,7 @@ type
     # Vertex index
     size, cursor: uint16
     # Write Pointers
+    pCMD: ptr CTXCommand
     pVert: CTXVertexMap
     pElem: CTXElementMap
     # Allocated Buffer Data
@@ -136,8 +137,8 @@ proc viewport*(ctx: var CTXRender, w, h: int32) =
   ctx.vWidth = w; ctx.vHeight = h
 
 proc clear*(ctx: var CTXRender) =
-  # Reset Cursor
-  ctx.size = 0
+  # Reset Current CMD
+  ctx.pCMD = nil
   # Clear Buffers
   setLen(ctx.cmds, 0)
   setLen(ctx.elements, 0)
@@ -182,40 +183,30 @@ proc finish*() =
 # GUI PAINTER HELPER PROCS
 # ------------------------
 
-proc defaultCMD(ctx: ptr CTXRender, eSize: int32) =
-  ctx.size = 0 # Reset Size
-  ctx.cmds.add( # Default CMD if is not Defined
-    CTXCommand( # Viewport Same Clip
-      size: eSize, # Initial Size
-      clip: if len(ctx.levels) > 0: ctx.levels[^1]
-        else: GUIRect(w: ctx.vWidth, h: ctx.vHeight)
-    ) # End New Command
-  ) # End Add
-
-proc addCMD(ctx: ptr CTXRender, clip: var GUIRect) =
-  let size = # Check if last CMD has size
-    if len(ctx.cmds) > 0: 
-      ctx.cmds[^1].size
-    else: -1
-  if size > 0:
-    ctx.size = 0
-    ctx.cmds.add(
-      CTXCommand(
-        offset: int32(
-          len(ctx.elements)
-        ), base: int32(
-          len(ctx.verts)
-        ), clip: clip))
-  elif size == 0: # Change Clip of last
-    ctx.cmds[^1].clip = clip
+proc addCommand(ctx: ptr CTXRender) =
+  # Reset Cursor
+  ctx.size = 0
+  # Add New Command
+  ctx.cmds.add(
+    CTXCommand(
+      offset: int32(
+        len(ctx.elements)
+      ), base: int32(
+        len(ctx.verts)
+      ), clip: if len(ctx.levels) > 0: ctx.levels[^1]
+      else: GUIRect(w: ctx.vWidth, h: ctx.vHeight)
+    ) # End New CTX Command
+  ) # End Add Command
+  ctx.pCMD = addr ctx.cmds[^1]
 
 proc addVerts(ctx: ptr CTXRender, vSize, eSize: int32) =
+  # Create new Command if is reseted
+  if isNil(ctx.pCMD): addCommand(ctx)
   # Set New Vertex and Elements Lenght
   ctx.verts.setLen(len(ctx.verts) + vSize)
   ctx.elements.setLen(len(ctx.elements) + eSize)
   # Add Elements Count to CMD
-  if len(ctx.cmds) > 0: ctx.cmds[^1].size += eSize
-  else: defaultCMD(ctx, eSize) # Aux CMD
+  ctx.pCMD.size += eSize
   # Set Write Pointers
   ctx.pVert = cast[CTXVertexMap](addr ctx.verts[^vSize])
   ctx.pElem = cast[CTXElementMap](addr ctx.elements[^eSize])
@@ -251,18 +242,20 @@ proc intersect(ctx: ptr CTXRender, rect: var GUIRect): GUIRect =
   result.h = min(prev.y + prev.h, rect.y + rect.h) - result.y
 
 proc push*(ctx: ptr CTXRender, rect: var GUIRect) =
+  # Reset Current CMD
+  ctx.pCMD = nil
+  # Calcule Intersect Clip
   var clip = if len(ctx.levels) > 0:
-    ctx.intersect(rect)
+    ctx.intersect(rect) # Intersect Level
   else: rect # First Level
-  ctx.addCMD(clip) # New Command
-  ctx.levels.add(clip) # New level
+  # Add new Level to Stack
+  ctx.levels.add(clip)
 
 proc pop*(ctx: ptr CTXRender) {.inline.} =
+  # Reset Current CMD
+  ctx.pCMD = nil
+  # Remove Last CMD from Stack
   ctx.levels.setLen(max(len(ctx.levels) - 1, 0))
-  var clip = # Prev Clip
-    if len(ctx.levels) > 0: ctx.levels[^1]
-    else: GUIRect(w: ctx.vWidth, h: ctx.vHeight)
-  ctx.addCMD(clip) # New Command
 
 # --------------
 # GUI BASIC DRAW
