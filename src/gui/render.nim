@@ -157,24 +157,22 @@ proc render*(ctx: var CTXRender) =
     len(ctx.verts)*sizeof(CTXVertex),
     addr ctx.verts[0], GL_STREAM_DRAW)
   # Draw Clipping Commands
-  if len(ctx.cmds) > 0:
-    for cmd in mitems(ctx.cmds):
-      glScissor( # Clip Region
-        cmd.clip.x, ctx.vHeight - cmd.clip.y - cmd.clip.h, 
-        cmd.clip.w, cmd.clip.h) # Clip With Correct Y
-      glDrawElementsBaseVertex( # Draw Command
-        GL_TRIANGLES, cmd.size, GL_UNSIGNED_SHORT,
-        cast[pointer](cmd.offset * sizeof(uint16)),
-        cmd.base) # Base Vertex Index
+  for cmd in mitems(ctx.cmds):
+    glScissor( # Clip Region
+      cmd.clip.x, ctx.vHeight - cmd.clip.y - cmd.clip.h, 
+      cmd.clip.w, cmd.clip.h) # Clip With Correct Y
+    glDrawElementsBaseVertex( # Draw Command
+      GL_TRIANGLES, cmd.size, GL_UNSIGNED_SHORT,
+      cast[pointer](cmd.offset * sizeof(uint16)),
+      cmd.base) # Base Vertex Index
 
 proc finish*() =
   # Unbind Texture and VAO
   glBindTexture(GL_TEXTURE_2D, 0)
   glBindBuffer(GL_ARRAY_BUFFER, 0)
   glBindVertexArray(0)
-  # Disable Scissor Test
+  # Disable Scissor and Blend
   glDisable(GL_SCISSOR_TEST)
-  # Disable Alpha Blend
   glDisable(GL_BLEND)
   # Unbind Program
   glUseProgram(0)

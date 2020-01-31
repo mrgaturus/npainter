@@ -36,7 +36,6 @@ method draw*(widget: GUIBlank, ctx: ptr CTXRender) =
   fill(ctx, widget.rect)
   ctx.color = 0xEECCCCCC'u32
   rectangle(ctx, widget.rect, 1)
-  ctx.pop()
   # Rect Test
   block:
     var rect = widget.rect
