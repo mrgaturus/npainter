@@ -477,8 +477,6 @@ proc handleSignals(win: var GUIWindow): bool =
         of msgOpen: # Add frame to window
           if not test(frame, wFramed):
             addFrame(win, frame)
-            # Update Frame Layout
-            frame.set(wDirty)
     else: # Process signal to widgets
       for widget in forward(win.root):
         if signal.id in widget:
