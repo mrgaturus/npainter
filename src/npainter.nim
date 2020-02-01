@@ -49,7 +49,6 @@ method draw*(widget: GUIBlank, ctx: ptr CTXRender) =
   triangle(ctx, widget.rect, toDown)
   ctx.pop()
 
-
 method event*(widget: GUIBlank, state: ptr GUIState) =
   #echo "cursor mx: ", state.mx, " cursor my: ", state.my
   if state.eventType == evMouseClick:

@@ -141,14 +141,13 @@ proc close*(widget: GUIWidget) =
   )
 
 proc move*(widget: GUIWidget, x,y: int32) =
-  if widget.test(wFramed):
-    widget.rect.x = x
-    widget.rect.y = y
+  if (widget.flags and not wVisible or wFramed) != 0:
+    widget.rect.x = x; widget.rect.y = y
     # Mark as Dirty
     widget.set(wDirty)
 
 proc resize*(widget: GUIWidget, w,h: int32) =
-  if widget.test(wFramed):
+  if (widget.flags and not wVisible or wFramed) != 0:
     widget.rect.w = max(w, widget.hint.w)
     widget.rect.h = max(h, widget.hint.h)
     # Mark as Dirty

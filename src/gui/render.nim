@@ -22,7 +22,7 @@ type
   CTXVertex = object
     x, y, u, v: float32
     color: uint32
-  CTXVertexMap = # Fast Modify Pointer
+  CTXVertexMap = # Vertexs
     ptr UncheckedArray[CTXVertex]
   CTXElementMap = # Elements
     ptr UncheckedArray[uint16]
