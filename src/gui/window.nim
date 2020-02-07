@@ -4,6 +4,7 @@ import ../libs/egl
 
 from builder import signal
 from timer import sleep
+from ../libs/ft2 import FT2Library, ft2_init, ft2_done
 from ../libs/gl import gladLoadGL
 
 let
@@ -33,6 +34,8 @@ type
     # X11 Input Method
     xim: TXIM
     xic: TXIC
+    # FT2 Library
+    ft2: FT2Library
     # EGL Context
     eglDsp: EGLDisplay
     eglCfg: EGLConfig
@@ -167,6 +170,9 @@ proc newGUIWindow*(root: GUIWidget, global: pointer): GUIWindow =
   result.createXIM()
   # Alloc a 32 byte UTF8Buffer
   result.state.utf8buffer(32)
+  # Initialize Freetype2
+  if ft2_init(addr result.ft2) != 0:
+    echo "ERROR: failed initialize FT2"
   # Initialize EGL and GL
   result.createEGL()
   result.ctx = newCTXRender()
@@ -203,6 +209,8 @@ proc exit*(win: var GUIWindow) =
   discard eglDestroySurface(win.eglDsp, win.eglSur)
   discard eglDestroyContext(win.eglDsp, win.eglCtx)
   discard eglTerminate(win.eglDsp)
+  # Dispose Freetype2
+  discard ft2_done(win.ft2)
   # Dispose all X Stuff
   XDestroyIC(win.xic)
   discard XCloseIM(win.xim)

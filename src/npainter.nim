@@ -1,5 +1,6 @@
+import random
 import libs/gl
-import gui/[window, widget, render, container, event, timer]
+import gui/[window, widget, render, container, event, timer, atlas]
 from gui/builder import signal
 
 signal Example:
@@ -12,6 +13,52 @@ type
   GUIBlank = ref object of GUIWidget
     frame: GUIWidget
     t: GUITimer
+  # GUIBOXES
+  GGBox = object
+    rect: GUIRect
+    color: GUIColor
+  GUIBoxes = ref object of GUIWidget
+    timer: GUITimer
+    atlas: CTXAtlas
+    boxes: seq[GGBox]
+
+# ------------------
+# GUI BOXES METHODS
+# ------------------
+
+method draw*(widget: GUIBoxes, ctx: ptr CTXRender) =
+  ctx.color = 0xFFFFFFFF'u32
+  ctx.fill(widget.rect)
+  var rect: GUIRect
+  for box in mitems(widget.boxes):
+    ctx.color = box.color
+    # Change Rect
+    rect.x = widget.rect.x + box.rect.x
+    rect.y = widget.rect.y + box.rect.y
+    copyMem(addr rect.w, addr box.rect.w, 2*sizeof(int32))
+    # Show Rect
+    ctx.fill(rect)
+    ctx.color = 0xFF000000'u32
+    ctx.rectangle(rect, 1)
+
+method update*(widget: GUIBoxes) =
+  if checkTimer(widget.timer):
+    let # Random rects
+      color = uint32(rand(0'u32..high(uint32)))
+      w = int32(rand(10..20))
+      h = w * 2
+    var x,y: int32
+    if pack(widget.atlas, w, h, x, y):
+      widget.boxes.setLen(len(widget.boxes)+1)
+      widget.boxes[^1].rect = GUIRect(x:x,y:y,w:w,h:h)
+      widget.boxes[^1].color = color
+    # Reset Timer
+    widget.timer = newTimer(32)
+
+
+# ------------------
+# GUI BLANK METHODS
+# ------------------
 
 proc click*(g: ptr Counter, d: pointer) =
   inc(g.clicked)
@@ -31,7 +78,6 @@ method draw*(widget: GUIBlank, ctx: ptr CTXRender) =
     elif widget.test(wGrab): 0xAAFF00FF'u32
     elif widget.test(wFocus): 0xAAFFFF00'u32
     else: 0xAAFFFFFF'u32
-
   ctx.color = color
   fill(ctx, widget.rect)
   ctx.color = 0xEECCCCCC'u32
@@ -121,23 +167,13 @@ when isMainModule:
       sub.flags = wStandard
       sub.geometry(10,10,20,20)
       block: # Sub Menu #1
-        let subcon = new GUIContainer
-        subcon.color = 0xAA676466'u32
-        subcon.flags = wPopup
-        subcon.rect.w = 200
-        subcon.rect.h = 80
-        # Sub-sub blank 1#
-        var subsub = new GUIBlank
-        subsub.flags = wStandard
-        subsub.geometry(10,10,180,20)
-        subcon.add(subsub)
-        # Sub-sub blank 2#
-        subsub = new GUIBlank
-        subsub.flags = wStandard
-        subsub.geometry(10,40,180,20)
-        subcon.add(subsub)
+        let atlas = new GUIBoxes
+        atlas.rect.w = 500
+        atlas.rect.h = 500
+        atlas.atlas = newCTXAtlas(500, 500)
+        atlas.flags = wPopup or wUpdate
         # Add to Sub
-        sub.frame = subcon
+        sub.frame = atlas
       con.add(sub)
       # Sub-Blank #2
       sub = new GUIBlank
