@@ -1,6 +1,8 @@
 import random
 import libs/gl
+import libs/ft2
 import gui/[window, widget, render, container, event, timer, atlas]
+import stb_image/write as stbiw
 from gui/builder import signal
 
 signal Example:
@@ -17,44 +19,6 @@ type
   GGBox = object
     rect: GUIRect
     color: GUIColor
-  GUIBoxes = ref object of GUIWidget
-    timer: GUITimer
-    atlas: CTXAtlas
-    boxes: seq[GGBox]
-
-# ------------------
-# GUI BOXES METHODS
-# ------------------
-
-method draw*(widget: GUIBoxes, ctx: ptr CTXRender) =
-  ctx.color = 0xFFFFFFFF'u32
-  ctx.fill(widget.rect)
-  var rect: GUIRect
-  for box in mitems(widget.boxes):
-    ctx.color = box.color
-    # Change Rect
-    rect.x = widget.rect.x + box.rect.x
-    rect.y = widget.rect.y + box.rect.y
-    copyMem(addr rect.w, addr box.rect.w, 2*sizeof(int32))
-    # Show Rect
-    ctx.fill(rect)
-    ctx.color = 0xFF000000'u32
-    ctx.rectangle(rect, 1)
-
-method update*(widget: GUIBoxes) =
-  if checkTimer(widget.timer):
-    let # Random rects
-      color = uint32(rand(0'u32..high(uint32)))
-      w = int32(rand(10..20))
-      h = w * 2
-    var x,y: int32
-    if pack(widget.atlas, w, h, x, y):
-      widget.boxes.setLen(len(widget.boxes)+1)
-      widget.boxes[^1].rect = GUIRect(x:x,y:y,w:w,h:h)
-      widget.boxes[^1].color = color
-    # Reset Timer
-    widget.timer = newTimer(32)
-
 
 # ------------------
 # GUI BLANK METHODS
@@ -128,6 +92,10 @@ method handle*(widget: GUIBlank, kind: GUIHandle) =
   if kind == outHold: close(widget.frame)
 
 when isMainModule:
+  var ft: FT2Library
+  # Initialize Freetype2
+  if ft2_init(addr ft) != 0:
+    echo "ERROR: failed initialize FT2"
   # Create Counter
   var counter = Counter(
     clicked: 0, 
@@ -166,14 +134,6 @@ when isMainModule:
       sub = new GUIBlank
       sub.flags = wStandard
       sub.geometry(10,10,20,20)
-      block: # Sub Menu #1
-        let atlas = new GUIBoxes
-        atlas.rect.w = 500
-        atlas.rect.h = 500
-        atlas.atlas = newCTXAtlas(500, 500)
-        atlas.flags = wPopup or wUpdate
-        # Add to Sub
-        sub.frame = atlas
       con.add(sub)
       # Sub-Blank #2
       sub = new GUIBlank
@@ -205,6 +165,12 @@ when isMainModule:
     win = newGUIWindow(root, addr counter)
   # MAIN LOOP
   var running = win.exec()
+  # -- Create Testing Atlas
+  block:
+    var test = newCTXAtlas(ft, csLatin)
+    #discard savePNG32("atlas.png", cast[string](addr test.test[0]), int test.w, int test.h)
+    stbiw.writePNG("atlas.png", int test.w, int test.h, 4, cast[seq[byte]](test.test), int test.w*4)
+
   while running:
     # Render Main Program
     glClearColor(0.5, 0.5, 0.5, 1.0)

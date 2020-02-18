@@ -255,9 +255,9 @@ proc pop*(ctx: ptr CTXRender) {.inline.} =
   # Remove Last CMD from Stack
   ctx.levels.setLen(max(len(ctx.levels) - 1, 0))
 
-# --------------
-# GUI BASIC DRAW
-# --------------
+# ---------------------
+# GUI BASIC SHAPES DRAW
+# ---------------------
 
 proc fill*(ctx: ptr CTXRender, rect: var GUIRect) =
   ctx.addVerts(4, 6)
