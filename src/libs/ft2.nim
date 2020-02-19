@@ -45,7 +45,7 @@ type # Trimmed Types for basic usage
     library*: FT2Library
     face*: FT2Face
     next*: FT2Glyph
-    glyph_index*: FT2UInt      ##  new in 2.10; was reserved previously
+    glyph_index*: FT2UInt
     generic*: FT2Generic
     metrics*: FT2Glyph_Metrics
     linearHoriAdvance*: FT2Fixed
@@ -54,7 +54,7 @@ type # Trimmed Types for basic usage
     format*: culong
     bitmap*: FT2Bitmap
     bitmap_left*: FT2Int
-    bitmap_top*: FT2Int        ## FT2Outline        outline;
+    bitmap_top*: FT2Int
   FT2Face* {.bycopy.} = ptr object
     num_faces*: FT2Long
     face_index*: FT2Long

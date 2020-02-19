@@ -8,8 +8,8 @@ type # Atlas Objects
   TEXGlyph = object
     glyphIDX: uint32 # FT2 Glyph Index
     x1, x2, y1, y2: float32 # UV Coords
-    x, y, advance: int32 # Positioning
-    w, h: uint32 # Bitmap Dimensions
+    xo, yo, advance: int16 # Positioning
+    w, h: uint16 # Bitmap Dimensions
   CTXAtlas* = object
     w*, h*: int32
     texID: uint32
@@ -25,9 +25,8 @@ type # Atlas Objects
   LANGCharset* = enum
     csLatin, csCyrillic # English, Spanish, Russian, etc
     csJapanese, csChinese, csKorean # Principal Asiatic
-const # Fallback Indexes
-  #NOT_LOADED = 0 # Not yet rendered in atlas
-  NOT_FOUND = 0xFFFD # Not found on font face
+
+# Charset Common Ranges for Preloading
 let csRanges = # Full Latin + Asiatic/Cyrillic
   [0x0020'u16..0x00FF'u16, # 0 - Full Latin
    0x3131'u16..0x3163'u16, # 1 - Korean Start
@@ -125,40 +124,44 @@ proc pack*(atlas: var CTXAtlas, w, h: int32, rx, ry: var int32): bool =
 # ATLAS GLYPH RENDERING PROCS
 # ---------------------------
 
-proc convertGlyph(slot: FT2Glyph, temp: var seq[uint32]): TEXGlyph =
+proc createGlyph(slot: FT2Glyph, temp: var seq[uint32]): TEXGlyph =
   result.glyphIDX = slot.glyph_index
-  # Save new dimensions
-  result.w = slot.bitmap.width
-  result.h = slot.bitmap.rows
-  # Save position offsets
-  result.x = slot.bitmap_left # xBearing
-  result.y = slot.bitmap_top # yBearing
-  result.advance = int32(slot.advance.x shr 6)
+  # Save new dimensions, very small values
+  result.w = cast[uint16](slot.bitmap.width)
+  result.h = cast[uint16](slot.bitmap.rows)
+  # Save position offsets, very small values
+  result.xo = cast[int16](slot.bitmap_left) # xBearing
+  result.yo = cast[int16](slot.bitmap_top) # yBearing
+  result.advance = cast[int16](slot.advance.x shr 6)
   # Render Glyph as RGBA8888
-  var # Starting Positions
+  var # Pixel
     i = temp.len # Starting Position
-    j = 0'u32 # Bitmap Position
+    j: uint32 # Bitmap Position
   temp.setLen(i + int result.w * result.h)
   while i < len(temp): # Only Modify Alpha Channel of a White Pixel
-    temp[i] = 0x00FFFFFF'u32 or uint32(slot.bitmap.buffer[j]) shl 24
+    temp[i] = cast[uint32](slot.bitmap.buffer[j]) shl 24 or 0x00FFFFFF
     inc(i); inc(j) # Next RGBA8888 Pixel
+
+proc renderFallback(atlas: var CTXAtlas, temp: var seq[uint32]) =
+  if ft2_loadChar(atlas.face, 0xFFFF, FT_LOAD_RENDER) == 0:
+    atlas.glyphs.add createGlyph(atlas.face.glyph, temp)
+  else: echo " WARNING: failed loading fallback char"
 
 proc renderCharcode(atlas: var CTXAtlas, code: uint16, temp: var seq[uint32]) =
   # Extend Lookup if charcode is greater
-  if int(code) > len(atlas.charset): 
-    atlas.charset.setLen(int(code) + 1)
+  if int(code) >= len(atlas.charset):
+    atlas.charset.setLen(1 + int code)
   # Render Glyph and Save Glpyh Index on charcode lookup
-  if ft2_loadChar(atlas.face, culong(code), FT_LOAD_RENDER) == 0:
-    atlas.glyphs.add convertGlyph(atlas.face.glyph, temp)
+  if ft2_loadChar(atlas.face, code, FT_LOAD_RENDER) == 0:
+    atlas.glyphs.add createGlyph(atlas.face.glyph, temp)
     atlas.charset[code] = uint16(high atlas.glyphs)
-  else: atlas.charset[code] = NOT_FOUND # Use Fallback
+  else: atlas.charset[code] = 0xFFFF # Use Fallback
 
 # --------------------
 # ATLAS CREATION PROCS
 # --------------------
 
 iterator charcodes(charset: LANGCharset): uint16 =
-  yield 0xFFFD # Fallback Charcode
   var s, e: uint16 # Charcode Iter
   # Iterate Over Latin Charset
   s = csRanges[0].a
@@ -183,6 +186,8 @@ iterator charcodes(charset: LANGCharset): uint16 =
 
 proc renderCharset(atlas: var CTXAtlas, charset: LANGCharset): seq[uint32] =
   var temp: seq[uint32] # Temporal Bitmap Buffer
+  # Render Fallback Glyph
+  renderFallback(atlas, temp)
   # Render Charset Glyphs
   for code in charcodes(charset):
     renderCharcode(atlas, code, temp)
@@ -191,36 +196,33 @@ proc renderCharset(atlas: var CTXAtlas, charset: LANGCharset): seq[uint32] =
     # Calculate Total Area of Glyphs
     for glyph in mitems(atlas.glyphs):
       area += glyph.w * glyph.h
-    # Calculate Power of Two Side
-    area = uint32 nextPowerOfTwo(
-      int ceil sqrt(float32 area))
-    # Set new atlas dimensions
-    atlas.w = int32 area; atlas.h = int32 area
-    atlas.nodes.add(SKYNode(w:atlas.w))
+    # Calculate Next Power of Two Side using Calculated Area
+    area = uint32 nextPowerOfTwo(int ceil sqrt float32 area)
+    # Set new Atlas Diemsions
+    atlas.w = cast[int32](area shl 1)
+    atlas.h = cast[int32](area)
+    # Add Initial Skyline Node
+    atlas.nodes.add SKYNode(w:atlas.w)
     # Alloc Buffer with new dimensions
-    result.setLen(area*area)
+    result.setLen(area*area shl 1)
   # Arrange Glyphs Using Skyline
   var cursor: uint32 # Temp Cursor
   for glyph in mitems(atlas.glyphs):
     var x, y: int32 # New Position On Atlas
     discard pack(atlas, int32 glyph.w, int32 glyph.h, x, y)
-    # Copy Buffer to new Position Indicated by Skyline
-    var # Pixel Row Iterator
+    var # Copy Glyph Bitmap To New Position
       pixel = y * atlas.w + x
-      i = 0'u32 # Row Iterator
-    while i < glyph.h: # Copy Pixel Rows
-      copyMem(addr result[pixel], addr temp[cursor], 
-        int(glyph.w) * sizeof(uint32))
-      # Move to Next Pixel Row
-      cursor += glyph.w
-      pixel += atlas.w; inc(i)
+      i: uint16 # Row Iterator
+    while i < glyph.h: # Copy Glyph Pixel Rows
+      copyMem(addr result[pixel], addr temp[cursor], int(glyph.w) * 4)
+      cursor += glyph.w; pixel += atlas.w; inc(i) # Next Pixel Row
 
 proc newCTXAtlas*(ft2: FT2Library, charset: LANGCharset): CTXAtlas =
-  # 1 -- Create New Face, TODO: Use FT_New_Memory_Face
+  # 1-A -- Create New Face, TODO: Use FT_New_Memory_Face
   if ft2_newFace(ft2, "data/font.ttf", 0, addr result.face) != 0:
-    echo "ERROR: failed loading ft2 font"
-  #discard ft2_setPixelSizes(result.face, 0, 10)
-  discard ft2_setCharSize(result.face, int32 0, int32 10 shl 6, uint32 96, uint32 96)
+    echo "ERROR: failed loading gui font"
+  # 1-B Set Charsize to 10 with 96 DPI
+  discard ft2_setCharSize(result.face, 0, 10 shl 6, 96, 96)
   echo result.face.family_name
-  # 2 -- Render Charset
+  # 2 -- Render Selected Charset
   result.test = renderCharset(result, charset)
