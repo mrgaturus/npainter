@@ -16,28 +16,32 @@ type # Atlas Objects
     # FT2 FONT FACE
     face: FT2Face
     # GLYPHS INFORMATION
-    charset: seq[uint16]
+    lookup: seq[uint16]
     glyphs: seq[TEXGlyph]
     # SKYLINE BIN PACKING
     nodes: seq[SKYNode]
     # TESTING PROPOUSES
     test*: seq[uint32]
-  LANGCharset* = enum
-    csLatin, csCyrillic # English, Spanish, Russian, etc
-    csJapanese, csChinese, csKorean # Principal Asiatic
 
-# Charset Common Ranges for Preloading
-let csRanges = # Full Latin + Asiatic/Cyrillic
-  [0x0020'u16..0x00FF'u16, # 0 - Full Latin
-   0x3131'u16..0x3163'u16, # 1 - Korean Start
-   0xAC00'u16..0xD79D'u16, # 2 - Korean End
-   0x3000'u16..0x30FF'u16, # 3 - Japanese/Chinese Start
-   0x31F0'u16..0x31FF'u16, # 4 |
-   0xFF00'u16..0xFFEF'u16, # 5 - Japanese End
-   0x2000'u16..0x206F'u16, # 6 - Chinese End
-   0x0400'u16..0x052F'u16, # 7 - Cyrillic Start
-   0x2DE0'u16..0x2DFF'u16, # 8 |
-   0xA640'u16..0xA69F'u16] # 9 - Cyrillic End
+let # Charset Common Ranges for Preloading
+  csLatin* = # English, Spanish, etc.
+    [0x0020'u16, 0x00FF'u16]
+  csKorean* = # All Korean letters
+    [0x0020'u16, 0x00FF'u16,
+     0x3131'u16, 0x3163'u16,
+     0xAC00'u16, 0xD79D'u16]
+  csJapaneseChinese* = # Hiragana, Katakana
+    [0x0020'u16, 0x00FF'u16,
+     0x2000'u16, 0x206F'u16,
+     0x3000'u16, 0x30FF'u16,
+     0x31F0'u16, 0x31FF'u16,
+     0xFF00'u16, 0xFFEF'u16]
+  csCyrillic* = # Russian, Euraska, etc.
+    [0x0020'u16, 0x00FF'u16,
+     0x0400'u16, 0x052F'u16,
+     0x2DE0'u16, 0x2DFF'u16,
+     0xA640'u16, 0xA69F'u16]
+  # Charsets from dear imgui
 
 # -------------------------------------------
 # FONTSTASH'S ATLAS SKYLINE BIN PACKING PROCS
@@ -124,73 +128,58 @@ proc pack*(atlas: var CTXAtlas, w, h: int32, rx, ry: var int32): bool =
 # ATLAS GLYPH RENDERING PROCS
 # ---------------------------
 
-proc createGlyph(slot: FT2Glyph, temp: var seq[uint32]): TEXGlyph =
-  result.glyphIDX = slot.glyph_index
-  # Save new dimensions, very small values
-  result.w = cast[uint16](slot.bitmap.width)
-  result.h = cast[uint16](slot.bitmap.rows)
-  # Save position offsets, very small values
-  result.xo = cast[int16](slot.bitmap_left) # xBearing
-  result.yo = cast[int16](slot.bitmap_top) # yBearing
-  result.advance = cast[int16](slot.advance.x shr 6)
-  # Render Glyph as RGBA8888
-  var # Pixel
-    i = temp.len # Starting Position
-    j: uint32 # Bitmap Position
-  temp.setLen(i + int result.w * result.h)
-  while i < len(temp): # Only Modify Alpha Channel of a White Pixel
-    temp[i] = cast[uint32](slot.bitmap.buffer[j]) shl 24 or 0x00FFFFFF
-    inc(i); inc(j) # Next RGBA8888 Pixel
-
-proc renderFallback(atlas: var CTXAtlas, temp: var seq[uint32]) =
-  if ft2_loadChar(atlas.face, 0xFFFF, FT_LOAD_RENDER) == 0:
-    atlas.glyphs.add createGlyph(atlas.face.glyph, temp)
-  else: echo " WARNING: failed loading fallback char"
-
 proc renderCharcode(atlas: var CTXAtlas, code: uint16, temp: var seq[uint32]) =
-  # Extend Lookup if charcode is greater
-  if int(code) >= len(atlas.charset):
-    atlas.charset.setLen(1 + int code)
-  # Render Glyph and Save Glpyh Index on charcode lookup
   if ft2_loadChar(atlas.face, code, FT_LOAD_RENDER) == 0:
-    atlas.glyphs.add createGlyph(atlas.face.glyph, temp)
-    atlas.charset[code] = uint16(high atlas.glyphs)
-  else: atlas.charset[code] = 0xFFFF # Use Fallback
+    let slot = atlas.face.glyph # Shorcut
+    # -- Add Glyph to Glyph Cache
+    atlas.glyphs.add TEXGlyph(
+      glyphIDX: slot.glyph_index,
+      # Save new dimensions, very small values
+      w: cast[uint16](slot.bitmap.width),
+      h: cast[uint16](slot.bitmap.rows),
+      # Save position offsets, very small values
+      xo: cast[int16](slot.bitmap_left), # xBearing
+      yo: cast[int16](slot.bitmap_top), # yBearing
+      advance: cast[int16](slot.advance.x shr 6)
+    ) # End Add Glyph to Glyph Cache
+    # -- Render Glyph as RGBA8888
+    var # Copy pixels to temporal buffer
+      i = len(temp) # Starting Position
+      j: uint32 # Bitmap Position
+    # Expand Temporal Buffer for Copy Bitmap
+    temp.setLen(i + int slot.bitmap.width * slot.bitmap.rows)
+    # Copy and Convert Pixels to RGBA8888
+    while i < len(temp): # Merge Pixel to alpha channel of a White Pixel
+      temp[i] = cast[uint32](slot.bitmap.buffer[j]) shl 24 or 0x00FFFFFF
+      inc(i); inc(j) # Next RGBA8888 Pixel and 8bit Pixel
+    # -- Save Glyph Index at Lookup
+    if code != 0xFFFF: # No save in Fallback
+      atlas.lookup[code] = uint16(high atlas.glyphs)
+  elif code != 0xFFFF: atlas.lookup[code] = 0xFFFF
 
-# --------------------
-# ATLAS CREATION PROCS
-# --------------------
-
-iterator charcodes(charset: LANGCharset): uint16 =
-  var s, e: uint16 # Charcode Iter
-  # Iterate Over Latin Charset
-  s = csRanges[0].a
-  e = csRanges[0].b
-  while s <= e: 
-    yield s; inc(s)
-  # Render Other Charset
-  if charset != csLatin:
-    var a, b: uint8 # Iterate Ranges
-    case charset # Select a Charset
-    of csJapanese: a = 3; b = 5
-    of csChinese: a = 3; b = 6
-    of csCyrillic: a = 7; b = 9
-    of csKorean: a = 1; b = 2
-    else: discard # Latin was Loaded
-    while a <= b:
-      s = csRanges[a].a
-      e = csRanges[a].b
-      while s <= e:
-        yield s; inc(s)
-      inc(a) # Next Range
-
-proc renderCharset(atlas: var CTXAtlas, charset: LANGCharset): seq[uint32] =
+proc renderCharset(atlas: var CTXAtlas, charset: openArray[uint16]): seq[uint32] =
   var temp: seq[uint32] # Temporal Bitmap Buffer
-  # Render Fallback Glyph
-  renderFallback(atlas, temp)
-  # Render Charset Glyphs
-  for code in charcodes(charset):
-    renderCharcode(atlas, code, temp)
+  # -- Render Fallback Glyph, guaranted to be a rectangle
+  renderCharcode(atlas, 0xFFFF, temp)
+  # -- Render Charset Ranges
+  block: # Charset len needs to be -even-
+    var # Iterators
+      s, e: uint16 # Charcode Iter
+      i = 0 # Range Iter
+    while i < len(charset):
+      s = charset[i] # Start
+      e = charset[i+1] # End
+      # Check if lookup is big enough
+      if int(e) >= len(atlas.lookup):
+        atlas.lookup.setLen(1 + int e)
+      elif int(s) >= len(atlas.lookup):
+        atlas.lookup.setLen(1 + int s)
+      # Render Charcodes one by one
+      while s <= e: # Iterate Charcodes
+        renderCharcode(atlas, s, temp)
+        inc(s) # Next Charcode
+      i += 2 # Next Range Pair
+  # -- Alloc Temporal Bitmap Buffer
   block: # Get power of two equivalent side*side
     var area: uint32 # Total used area
     # Calculate Total Area of Glyphs
@@ -205,7 +194,7 @@ proc renderCharset(atlas: var CTXAtlas, charset: LANGCharset): seq[uint32] =
     atlas.nodes.add SKYNode(w:atlas.w)
     # Alloc Buffer with new dimensions
     result.setLen(area*area shl 1)
-  # Arrange Glyphs Using Skyline
+  # -- Arrange Glyphs Using Skyline
   var cursor: uint32 # Temp Cursor
   for glyph in mitems(atlas.glyphs):
     var x, y: int32 # New Position On Atlas
@@ -217,7 +206,7 @@ proc renderCharset(atlas: var CTXAtlas, charset: LANGCharset): seq[uint32] =
       copyMem(addr result[pixel], addr temp[cursor], int(glyph.w) * 4)
       cursor += glyph.w; pixel += atlas.w; inc(i) # Next Pixel Row
 
-proc newCTXAtlas*(ft2: FT2Library, charset: LANGCharset): CTXAtlas =
+proc newCTXAtlas*(ft2: FT2Library, charset: openArray[uint16]): CTXAtlas =
   # 1-A -- Create New Face, TODO: Use FT_New_Memory_Face
   if ft2_newFace(ft2, "data/font.ttf", 0, addr result.face) != 0:
     echo "ERROR: failed loading gui font"

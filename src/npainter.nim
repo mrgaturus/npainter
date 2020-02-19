@@ -167,7 +167,7 @@ when isMainModule:
   var running = win.exec()
   # -- Create Testing Atlas
   block:
-    var test = newCTXAtlas(ft, csChinese)
+    var test = newCTXAtlas(ft, csJapaneseChinese)
     #discard savePNG32("atlas.png", cast[string](addr test.test[0]), int test.w, int test.h)
     stbiw.writePNG("atlas.png", int test.w, int test.h, 4, cast[seq[byte]](test.test), int test.w*4)
 
