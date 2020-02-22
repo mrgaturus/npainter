@@ -4,8 +4,9 @@ import ../libs/egl
 
 from builder import signal
 from timer import sleep
-#from ../libs/ft2 import FT2Library, ft2_init, ft2_done
+from ../libs/ft2 import FT2Library, ft2_init, ft2_done
 from ../libs/gl import gladLoadGL
+from atlas import newCTXAtlas, csLatin
 
 let
   # NPainter EGL Configurations
@@ -35,7 +36,7 @@ type
     xim: TXIM
     xic: TXIC
     # FT2 Library
-    #ft2*: FT2Library
+    ft2: FT2Library
     # EGL Context
     eglDsp: EGLDisplay
     eglCfg: EGLConfig
@@ -171,11 +172,13 @@ proc newGUIWindow*(root: GUIWidget, global: pointer): GUIWindow =
   # Alloc a 32 byte UTF8Buffer
   result.state.utf8buffer(32)
   # Initialize Freetype2
-  #if ft2_init(addr result.ft2) != 0:
-  #  echo "ERROR: failed initialize FT2"
+  if ft2_init(addr result.ft2) != 0:
+    echo "ERROR: failed initialize FT2"
   # Initialize EGL and GL
   result.createEGL()
-  result.ctx = newCTXRender()
+  result.ctx = newCTXRender(
+    newCTXAtlas(result.ft2, csLatin)
+  )
   # Disable VSync - Avoid Input Lag
   discard eglSwapInterval(result.eglDsp, 0)
   # Root has Window and Frame Signals

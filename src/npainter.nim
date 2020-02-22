@@ -1,8 +1,6 @@
-import random
 import libs/gl
 import libs/ft2
-import gui/[window, widget, render, container, event, timer, atlas]
-import stb_image/write as stbiw
+import gui/[window, widget, render, container, event, timer]
 from gui/builder import signal
 
 signal Example:
@@ -15,10 +13,6 @@ type
   GUIBlank = ref object of GUIWidget
     frame: GUIWidget
     t: GUITimer
-  # GUIBOXES
-  GGBox = object
-    rect: GUIRect
-    color: GUIColor
 
 # ------------------
 # GUI BLANK METHODS
@@ -35,29 +29,23 @@ proc release*(g: ptr Counter, d: pointer) =
   echo "Released Count: ", g.clicked
 
 method draw*(widget: GUIBlank, ctx: ptr CTXRender) =
-  #echo "reached lol"
-  ctx.push(widget.rect)
-  let color = # Test Color
-    if widget.test(wHover): 0xAA252525'u32
-    elif widget.test(wGrab): 0xAAFF00FF'u32
-    elif widget.test(wFocus): 0xAAFFFF00'u32
-    else: 0xAAFFFFFF'u32
-  ctx.color = color
-  fill(ctx, widget.rect)
-  ctx.color = 0xEECCCCCC'u32
-  rectangle(ctx, widget.rect, 1)
-  # Rect Test
-  block:
-    var rect = widget.rect
-    rect.x += rect.w div 2
-    rect.y += rect.h div 2
-    ctx.push(rect)
+  if widget.test(wHover):
+    let color = # Test Color
+      if widget.test(wHover): 0xAA252525'u32
+      elif widget.test(wGrab): 0xAAFF00FF'u32
+      elif widget.test(wFocus): 0xAAFFFF00'u32
+      else: 0xAAFFFFFF'u32
+    ctx.color = color
+    fill(ctx, widget.rect)
+    ctx.color = high(uint32)
+    drawAtlas(ctx, widget.rect)
+    ctx.color = 0xAACCCCCC'u32
+    triangle(ctx, widget.rect, toDown)
+  else:
     ctx.color = 0xFF000000'u32
-    triangle(ctx, widget.rect, toLEFT)
-    ctx.pop()
-  ctx.color = 0xAACCCCCC'u32
-  triangle(ctx, widget.rect, toDown)
-  ctx.pop()
+    fill(ctx, widget.rect)
+    ctx.color = high(uint32)
+    drawAtlas(ctx, widget.rect)
 
 method event*(widget: GUIBlank, state: ptr GUIState) =
   #echo "cursor mx: ", state.mx, " cursor my: ", state.my
@@ -118,7 +106,7 @@ when isMainModule:
     # --- Blank #1 ---
     blank = new GUIBlank
     blank.flags = wStandard
-    blank.geometry(20,150,100,100)
+    blank.geometry(300,150,256,128)
     root.add(blank)
     # --- Blank #2 ---
     blank = new GUIBlank
@@ -165,11 +153,6 @@ when isMainModule:
     win = newGUIWindow(root, addr counter)
   # MAIN LOOP
   var running = win.exec()
-  # -- Create Testing Atlas
-  block:
-    var test = newCTXAtlas(ft, csJapaneseChinese)
-    #discard savePNG32("atlas.png", cast[string](addr test.test[0]), int test.w, int test.h)
-    stbiw.writePNG("atlas.png", int test.w, int test.h, 4, cast[seq[byte]](test.test), int test.w*4)
 
   while running:
     # Render Main Program

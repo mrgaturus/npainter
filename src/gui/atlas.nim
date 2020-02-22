@@ -1,5 +1,6 @@
 from math import sqrt, ceil, nextPowerOfTwo
-#import ../libs/gl
+from ../cmath import guiNormalize
+import ../libs/gl
 import ../libs/ft2
 
 type # Atlas Objects
@@ -7,21 +8,21 @@ type # Atlas Objects
     x, y, w: int32
   TEXGlyph = object
     glyphIDX: uint32 # FT2 Glyph Index
-    x1, x2, y1, y2: float32 # UV Coords
-    xo, yo, advance: int16 # Positioning
-    w, h: uint16 # Bitmap Dimensions
+    x1*, x2*, y1*, y2*: float32 # UV Coords
+    xo*, yo*, advance*: int16 # Positioning
+    w*, h*: uint16 # Bitmap Dimensions
   CTXAtlas* = object
-    w*, h*: int32
-    texID: uint32
+    w, h: int32
+    texID*: uint32
     # FT2 FONT FACE
     face: FT2Face
-    # GLYPHS INFORMATION
-    lookup: seq[uint16]
-    glyphs: seq[TEXGlyph]
     # SKYLINE BIN PACKING
     nodes: seq[SKYNode]
-    # TESTING PROPOUSES
-    test*: seq[uint32]
+    # GLYPHS INFORMATION
+    lookup*: seq[uint16]
+    glyphs*: seq[TEXGlyph]
+    # WHITE PIXEL
+    wx*, wy*: float32
 
 let # Charset Common Ranges for Preloading
   csLatin* = # English, Spanish, etc.
@@ -157,8 +158,10 @@ proc renderCharcode(atlas: var CTXAtlas, code: uint16, temp: var seq[uint32]) =
       atlas.lookup[code] = uint16(high atlas.glyphs)
   elif code != 0xFFFF: atlas.lookup[code] = 0xFFFF
 
-proc renderCharset(atlas: var CTXAtlas, charset: openArray[uint16]): seq[uint32] =
-  var temp: seq[uint32] # Temporal Bitmap Buffer
+proc renderCharset(atlas: var CTXAtlas, charset: openArray[uint16]) =
+  var # Temporal Buffers
+    temp: seq[uint32] # Temporal Bitmap Buffer
+    dest: ptr UncheckedArray[uint32] # Arranged Atlas
   # -- Render Fallback Glyph, guaranted to be a rectangle
   renderCharcode(atlas, 0xFFFF, temp)
   # -- Render Charset Ranges
@@ -179,7 +182,7 @@ proc renderCharset(atlas: var CTXAtlas, charset: openArray[uint16]): seq[uint32]
         renderCharcode(atlas, s, temp)
         inc(s) # Next Charcode
       i += 2 # Next Range Pair
-  # -- Alloc Temporal Bitmap Buffer
+  # -- Alloc Arranged Atlas Buffer
   block: # Get power of two equivalent side*side
     var area: uint32 # Total used area
     # Calculate Total Area of Glyphs
@@ -193,25 +196,52 @@ proc renderCharset(atlas: var CTXAtlas, charset: openArray[uint16]): seq[uint32]
     # Add Initial Skyline Node
     atlas.nodes.add SKYNode(w:atlas.w)
     # Alloc Buffer with new dimensions
-    result.setLen(area*area shl 1)
+    dest = cast[ptr UncheckedArray[uint32]](
+      alloc0(int(area*area shl 1) * sizeof(uint32)))
   # -- Arrange Glyphs Using Skyline
-  var cursor: uint32 # Temp Cursor
+  var # Aux Vars
+    cursor: uint32 # Buffer Cursor
+    x, y: int32 # Arranged Position
   for glyph in mitems(atlas.glyphs):
-    var x, y: int32 # New Position On Atlas
     discard pack(atlas, int32 glyph.w, int32 glyph.h, x, y)
     var # Copy Glyph Bitmap To New Position
       pixel = y * atlas.w + x
       i: uint16 # Row Iterator
     while i < glyph.h: # Copy Glyph Pixel Rows
-      copyMem(addr result[pixel], addr temp[cursor], int(glyph.w) * 4)
+      copyMem(addr dest[pixel], addr temp[cursor], int(glyph.w) * 4)
       cursor += glyph.w; pixel += atlas.w; inc(i) # Next Pixel Row
+    # Normalize UV Coordinates for OpenGL Usage
+    guiNormalize(addr glyph.x1, 
+      float32 x, float32 glyph.w, 
+      float32 y, float32 glyph.h, 
+      float32 atlas.w, float32 atlas.h)
+  # -- Put a White Pixel
+  discard pack(atlas, 1, 1, x, y)
+  dest[y * atlas.w + x] = high(uint32)
+  atlas.wx = x / atlas.w # U Pos
+  atlas.wy = y / atlas.h # V Pos
+  # -- Copy Arranged Atlas to Texture
+  glGenTextures(1, addr atlas.texID)
+  glBindTexture(GL_TEXTURE_2D, atlas.texID)
+  # Clamp Atlas to Edge
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, cast[GLint](GL_CLAMP_TO_EDGE))
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, cast[GLint](GL_CLAMP_TO_EDGE))
+  # Use Nearest Pixel Filter
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, cast[GLint](GL_NEAREST))
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, cast[GLint](GL_NEAREST))
+  # Copy Arranged Bitmap Buffer to Texture
+  glTexImage2D(GL_TEXTURE_2D, 0, cast[int32](GL_RGBA8), atlas.w, atlas.h, 0, GL_RGBA,
+      GL_UNSIGNED_BYTE, dest)
+  # Unbind White Pixel Texture
+  glBindTexture(GL_TEXTURE_2D, 0)
+  # -- Unalloc Temporal Buffer
+  dealloc(dest)
 
 proc newCTXAtlas*(ft2: FT2Library, charset: openArray[uint16]): CTXAtlas =
   # 1-A -- Create New Face, TODO: Use FT_New_Memory_Face
   if ft2_newFace(ft2, "data/font.ttf", 0, addr result.face) != 0:
-    echo "ERROR: failed loading gui font"
-  # 1-B Set Charsize to 10 with 96 DPI
-  discard ft2_setCharSize(result.face, 0, 10 shl 6, 96, 96)
-  echo result.face.family_name
+    echo "ERROR: failed loading gui font file"
+  if ft2_setCharSize(result.face, 0, 10 shl 6, 96, 96) != 0:
+    echo "WARNING: font size was not setted properly"
   # 2 -- Render Selected Charset
-  result.test = renderCharset(result, charset)
+  renderCharset(result, charset)

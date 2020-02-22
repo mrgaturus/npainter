@@ -1,5 +1,7 @@
-from ../math import guiProjection
+from ../cmath import guiProjection
 from ../shader import newProgram
+# Texture Atlas
+import atlas
 # OpenGL 3.2+
 import ../libs/gl
 
@@ -19,7 +21,7 @@ type
     offset, size, base: int32
     clip: GUIRect
   # Vertex Format XYUVRGBA
-  CTXVertex = object
+  CTXVertex {.packed.} = object
     x, y, u, v: float32
     color: uint32
   CTXVertexMap = # Vertexs
@@ -34,9 +36,9 @@ type
     # Frame viewport cache
     vWidth, vHeight: int32
     vCache: array[16, float32]
-    # Buffer Objects
+    # Buffer Objects and Atlas
     vao, ebo, vbo: GLuint
-    white: GLuint
+    atlas: CTXAtlas
     # Color and Clips
     color*: uint32
     levels: seq[GUIRect]
@@ -55,7 +57,7 @@ type
 # GUI CANVAS CREATION PROCS
 # -------------------------
 
-proc newCTXRender*(): CTXRender =
+proc newCTXRender*(atlas: CTXAtlas): CTXRender =
   # -- Create new Program
   result.program = newProgram("shaders/gui.vert", "shaders/gui.frag")
   # Use Program for Define Uniforms
@@ -87,22 +89,8 @@ proc newCTXRender*(): CTXRender =
   # Unbind VAO and VBO
   glBindBuffer(GL_ARRAY_BUFFER, 0)
   glBindVertexArray(0)
-  # -- Gen White Pixel Texture
-  glGenTextures(1, addr result.white)
-  glBindTexture(GL_TEXTURE_2D, result.white)
-  # Clamp white pixel to edge
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, cast[GLint](GL_CLAMP_TO_EDGE))
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, cast[GLint](GL_CLAMP_TO_EDGE))
-  # Use Nearest Pixel
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, cast[GLint](GL_NEAREST))
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, cast[GLint](GL_NEAREST))
-  # Alloc White Pixel
-  block:
-    var white = 0xFFFFFFFF'u32
-    glTexImage2D(GL_TEXTURE_2D, 0, cast[int32](GL_RGBA8), 1, 1, 0, GL_RGBA,
-        GL_UNSIGNED_BYTE, addr white)
-  # Unbind White Pixel Texture
-  glBindTexture(GL_TEXTURE_2D, 0)
+  # -- Set Texture Atlas
+  result.atlas = atlas
 
 # --------------------------
 # GUI RENDER PREPARING PROCS
@@ -126,7 +114,7 @@ proc begin*(ctx: var CTXRender) =
   glBindBuffer(GL_ARRAY_BUFFER, ctx.vbo)
   # Modify Only Texture 0
   glActiveTexture(GL_TEXTURE0)
-  glBindTexture(GL_TEXTURE_2D, ctx.white)
+  glBindTexture(GL_TEXTURE_2D, ctx.atlas.texID)
   # Set Viewport to Window
   glViewport(0, 0, ctx.vWidth, ctx.vHeight)
   glUniformMatrix4fv(ctx.projection, 1, false,
@@ -216,11 +204,22 @@ proc addVerts(ctx: ptr CTXRender, vSize, eSize: int32) =
 # GUI DRAWING TEMPLATES
 # ----------------------
 
-## X,Y,0,0,COLOR
-template vertex(i: int32, a,b: float32, col: uint32) =
+## X,Y,WHITEU,WHITEV,COLOR
+template vertex(i: int32, a,b: float32) =
   ctx.pVert[i].x = a # Position X
   ctx.pVert[i].y = b # Position Y
-  ctx.pVert[i].color = col # Color RGBA
+  # White Pixel UV
+  ctx.pVert[i].u = ctx.atlas.wx
+  ctx.pVert[i].v = ctx.atlas.wy
+  ctx.pVert[i].color = ctx.color # Color RGBA
+
+# X,Y,U,V,COLOR
+template vertexUV(i: int32, a,b,c,d: float32) =
+  ctx.pVert[i].x = a # Position X
+  ctx.pVert[i].y = b # Position Y
+  ctx.pVert[i].u = c # Tex U
+  ctx.pVert[i].v = d # Tex V
+  ctx.pVert[i].color = ctx.color # Color RGBA
 
 # Last Vert Index + Offset
 template triangle(o: int32, a,b,c: int32) =
@@ -267,10 +266,10 @@ proc fill*(ctx: ptr CTXRender, rect: var GUIRect) =
       y = float32 rect.y
       xw = x + float32 rect.w
       yh = y + float32 rect.h
-    vertex(0, x, y, ctx.color)
-    vertex(1, xw, y, ctx.color)
-    vertex(2, x, yh, ctx.color)
-    vertex(3, xw, yh, ctx.color)
+    vertex(0, x, y)
+    vertex(1, xw, y)
+    vertex(2, x, yh)
+    vertex(3, xw, yh)
   # Elements Definition
   triangle(0, 0,1,2)
   triangle(3, 1,2,3)
@@ -284,21 +283,21 @@ proc rectangle*(ctx: ptr CTXRender, rect: var GUIRect, s: float32) =
       xw = x + float32 rect.w
       yh = y + float32 rect.h
     # Top Left Corner
-    vertex(0, x, y+s, ctx.color)
-    vertex(1, x, y, ctx.color)
-    vertex(2, x+s, y, ctx.color)
+    vertex(0, x, y+s)
+    vertex(1, x, y)
+    vertex(2, x+s, y)
     # Top Right Corner
-    vertex(3, xw-s, y, ctx.color)
-    vertex(4, xw, y, ctx.color)
-    vertex(5, xw, y+s, ctx.color)
+    vertex(3, xw-s, y)
+    vertex(4, xw, y)
+    vertex(5, xw, y+s)
     # Bottom Right Corner
-    vertex(6, xw, yh-s, ctx.color)
-    vertex(7, xw, yh, ctx.color)
-    vertex(8, xw-s, yh, ctx.color)
+    vertex(6, xw, yh-s)
+    vertex(7, xw, yh)
+    vertex(8, xw-s, yh)
     # Bottom Left Corner
-    vertex(9, x+s, yh, ctx.color)
-    vertex(10, x, yh, ctx.color)
-    vertex(11, x, yh-s, ctx.color)
+    vertex(9, x+s, yh)
+    vertex(10, x, yh)
+    vertex(11, x, yh-s)
   # Top Rect
   triangle(0, 0,1,5)
   triangle(3, 5,4,1)
@@ -322,20 +321,37 @@ proc triangle*(ctx: ptr CTXRender, rect: var GUIRect, o: CTXOrientation) =
       yh = y + float32 rect.h
     case o: # Orientation of Triangle
     of toUp: # to Up
-      vertex(0, x+rect.w/2, y, ctx.color)
-      vertex(1, xw, yh, ctx.color)
-      vertex(2, x, yh, ctx.color)
+      vertex(0, x+rect.w/2, y)
+      vertex(1, xw, yh)
+      vertex(2, x, yh)
     of toRight: # to Right
-      vertex(0, xw, y+rect.h/2, ctx.color)
-      vertex(1, x, yh, ctx.color)
-      vertex(2, x, y, ctx.color)
+      vertex(0, xw, y+rect.h/2)
+      vertex(1, x, yh)
+      vertex(2, x, y)
     of toDown: # to Down
-      vertex(0, x+rect.w/2, yh, ctx.color)
-      vertex(1, x, y, ctx.color)
-      vertex(2, xw, y, ctx.color)
+      vertex(0, x+rect.w/2, yh)
+      vertex(1, x, y)
+      vertex(2, xw, y)
     of toLeft: # to Left
-      vertex(0, x, y+rect.h/2, ctx.color)
-      vertex(1, xw, y, ctx.color)
-      vertex(2, xw, yh, ctx.color)
+      vertex(0, x, y+rect.h/2)
+      vertex(1, xw, y)
+      vertex(2, xw, yh)
   # Elements Description
   triangle(0, 0,1,2)
+
+proc drawAtlas*(ctx: ptr CTXRender, rect: var GUIRect) =
+  let letter = addr ctx.atlas.glyphs[ctx.atlas.lookup[int 'G']]
+  ctx.addVerts(4, 6)
+  block: # Rect Triangles
+    let
+      x = float32 rect.x
+      y = float32 rect.y
+      xw = x + float32 rect.w
+      yh = y + float32 rect.h
+    vertexUV(0, x, y, letter.x1, letter.y1)
+    vertexUV(1, xw, y, letter.x2, letter.y1)
+    vertexUV(2, x, yh, letter.x1, letter.y2)
+    vertexUV(3, xw, yh, letter.x2, letter.y2)
+  # Elements Definition
+  triangle(0, 0,1,2)
+  triangle(3, 1,2,3)
