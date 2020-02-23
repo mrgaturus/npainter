@@ -12,14 +12,13 @@ type
   # GUI RECT AND COLOR
   GUIRect* = object
     x*, y*, w*, h*: int32
+  GUIPoint* = object
+    x*, y*: int32
   GUIColor* = uint32
-  # Orientation
-  CTXOrientation* = enum
-    toUP, toLEFT,
-    toDOWN, toRIGHT
   # Clip Levels
   CTXCommand = object
     offset, size, base: int32
+    texID: GLuint
     clip: GUIRect
   # Vertex Format XYUVRGBA 16-byte
   CTXVertex {.packed.} = object
@@ -154,10 +153,20 @@ proc render*(ctx: var CTXRender) =
     glScissor( # Clip Region
       cmd.clip.x, ctx.vHeight - cmd.clip.y - cmd.clip.h, 
       cmd.clip.w, cmd.clip.h) # Clip With Correct Y
-    glDrawElementsBaseVertex( # Draw Command
-      GL_TRIANGLES, cmd.size, GL_UNSIGNED_SHORT,
-      cast[pointer](cmd.offset * sizeof(uint16)),
-      cmd.base) # Base Vertex Index
+    if cmd.texID == 0: # Use Atlas Texture
+      glDrawElementsBaseVertex( # Draw Command
+        GL_TRIANGLES, cmd.size, GL_UNSIGNED_SHORT,
+        cast[pointer](cmd.offset * sizeof(uint16)),
+        cmd.base) # Base Vertex Index
+    else: # Use CMD Texture This Time
+      # Change Texture and Use Normalized UV
+      glBindTexture(GL_TEXTURE_2D, cmd.texID)
+      glUniform2f(ctx.uDim, 1, 1) # UV * 1
+      # Draw Texture Quad using Triangle Strip
+      glDrawArrays(GL_TRIANGLE_STRIP, cmd.base, 4)
+      # Back to Atlas Texture with Unnormalized UV
+      glBindTexture(GL_TEXTURE_2D, ctx.atlas.texID)
+      glUniform2f(ctx.uDim, ctx.atlas.nW, ctx.atlas.nH)
 
 proc finish*() =
   # Unbind Texture and VAO
@@ -258,9 +267,9 @@ proc pop*(ctx: ptr CTXRender) {.inline.} =
   # Remove Last CMD from Stack
   ctx.levels.setLen(max(len(ctx.levels) - 1, 0))
 
-# ---------------------
-# GUI BASIC SHAPES DRAW
-# ---------------------
+# ---------------------------
+# GUI BASIC SHAPES DRAW PROCS
+# ---------------------------
 
 proc fill*(ctx: ptr CTXRender, rect: var GUIRect) =
   ctx.addVerts(4, 6)
@@ -315,47 +324,29 @@ proc rectangle*(ctx: ptr CTXRender, rect: var GUIRect, s: float32) =
   triangle(18, 10,9,1)
   triangle(21, 1,2,9)
 
-proc triangle*(ctx: ptr CTXRender, rect: var GUIRect, o: CTXOrientation) =
+proc triangle*(ctx: ptr CTXRender, a,b,c: GUIPoint) =
   ctx.addVerts(3, 3)
-  block:
-    let
-      x = float32 rect.x
-      y = float32 rect.y
-      xw = x + float32 rect.w
-      yh = y + float32 rect.h
-    case o: # Orientation of Triangle
-    of toUp: # to Up
-      vertex(0, x+rect.w/2, y)
-      vertex(1, xw, yh)
-      vertex(2, x, yh)
-    of toRight: # to Right
-      vertex(0, xw, y+rect.h/2)
-      vertex(1, x, yh)
-      vertex(2, x, y)
-    of toDown: # to Down
-      vertex(0, x+rect.w/2, yh)
-      vertex(1, x, y)
-      vertex(2, xw, y)
-    of toLeft: # to Left
-      vertex(0, x, y+rect.h/2)
-      vertex(1, xw, y)
-      vertex(2, xw, yh)
+  # Triangle Description
+  vertex(0, float32 a.x, float32 a.y)
+  vertex(1, float32 b.x, float32 b.y)
+  vertex(2, float32 c.x, float32 c.y)
   # Elements Description
   triangle(0, 0,1,2)
 
-proc drawAtlas*(ctx: ptr CTXRender, rect: var GUIRect) =
-  let letter = addr ctx.atlas.glyphs[ctx.atlas.lookup[int 'G']]
-  ctx.addVerts(4, 6)
-  block: # Rect Triangles
-    let
-      x = float32 rect.x
-      y = float32 rect.y
-      xw = x + float32 rect.w
-      yh = y + float32 rect.h
-    vertexUV(0, x, y, letter.x1, letter.y1)
-    vertexUV(1, xw, y, letter.x2, letter.y1)
-    vertexUV(2, x, yh, letter.x1, letter.y2)
-    vertexUV(3, xw, yh, letter.x2, letter.y2)
-  # Elements Definition
-  triangle(0, 0,1,2)
-  triangle(3, 1,2,3)
+proc texture*(ctx: ptr CTXRender, rect: var GUIRect, texID: GLuint) =
+  ctx.addCommand() # Create New Command
+  ctx.pCMD.texID = texID # Set Texture
+  # Add 4 Vertexes for a Quad
+  ctx.verts.setLen(len(ctx.verts) + 4)
+  ctx.pVert = cast[CTXVertexMap](addr ctx.verts[^4])
+  let # Define The Quad
+    x = float32 rect.x
+    y = float32 rect.y
+    xw = x + float32 rect.w
+    yh = y + float32 rect.h
+  vertexUV(0, x, y, 0, 0)
+  vertexUV(1, xw, y, 1, 0)
+  vertexUV(2, x, yh, 0, 1)
+  vertexUV(3, xw, yh, 1, 1)
+  # Invalidate CMD
+  ctx.pCMD = nil

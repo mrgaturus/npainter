@@ -38,14 +38,15 @@ method draw*(widget: GUIBlank, ctx: ptr CTXRender) =
     ctx.color = color
     fill(ctx, widget.rect)
     ctx.color = high(uint32)
-    drawAtlas(ctx, widget.rect)
+    #drawAtlas(ctx, widget.rect)
     ctx.color = 0xAACCCCCC'u32
-    triangle(ctx, widget.rect, toDown)
+    #triangle(ctx, widget.rect, toDown)
   else:
-    ctx.color = 0xFF000000'u32
+    ctx.color = 0xFFFFFFFF'u32
     fill(ctx, widget.rect)
     ctx.color = high(uint32)
-    drawAtlas(ctx, widget.rect)
+    #drawAtlas(ctx, widget.rect)
+    ctx.texture(widget.rect, 0)
 
 method event*(widget: GUIBlank, state: ptr GUIState) =
   #echo "cursor mx: ", state.mx, " cursor my: ", state.my

@@ -193,9 +193,9 @@ proc renderCharset(atlas: var CTXAtlas, charset: openArray[uint16]) =
     # Set new Atlas Diemsions
     atlas.w = cast[int32](area shl 1)
     atlas.h = cast[int32](area)
-    # Set Normalized Atlas Dimensions
-    atlas.nW = 1 / atlas.w
-    atlas.nH = 1 / atlas.h
+    # Set Normalized Atlas Dimensions for get MAD
+    atlas.nW = 1 / atlas.w # vertex.u * uDim.w 
+    atlas.nH = 1 / atlas.h # vertex.v * uDim.h
     # Add Initial Skyline Node
     atlas.nodes.add SKYNode(w: int16 atlas.w)
     # Alloc Buffer with new dimensions
