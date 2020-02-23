@@ -5,8 +5,9 @@ import atlas
 # OpenGL 3.2+
 import ../libs/gl
 
-const # XYUVRGBA 20bytes
-  STRIDE_SIZE = sizeof(float32)*4 + sizeof(uint32)
+const 
+  STRIDE_SIZE = # XYUVRGBA 20bytes
+    sizeof(float32)*2 + sizeof(int16)*2 + sizeof(uint32)
 type
   # GUI RECT AND COLOR
   GUIRect* = object
@@ -20,10 +21,11 @@ type
   CTXCommand = object
     offset, size, base: int32
     clip: GUIRect
-  # Vertex Format XYUVRGBA
+  # Vertex Format XYUVRGBA 16-byte
   CTXVertex {.packed.} = object
-    x, y, u, v: float32
-    color: uint32
+    x, y: float32 # Position
+    u, v: int16 # Not Normalized UV
+    color: uint32 # Color
   CTXVertexMap = # Vertexs
     ptr UncheckedArray[CTXVertex]
   CTXElementMap = # Elements
@@ -32,13 +34,13 @@ type
   CTXRender* = object
     # Shader Program
     program: GLuint
-    projection: GLint
+    uPro, uDim: GLint
     # Frame viewport cache
     vWidth, vHeight: int32
     vCache: array[16, float32]
-    # Buffer Objects and Atlas
-    vao, ebo, vbo: GLuint
+    # Atlas & Buffer Objects
     atlas: CTXAtlas
+    vao, ebo, vbo: GLuint
     # Color and Clips
     color*: uint32
     levels: seq[GUIRect]
@@ -58,13 +60,18 @@ type
 # -------------------------
 
 proc newCTXRender*(atlas: CTXAtlas): CTXRender =
+  # -- Set Texture Atlas
+  result.atlas = atlas
   # -- Create new Program
   result.program = newProgram("shaders/gui.vert", "shaders/gui.frag")
   # Use Program for Define Uniforms
   glUseProgram(result.program)
   # Define Projection and Texture Uniforms
-  result.projection = glGetUniformLocation(result.program, "uPro")
-  glUniform1i(glGetUniformLocation(result.program, "uTex"), 0)
+  result.uPro = glGetUniformLocation(result.program, "uPro")
+  result.uDim = glGetUniformLocation(result.program, "uDim")
+  # Set Default Uniforms Values: Texture Slot, Atlas Dimension
+  glUniform1i glGetUniformLocation(result.program, "uTex"), 0
+  glUniform2f(result.uDim, result.atlas.nW, result.atlas.nH)
   # Unuse Program
   glUseProgram(0)
   # -- Gen VAOs and Batch VBO
@@ -78,10 +85,10 @@ proc newCTXRender*(atlas: CTXAtlas): CTXRender =
   # Vertex Attribs XYVUVRGBA 20bytes
   glVertexAttribPointer(0, 2, cGL_FLOAT, false, STRIDE_SIZE, 
     cast[pointer](0)) # VERTEX
-  glVertexAttribPointer(1, 2, cGL_FLOAT, false, STRIDE_SIZE, 
+  glVertexAttribPointer(1, 2, cGL_SHORT, false, STRIDE_SIZE, 
     cast[pointer](sizeof(float32)*2)) # UV COORDS
   glVertexAttribPointer(2, 4, GL_UNSIGNED_BYTE, true, STRIDE_SIZE, 
-    cast[pointer](sizeof(float32)*4)) # COLOR
+    cast[pointer](sizeof(float32)*2 + sizeof(int16)*2)) # COLOR
   # Enable Vertex Attribs
   glEnableVertexAttribArray(0)
   glEnableVertexAttribArray(1)
@@ -89,8 +96,6 @@ proc newCTXRender*(atlas: CTXAtlas): CTXRender =
   # Unbind VAO and VBO
   glBindBuffer(GL_ARRAY_BUFFER, 0)
   glBindVertexArray(0)
-  # -- Set Texture Atlas
-  result.atlas = atlas
 
 # --------------------------
 # GUI RENDER PREPARING PROCS
@@ -117,7 +122,7 @@ proc begin*(ctx: var CTXRender) =
   glBindTexture(GL_TEXTURE_2D, ctx.atlas.texID)
   # Set Viewport to Window
   glViewport(0, 0, ctx.vWidth, ctx.vHeight)
-  glUniformMatrix4fv(ctx.projection, 1, false,
+  glUniformMatrix4fv(ctx.uPro, 1, false,
     cast[ptr float32](addr ctx.vCache))
 
 proc viewport*(ctx: var CTXRender, w, h: int32) =
@@ -208,13 +213,12 @@ proc addVerts(ctx: ptr CTXRender, vSize, eSize: int32) =
 template vertex(i: int32, a,b: float32) =
   ctx.pVert[i].x = a # Position X
   ctx.pVert[i].y = b # Position Y
-  # White Pixel UV
-  ctx.pVert[i].u = ctx.atlas.wx
-  ctx.pVert[i].v = ctx.atlas.wy
+  ctx.pVert[i].u = ctx.atlas.whiteU # White U
+  ctx.pVert[i].v = ctx.atlas.whiteV # White V
   ctx.pVert[i].color = ctx.color # Color RGBA
 
 # X,Y,U,V,COLOR
-template vertexUV(i: int32, a,b,c,d: float32) =
+template vertexUV(i: int32, a,b: float32, c,d: int16) =
   ctx.pVert[i].x = a # Position X
   ctx.pVert[i].y = b # Position Y
   ctx.pVert[i].u = c # Tex U

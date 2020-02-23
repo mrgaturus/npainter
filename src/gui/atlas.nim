@@ -1,5 +1,4 @@
 from math import sqrt, ceil, nextPowerOfTwo
-from ../cmath import guiNormalize
 import ../libs/gl
 import ../libs/ft2
 
@@ -7,22 +6,23 @@ type # Atlas Objects
   SKYNode = object
     x, y, w: int16
   TEXGlyph = object
-    glyphIDX: uint32 # FT2 Glyph Index
-    x1*, x2*, y1*, y2*: float32 # UV Coords
+    glyphIDX*: uint32 # FT2 Glyph Index
+    x1*, x2*, y1*, y2*: int16 # UV Coords
     xo*, yo*, advance*: int16 # Positioning
     w*, h*: int16 # Bitmap Dimensions
   CTXAtlas* = object
-    w, h: int16
-    texID*: uint32
     # FT2 FONT FACE
     face: FT2Face
     # SKYLINE BIN PACKING
+    w, h: int32 # Dimensions
     nodes: seq[SKYNode]
     # GLYPHS INFORMATION
     lookup*: seq[uint16]
     glyphs*: seq[TEXGlyph]
-    # WHITE PIXEL
-    wx*, wy*: float32
+    # OPENGL INFORMATION
+    texID*: uint32 # Texture
+    whiteU*, whiteV*: int16
+    nW*, nH*: float32 # Normalized
 
 let # Charset Common Ranges for Preloading
   csLatin* = # English, Spanish, etc.
@@ -160,10 +160,10 @@ proc renderCharcode(atlas: var CTXAtlas, code: uint16, temp: var seq[uint32]) =
 
 proc renderCharset(atlas: var CTXAtlas, charset: openArray[uint16]) =
   var temp, dest: seq[uint32] # Temporal Buffers
-  # -- Render Fallback Glyph, guaranted to be a rectangle
+  # -- Render Fallback Glyph
   renderCharcode(atlas, 0xFFFF, temp)
   # -- Render Charset Ranges
-  block: # Charset len needs to be -even-
+  block: # s..e pairs
     var # Iterators
       s, e: uint16 # Charcode Iter
       i = 0 # Range Iter
@@ -181,42 +181,44 @@ proc renderCharset(atlas: var CTXAtlas, charset: openArray[uint16]) =
         inc(s) # Next Charcode
       i += 2 # Next Range Pair
   # -- Alloc Arranged Atlas Buffer
-  block: # Get power of two equivalent side*side
+  block: # Get power of two side*2 * side
     var area: uint32 # Total used area
     # Calculate Total Area of Glyphs
     for glyph in mitems(atlas.glyphs):
-      area += cast[uint32](glyph.w) * cast[uint32](glyph.h)
+      area += # Avoid overflow
+        cast[uint32](glyph.w) * 
+        cast[uint32](glyph.h)
     # Calculate Next Power of Two Side using Calculated Area
-    area = uint32 nextPowerOfTwo(int ceil sqrt float32 area)
+    area = area.float32.sqrt().ceil().int.nextPowerOfTwo().uint32
     # Set new Atlas Diemsions
-    atlas.w = cast[int16](area shl 1)
-    atlas.h = cast[int16](area)
+    atlas.w = cast[int32](area shl 1)
+    atlas.h = cast[int32](area)
+    # Set Normalized Atlas Dimensions
+    atlas.nW = 1 / atlas.w
+    atlas.nH = 1 / atlas.h
     # Add Initial Skyline Node
-    atlas.nodes.add SKYNode(w:atlas.w)
+    atlas.nodes.add SKYNode(w: int16 atlas.w)
     # Alloc Buffer with new dimensions
     dest.setLen(area*area shl 1)
   # -- Arrange Glyphs Using Skyline
-  var # Aux Vars
+  var # Aux Pixel Vars
     cursor: int32 # Buffer Cursor
     point: tuple[x, y: int16] # Arranged
   for glyph in mitems(atlas.glyphs):
     point = pack(atlas, glyph.w, glyph.h)
     var # Copy Glyph Bitmap To New Position
-      pixel = point.y * int32(atlas.w) + point.x
-      i: int16 # Row Iterator
+      pixel = atlas.w * point.y + point.x
+      i: int16 # Bitmap Row Iterator
     while i < glyph.h: # Copy Glyph Pixel Rows
       copyMem(addr dest[pixel], addr temp[cursor], int(glyph.w) * 4)
       cursor += glyph.w; pixel += atlas.w; inc(i) # Next Pixel Row
-    # Normalize UV Coordinates for OpenGL Usage
-    guiNormalize(addr glyph.x1, 
-      float32 point.x, float32 glyph.w, 
-      float32 point.y, float32 glyph.h, 
-      float32 atlas.w, float32 atlas.h)
+    # Save Texture UV Coordinates Box
+    glyph.x1 = point.x; glyph.x2 = point.x + glyph.w
+    glyph.y1 = point.y; glyph.y2 = point.y + glyph.h
   # -- Put a White Pixel in Atlas
   point = pack(atlas, 1, 1)
-  dest[point.y * int32(atlas.w) + point.x] = high(uint32)
-  atlas.wx = point.x / atlas.w # U Pos
-  atlas.wy = point.y / atlas.h # V Pos
+  dest[atlas.w * point.y + point.x] = high(uint32)
+  atlas.whiteU = point.x; atlas.whiteV = point.y
   # -- Copy Arranged Atlas to Texture
   glGenTextures(1, addr atlas.texID)
   glBindTexture(GL_TEXTURE_2D, atlas.texID)
@@ -231,6 +233,10 @@ proc renderCharset(atlas: var CTXAtlas, charset: openArray[uint16]) =
       GL_UNSIGNED_BYTE, addr dest[0])
   # Unbind White Pixel Texture
   glBindTexture(GL_TEXTURE_2D, 0)
+
+# -------------------
+# ATLAS CREATION PROC
+# -------------------
 
 proc newCTXAtlas*(ft2: FT2Library, charset: openArray[uint16]): CTXAtlas =
   # 1-A -- Create New Face, TODO: Use FT_New_Memory_Face
