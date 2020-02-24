@@ -17,8 +17,8 @@ type # Atlas Objects
     w, h: int32 # Dimensions
     nodes: seq[SKYNode]
     # GLYPHS INFORMATION
-    lookup*: seq[uint16]
-    glyphs*: seq[TEXGlyph]
+    lookup: seq[uint16]
+    glyphs: seq[TEXGlyph]
     # OPENGL INFORMATION
     texID*: uint32 # Texture
     whiteU*, whiteV*: int16
@@ -182,24 +182,17 @@ proc renderCharset(atlas: var CTXAtlas, charset: openArray[uint16]) =
       i += 2 # Next Range Pair
   # -- Alloc Arranged Atlas Buffer
   block: # Get power of two side*2 * side
-    var area: uint32 # Total used area
-    # Calculate Total Area of Glyphs
-    for glyph in mitems(atlas.glyphs):
-      area += # Avoid overflow
-        cast[uint32](glyph.w) * 
-        cast[uint32](glyph.h)
-    # Calculate Next Power of Two Side using Calculated Area
-    area = area.float32.sqrt().ceil().int.nextPowerOfTwo().uint32
+    let side = len(temp).float32.sqrt().ceil().int.nextPowerOfTwo()
     # Set new Atlas Diemsions
-    atlas.w = cast[int32](area shl 1)
-    atlas.h = cast[int32](area)
+    atlas.w = cast[int32](side shl 1)
+    atlas.h = cast[int32](side)
     # Set Normalized Atlas Dimensions for get MAD
-    atlas.nW = 1 / atlas.w # vertex.u * uDim.w 
+    atlas.nW = 1 / atlas.w # vertex.u * uDim.w
     atlas.nH = 1 / atlas.h # vertex.v * uDim.h
     # Add Initial Skyline Node
     atlas.nodes.add SKYNode(w: int16 atlas.w)
     # Alloc Buffer with new dimensions
-    dest.setLen(area*area shl 1)
+    dest.setLen(side*side shl 1)
   # -- Arrange Glyphs Using Skyline
   var # Aux Pixel Vars
     cursor: int32 # Buffer Cursor

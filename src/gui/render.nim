@@ -335,7 +335,7 @@ proc triangle*(ctx: ptr CTXRender, a,b,c: GUIPoint) =
 
 proc texture*(ctx: ptr CTXRender, rect: var GUIRect, texID: GLuint) =
   ctx.addCommand() # Create New Command
-  ctx.pCMD.texID = texID # Set Texture
+  ctx.pCMD.texID = ctx.atlas.texID # Set Texture
   # Add 4 Vertexes for a Quad
   ctx.verts.setLen(len(ctx.verts) + 4)
   ctx.pVert = cast[CTXVertexMap](addr ctx.verts[^4])
