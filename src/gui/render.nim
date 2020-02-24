@@ -6,7 +6,7 @@ import atlas
 import ../libs/gl
 
 const 
-  STRIDE_SIZE = # XYUVRGBA 20bytes
+  STRIDE_SIZE = # XYUVRGBA 16bytes
     sizeof(float32)*2 + sizeof(int16)*2 + sizeof(uint32)
 type
   # GUI RECT AND COLOR
@@ -203,8 +203,8 @@ proc addVerts(ctx: ptr CTXRender, vSize, eSize: int32) =
   # Create new Command if is reseted
   if isNil(ctx.pCMD): addCommand(ctx)
   # Set New Vertex and Elements Lenght
-  ctx.verts.setLen(len(ctx.verts) + vSize)
-  ctx.elements.setLen(len(ctx.elements) + eSize)
+  ctx.verts.setLen(ctx.verts.len + vSize)
+  ctx.elements.setLen(ctx.elements.len + eSize)
   # Add Elements Count to CMD
   ctx.pCMD.size += eSize
   # Set Write Pointers
@@ -265,7 +265,7 @@ proc pop*(ctx: ptr CTXRender) {.inline.} =
   # Reset Current CMD
   ctx.pCMD = nil
   # Remove Last CMD from Stack
-  ctx.levels.setLen(max(len(ctx.levels) - 1, 0))
+  ctx.levels.setLen(max(ctx.levels.len - 1, 0))
 
 # ---------------------------
 # GUI BASIC SHAPES DRAW PROCS
@@ -337,7 +337,7 @@ proc texture*(ctx: ptr CTXRender, rect: var GUIRect, texID: GLuint) =
   ctx.addCommand() # Create New Command
   ctx.pCMD.texID = ctx.atlas.texID # Set Texture
   # Add 4 Vertexes for a Quad
-  ctx.verts.setLen(len(ctx.verts) + 4)
+  ctx.verts.setLen(ctx.verts.len + 4)
   ctx.pVert = cast[CTXVertexMap](addr ctx.verts[^4])
   let # Define The Quad
     x = float32 rect.x
