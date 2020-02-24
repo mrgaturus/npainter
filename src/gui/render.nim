@@ -324,12 +324,12 @@ proc rectangle*(ctx: ptr CTXRender, rect: var GUIRect, s: float32) =
   triangle(18, 10,9,1)
   triangle(21, 1,2,9)
 
-proc triangle*(ctx: ptr CTXRender, a,b,c: GUIPoint) =
+proc triangle*(ctx: ptr CTXRender, x1,y1, x2,y2, x3,y3: int32) =
   ctx.addVerts(3, 3)
   # Triangle Description
-  vertex(0, float32 a.x, float32 a.y)
-  vertex(1, float32 b.x, float32 b.y)
-  vertex(2, float32 c.x, float32 c.y)
+  vertex(0, float32 x1, float32 y1)
+  vertex(1, float32 x2, float32 y2)
+  vertex(2, float32 x3, float32 y3)
   # Elements Description
   triangle(0, 0,1,2)
 
@@ -350,3 +350,33 @@ proc texture*(ctx: ptr CTXRender, rect: var GUIRect, texID: GLuint) =
   vertexUV(3, xw, yh, 1, 1)
   # Invalidate CMD
   ctx.pCMD = nil
+
+proc text*(ctx: ptr CTXRender, x,y: int32, str: string) =
+  block: # Find Max Bearing
+    var yo: int16 # Max Bearing
+    for rune in runes16(str):
+      yo = # Check if this charcode is max
+        max(yo, ctx.atlas.lookup(rune).yo)
+    # Offset Y to MaxBearing
+    (unsafeAddr y)[] += yo
+  # Render Text Top to Bottom
+  for rune in runes16(str):
+    let glyph = # Load Glyph
+      ctx.atlas.lookup(rune)
+    # Reserve Quad Vertex and Elements
+    ctx.addVerts(4, 6); block:
+      let # Quad Coordinates
+        x = float32 x + glyph.xo
+        xw = x + float32 glyph.w
+        y = float32 y - glyph.yo
+        yh = y + float32 glyph.h
+      # Quad Vertex
+      vertexUV(0, x, y, glyph.x1, glyph.y1)
+      vertexUV(1, xw, y, glyph.x2, glyph.y1)
+      vertexUV(2, x, yh, glyph.x1, glyph.y2)
+      vertexUV(3, xw, yh, glyph.x2, glyph.y2)
+    # Quad Elements
+    triangle(0, 0,1,2)
+    triangle(3, 1,2,3)
+    # To Next Glyph X Position
+    (unsafeAddr x)[] += glyph.advance

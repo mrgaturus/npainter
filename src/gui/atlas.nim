@@ -239,3 +239,37 @@ proc newCTXAtlas*(ft2: FT2Library, charset: openArray[uint16]): CTXAtlas =
     echo "WARNING: font size was not setted properly"
   # 2 -- Render Selected Charset
   renderCharset(result, charset)
+
+# --------------------------
+# ATLAS CHACODE LOOKUP PROCS
+# --------------------------
+
+# Very fast uint16 Rune Iterator
+iterator runes16*(str: string): uint16 =
+  var # Small Iterator
+    i = 0'i32 # 2gb string?
+    result: uint16 # 2byte
+  while i < len(str):
+    if str[i].uint8 <= 128:
+      result = str[i].uint16
+      inc(i, 1) # Move 1 Byte
+    elif str[i].uint8 shr 5 == 0b110:
+      result = # Use 2 bytes
+        (str[i].uint16 and 0x1f) shr 6 or
+        str[i+1].uint16 and 0x3f
+      inc(i, 2) # Move 2 Bytes
+    elif str[i].uint8 shr 4 == 0b1110:
+      result = # Use 3 bytes
+        (str[i].uint16 and 0xf) shr 12 or
+        (str[i+1].uint16 and 0x3f) shr 6 or
+        str[i+2].uint16 and 0x3f
+      inc(i, 3) # Move 3 bytes
+    else: inc(i, 1); continue
+    # Yield Rune
+    yield result
+
+proc lookup*(atlas: var CTXAtlas, charcode: uint16): ptr TEXGlyph =
+  let found = atlas.lookup[charcode]
+  # Return Charcode From Lookup
+  if found == 0xFFFF: addr atlas.glyphs[0]
+  else: addr atlas.glyphs[found]
