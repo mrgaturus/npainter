@@ -70,7 +70,7 @@ proc newCTXRender*(atlas: CTXAtlas): CTXRender =
   result.uDim = glGetUniformLocation(result.program, "uDim")
   # Set Default Uniforms Values: Texture Slot, Atlas Dimension
   glUniform1i glGetUniformLocation(result.program, "uTex"), 0
-  glUniform2f(result.uDim, result.atlas.nW, result.atlas.nH)
+  glUniform2f(result.uDim, result.atlas.rw, result.atlas.rh)
   # Unuse Program
   glUseProgram(0)
   # -- Gen VAOs and Batch VBO
@@ -166,7 +166,7 @@ proc render*(ctx: var CTXRender) =
       glDrawArrays(GL_TRIANGLE_STRIP, cmd.base, 4)
       # Back to Atlas Texture with Unnormalized UV
       glBindTexture(GL_TEXTURE_2D, ctx.atlas.texID)
-      glUniform2f(ctx.uDim, ctx.atlas.nW, ctx.atlas.nH)
+      glUniform2f(ctx.uDim, ctx.atlas.rw, ctx.atlas.rh)
 
 proc finish*() =
   # Unbind Texture and VAO

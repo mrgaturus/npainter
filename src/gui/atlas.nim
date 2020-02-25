@@ -22,7 +22,7 @@ type # Atlas Objects
     # OPENGL INFORMATION
     texID*: uint32 # Texture
     whiteU*, whiteV*: int16
-    nW*, nH*: float32 # Normalized
+    rw*, rh*: float32 # Normalized
     # OFFSET Y - TOP TO BOTTOM
     offsetY*: int16
 
@@ -189,8 +189,8 @@ proc renderCharset(atlas: var CTXAtlas, charset: openArray[uint16]) =
     atlas.w = cast[int32](side shl 1)
     atlas.h = cast[int32](side)
     # Set Normalized Atlas Dimensions for get MAD
-    atlas.nW = 1 / atlas.w # vertex.u * uDim.w
-    atlas.nH = 1 / atlas.h # vertex.v * uDim.h
+    atlas.rw = 1 / atlas.w # vertex.u * uDim.w
+    atlas.rh = 1 / atlas.h # vertex.v * uDim.h
     # Add Initial Skyline Node
     atlas.nodes.add SKYNode(w: int16 atlas.w)
     # Alloc Buffer with new dimensions
@@ -241,7 +241,7 @@ proc newCTXAtlas*(ft2: FT2Library, charset: openArray[uint16]): CTXAtlas =
     echo "WARNING: font size was not setted properly"
   # 2 -- Render Selected Charset
   renderCharset(result, charset)
-  # 3 -- Set max height
+  # 3 -- Set max y offset for top-to-bottom positioning
   result.offsetY = # Ascender - -Descender = Offset Y
     (result.face.ascender + result.face.descender) shr 6
 
