@@ -23,6 +23,8 @@ type # Atlas Objects
     texID*: uint32 # Texture
     whiteU*, whiteV*: int16
     nW*, nH*: float32 # Normalized
+    # OFFSET Y - TOP TO BOTTOM
+    offsetY*: int16
 
 let # Charset Common Ranges for Preloading
   csLatin* = # English, Spanish, etc.
@@ -239,6 +241,9 @@ proc newCTXAtlas*(ft2: FT2Library, charset: openArray[uint16]): CTXAtlas =
     echo "WARNING: font size was not setted properly"
   # 2 -- Render Selected Charset
   renderCharset(result, charset)
+  # 3 -- Set max height
+  result.offsetY = # Ascender - -Descender = Offset Y
+    (result.face.ascender + result.face.descender) shr 6
 
 # --------------------------
 # ATLAS CHACODE LOOKUP PROCS
@@ -255,13 +260,13 @@ iterator runes16*(str: string): uint16 =
       inc(i, 1) # Move 1 Byte
     elif str[i].uint8 shr 5 == 0b110:
       result = # Use 2 bytes
-        (str[i].uint16 and 0x1f) shr 6 or
+        (str[i].uint16 and 0x1f) shl 6 or
         str[i+1].uint16 and 0x3f
       inc(i, 2) # Move 2 Bytes
     elif str[i].uint8 shr 4 == 0b1110:
       result = # Use 3 bytes
-        (str[i].uint16 and 0xf) shr 12 or
-        (str[i+1].uint16 and 0x3f) shr 6 or
+        (str[i].uint16 and 0xf) shl 12 or
+        (str[i+1].uint16 and 0x3f) shl 6 or
         str[i+2].uint16 and 0x3f
       inc(i, 3) # Move 3 bytes
     else: inc(i, 1); continue

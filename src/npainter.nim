@@ -47,7 +47,7 @@ method draw*(widget: GUIBlank, ctx: ptr CTXRender) =
     ctx.color = high(uint32)
     #drawAtlas(ctx, widget.rect)
     #ctx.texture(widget.rect, 0)
-    ctx.text(widget.rect.x, widget.rect.y, "Hello World, this is text rendering, BRAVO")
+    ctx.text(widget.rect.x, widget.rect.y, "Hello World, сука блять")
 
 method event*(widget: GUIBlank, state: ptr GUIState) =
   #echo "cursor mx: ", state.mx, " cursor my: ", state.my

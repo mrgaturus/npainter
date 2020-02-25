@@ -6,7 +6,7 @@ from builder import signal
 from timer import sleep
 from ../libs/ft2 import FT2Library, ft2_init, ft2_done
 from ../libs/gl import gladLoadGL
-from atlas import newCTXAtlas, csLatin
+from atlas import newCTXAtlas, csCyrillic
 
 let
   # NPainter EGL Configurations
@@ -177,7 +177,7 @@ proc newGUIWindow*(root: GUIWidget, global: pointer): GUIWindow =
   # Initialize EGL and GL
   result.createEGL()
   result.ctx = newCTXRender(
-    newCTXAtlas(result.ft2, csLatin)
+    newCTXAtlas(result.ft2, csCyrillic)
   )
   # Disable VSync - Avoid Input Lag
   discard eglSwapInterval(result.eglDsp, 0)

@@ -352,13 +352,8 @@ proc texture*(ctx: ptr CTXRender, rect: var GUIRect, texID: GLuint) =
   ctx.pCMD = nil
 
 proc text*(ctx: ptr CTXRender, x,y: int32, str: string) =
-  block: # Find Max Bearing, TODO: try remove this
-    var yo: int16 # Max Bearing
-    for rune in runes16(str):
-      yo = # Check if this charcode is max
-        max(yo, ctx.atlas.lookup(rune).yo)
-    # Offset Y to MaxBearing
-    (unsafeAddr y)[] += yo
+  # Offset Y to Atlas Font Y Offset Metric
+  (unsafeAddr y)[] += ctx.atlas.offsetY
   # Render Text Top to Bottom
   for rune in runes16(str):
     let glyph = # Load Glyph
