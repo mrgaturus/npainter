@@ -131,12 +131,28 @@ proc pack*(atlas: var CTXAtlas, w, h: int16): tuple[x, y: int16] =
 # ATLAS GLYPH RENDERING PROCS
 # ---------------------------
 
+proc renderFallback(atlas: var CTXAtlas, temp: var seq[uint32]) =
+  # Add A Glyph for a white rectangle
+  atlas.glyphs.add TEXGlyph(
+    glyphIDX: 0, # Use Invalid IDX
+    w: atlas.offsetY shr 1, # W is Half H
+    h: atlas.offsetY, # H is Font Size
+    xo: 1, yo: atlas.offsetY, # xBearing, yBearing
+    advance: atlas.offsetY shr 1 + 2 # *[]*
+  ) # End Add Glyph to Glyph Cache
+  # Alloc White Rectangle
+  var i = len(temp)
+  temp.setLen(i + atlas.offsetY * atlas.offsetY shr 1)
+  while i < len(temp): 
+    temp[i] = high(uint32); inc(i)
+
 proc renderCharcode(atlas: var CTXAtlas, code: uint16, temp: var seq[uint32]) =
-  if ft2_loadChar(atlas.face, code, FT_LOAD_RENDER) == 0:
+  let glyphIDX = ft2_getCharIndex(atlas.face, code)
+  if glyphIDX != 0 and ft2_loadGlyph(atlas.face, glyphIDX, FT_LOAD_RENDER) == 0:
     let slot = atlas.face.glyph # Shorcut
     # -- Add Glyph to Glyph Cache
     atlas.glyphs.add TEXGlyph(
-      glyphIDX: slot.glyph_index,
+      glyphIDX: glyphIDX, # Save FT2 Index
       # Save new dimensions, very small values
       w: cast[int16](slot.bitmap.width),
       h: cast[int16](slot.bitmap.rows),
@@ -145,7 +161,7 @@ proc renderCharcode(atlas: var CTXAtlas, code: uint16, temp: var seq[uint32]) =
       yo: cast[int16](slot.bitmap_top), # yBearing
       advance: cast[int16](slot.advance.x shr 6)
     ) # End Add Glyph to Glyph Cache
-    # -- Render Glyph as RGBA8888
+    # -- Convert Glyph Bitmap as RGBA8888
     var # Copy pixels to temporal buffer
       i = len(temp) # Starting Position
       j: uint32 # Bitmap Position
@@ -156,14 +172,13 @@ proc renderCharcode(atlas: var CTXAtlas, code: uint16, temp: var seq[uint32]) =
       temp[i] = cast[uint32](slot.bitmap.buffer[j]) shl 24 or 0x00FFFFFF
       inc(i); inc(j) # Next RGBA8888 Pixel and 8bit Pixel
     # -- Save Glyph Index at Lookup
-    if code != 0xFFFF: # No save in Fallback
-      atlas.lookup[code] = uint16(high atlas.glyphs)
-  elif code != 0xFFFF: atlas.lookup[code] = 0xFFFF
+    atlas.lookup[code] = uint16(high atlas.glyphs)
+  else: atlas.lookup[code] = 0xFFFF
 
 proc renderCharset(atlas: var CTXAtlas, charset: openArray[uint16]) =
   var temp, dest: seq[uint32] # Temporal Buffers
   # -- Render Fallback Glyph
-  renderCharcode(atlas, 0xFFFF, temp)
+  renderFallback(atlas, temp)
   # -- Render Charset Ranges
   block: # s..e pairs
     var # Iterators
@@ -173,10 +188,10 @@ proc renderCharset(atlas: var CTXAtlas, charset: openArray[uint16]) =
       s = charset[i] # Start
       e = charset[i+1] # End
       # Check if lookup is big enough
-      if int(e) >= len(atlas.lookup):
-        atlas.lookup.setLen(1 + int e)
-      elif int(s) >= len(atlas.lookup):
-        atlas.lookup.setLen(1 + int s)
+      if int32(e) >= len(atlas.lookup):
+        atlas.lookup.setLen(1 + int32 e)
+      elif int32(s) >= len(atlas.lookup):
+        atlas.lookup.setLen(1 + int32 s)
       # Render Charcodes one by one
       while s <= e: # Iterate Charcodes
         renderCharcode(atlas, s, temp)
@@ -210,10 +225,9 @@ proc renderCharset(atlas: var CTXAtlas, charset: openArray[uint16]) =
     # Save Texture UV Coordinates Box
     glyph.x1 = point.x; glyph.x2 = point.x + glyph.w
     glyph.y1 = point.y; glyph.y2 = point.y + glyph.h
-  # -- Put a White Pixel in Atlas
-  point = pack(atlas, 1, 1)
-  dest[atlas.w * point.y + point.x] = high(uint32)
-  atlas.whiteU = point.x; atlas.whiteV = point.y
+  # -- Use Fallback for Locate White Pixel
+  atlas.whiteU = atlas.glyphs[0].x1
+  atlas.whiteV = atlas.glyphs[0].y1
   # -- Copy Arranged Atlas to Texture
   glGenTextures(1, addr atlas.texID)
   glBindTexture(GL_TEXTURE_2D, atlas.texID)
@@ -229,6 +243,32 @@ proc renderCharset(atlas: var CTXAtlas, charset: openArray[uint16]) =
   # Unbind White Pixel Texture
   glBindTexture(GL_TEXTURE_2D, 0)
 
+proc renderOnDemand(atlas: var CTXAtlas, charcode: uint16): ptr TEXGlyph =
+  var temp: seq[uint32] # Temp Buffer
+  renderCharcode(atlas, charcode, temp)
+  # Return Fallback or Rendered Glyph
+  if len(temp) == 0: # Failed Loaded
+    addr atlas.glyphs[0]
+  else: # Save Texture to Atlas
+    let # Load Rendered Glyph
+      lookup = atlas.lookup[charcode]
+      glyph = addr atlas.glyphs[lookup]
+    # Use Skyline For Pack Glyph
+    var point = atlas.pack(glyph.w, glyph.h)
+    if point.x == -1 or point.y == -1:
+      if atlas.w == atlas.h: # Resize Atlas Dimensions
+        atlas.w *= 2; atlas.rw *= 0.5
+      else: atlas.h *= 2; atlas.rw *= 0.5
+      # Try Skyline Again With New Dimensions
+      point = atlas.pack(glyph.w, glyph.h)
+    # Save Texture UV Coordinates Box
+    glyph.x1 = point.x; glyph.x2 = point.x + glyph.w
+    glyph.y1 = point.y; glyph.y2 = point.y + glyph.h
+    # Save Glyph To Affected Texture Region
+    glTexSubImage2D(GL_TEXTURE_2D, 0, point.x, point.y, 
+      glyph.w, glyph.h, GL_RGBA, GL_UNSIGNED_BYTE, addr temp[0])
+    glyph # Return Glyph
+
 # -------------------
 # ATLAS CREATION PROC
 # -------------------
@@ -239,11 +279,11 @@ proc newCTXAtlas*(ft2: FT2Library, charset: openArray[uint16]): CTXAtlas =
     echo "ERROR: failed loading gui font file"
   if ft2_setCharSize(result.face, 0, 10 shl 6, 96, 96) != 0:
     echo "WARNING: font size was not setted properly"
-  # 2 -- Render Selected Charset
-  renderCharset(result, charset)
-  # 3 -- Set max y offset for top-to-bottom positioning
+  # 2 -- Set max y offset for top-to-bottom positioning
   result.offsetY = # Ascender - -Descender = Offset Y
     (result.face.ascender + result.face.descender) shr 6
+  # 3 -- Render Selected Charset
+  renderCharset(result, charset)
 
 # --------------------------
 # ATLAS CHACODE LOOKUP PROCS
@@ -274,7 +314,12 @@ iterator runes16*(str: string): uint16 =
     yield result
 
 proc lookup*(atlas: var CTXAtlas, charcode: uint16): ptr TEXGlyph =
-  let found = atlas.lookup[charcode]
-  # Return Charcode From Lookup
-  if found == 0xFFFF: addr atlas.glyphs[0]
-  else: addr atlas.glyphs[found]
+  # Check if lookup needs expand
+  if int32(charcode) >= len(atlas.lookup):
+    atlas.lookup.setLen(1 + int32 charcode)
+  # Get Glyph Index of the lookup
+  var lookup = atlas.lookup[charcode]
+  case lookup # Check Found Index
+  of 0: renderOnDemand(atlas, charcode)
+  of 0xFFFF: addr atlas.glyphs[0]
+  else: addr atlas.glyphs[lookup]

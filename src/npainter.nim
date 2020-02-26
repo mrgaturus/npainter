@@ -45,9 +45,9 @@ method draw*(widget: GUIBlank, ctx: ptr CTXRender) =
     ctx.color = 0xFF000000'u32
     fill(ctx, widget.rect)
     ctx.color = high(uint32)
-    #drawAtlas(ctx, widget.rect)
+    drawAtlas(ctx, widget.rect)
     #ctx.texture(widget.rect, 0)
-    ctx.text(widget.rect.x, widget.rect.y, "Hello World, сука блять")
+    ctx.text(widget.rect.x, widget.rect.y, "Hello World, сука блятьララ")
 
 method event*(widget: GUIBlank, state: ptr GUIState) =
   #echo "cursor mx: ", state.mx, " cursor my: ", state.my
@@ -108,7 +108,7 @@ when isMainModule:
     # --- Blank #1 ---
     blank = new GUIBlank
     blank.flags = wStandard
-    blank.geometry(300,150,256,128)
+    blank.geometry(300,150,512,256)
     root.add(blank)
     # --- Blank #2 ---
     blank = new GUIBlank
