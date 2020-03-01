@@ -906,7 +906,11 @@ const
   GL_MAX_COLOR_TEXTURE_SAMPLES*: GLenum = GLenum(0x910E)
   GL_MAX_DEPTH_TEXTURE_SAMPLES*: GLenum = GLenum(0x910F)
   GL_MAX_INTEGER_SAMPLES*: GLenum = GLenum(0x9110)
-
+  # OpenGL 3.3 Pixel SWIZZLE
+  GL_TEXTURE_SWIZZLE_R*: GLenum = GLenum(0x8E42)
+  GL_TEXTURE_SWIZZLE_G*: GLenum = GLenum(0x8E43)
+  GL_TEXTURE_SWIZZLE_B*: GLenum = GLenum(0x8E44)
+  GL_TEXTURE_SWIZZLE_A*: GLenum = GLenum(0x8E45)
 
 # Functions
 var

@@ -161,7 +161,7 @@ proc render*(ctx: var CTXRender) =
     else: # Use CMD Texture This Time
       # Change Texture and Use Normalized UV
       glBindTexture(GL_TEXTURE_2D, cmd.texID)
-      glUniform2f(ctx.uDim, 1, 1) # UV * 1
+      glUniform2f(ctx.uDim, 1.0'f32, 1.0'f32)
       # Draw Texture Quad using Triangle Strip
       glDrawArrays(GL_TRIANGLE_STRIP, cmd.base, 4)
       # Back to Atlas Texture with Unnormalized UV
@@ -353,7 +353,7 @@ proc texture*(ctx: ptr CTXRender, rect: var GUIRect, texID: GLuint) =
 
 proc text*(ctx: ptr CTXRender, x,y: int32, str: string) =
   # Offset Y to Atlas Font Y Offset Metric
-  #(unsafeAddr y)[] += ctx.atlas.offsetY
+  (unsafeAddr y)[] += ctx.atlas.offsetY
   # Render Text Top to Bottom
   for rune in runes16(str):
     let glyph = # Load Glyph

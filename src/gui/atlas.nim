@@ -131,7 +131,7 @@ proc pack*(atlas: var CTXAtlas, w, h: int16): tuple[x, y: int16] =
 # ATLAS GLYPH RENDERING PROCS
 # ---------------------------
 
-proc renderFallback(atlas: var CTXAtlas, temp: var seq[uint32]) =
+proc renderFallback(atlas: var CTXAtlas, temp: var seq[byte]) =
   # Add A Glyph for a white rectangle
   atlas.glyphs.add TEXGlyph(
     glyphIDX: 0, # Use Invalid IDX
@@ -144,9 +144,9 @@ proc renderFallback(atlas: var CTXAtlas, temp: var seq[uint32]) =
   var i = len(temp)
   temp.setLen(i + atlas.offsetY * atlas.offsetY shr 1)
   while i < len(temp): 
-    temp[i] = high(uint32); inc(i)
+    temp[i] = high(byte); inc(i)
 
-proc renderCharcode(atlas: var CTXAtlas, code: uint16, temp: var seq[uint32]) =
+proc renderCharcode(atlas: var CTXAtlas, code: uint16, temp: var seq[byte]) =
   let glyphIDX = ft2_getCharIndex(atlas.face, code)
   if glyphIDX != 0 and ft2_loadGlyph(atlas.face, glyphIDX, FT_LOAD_RENDER) == 0:
     let slot = atlas.face.glyph # Shorcut
@@ -161,22 +161,20 @@ proc renderCharcode(atlas: var CTXAtlas, code: uint16, temp: var seq[uint32]) =
       yo: cast[int16](slot.bitmap_top), # yBearing
       advance: cast[int16](slot.advance.x shr 6)
     ) # End Add Glyph to Glyph Cache
-    # -- Convert Glyph Bitmap as RGBA8888
-    var # Copy pixels to temporal buffer
-      i = len(temp) # Starting Position
-      j: uint32 # Bitmap Position
+    # -- Copy Bitmap to temporal buffer
     # Expand Temporal Buffer for Copy Bitmap
+    let i = len(temp) # Pivot Pixel Index before Expand
     temp.setLen(i + int slot.bitmap.width * slot.bitmap.rows)
-    # Copy and Convert Pixels to RGBA8888
-    while i < len(temp): # Merge Pixel to alpha channel of a White Pixel
-      temp[i] = cast[uint32](slot.bitmap.buffer[j]) shl 24 or 0x00FFFFFF
-      inc(i); inc(j) # Next RGBA8888 Pixel and 8bit Pixel
+    # Copy Bitmap To Temporal Buffer
+    if i < len(temp): # Is Really Allocated?
+      copyMem(addr temp[i], slot.bitmap.buffer, 
+        slot.bitmap.width * slot.bitmap.rows)
     # -- Save Glyph Index at Lookup
     atlas.lookup[code] = uint16(high atlas.glyphs)
   else: atlas.lookup[code] = 0xFFFF
 
 proc renderCharset(atlas: var CTXAtlas, charset: openArray[uint16]) =
-  var temp, dest: seq[uint32] # Temporal Buffers
+  var temp, dest: seq[byte] # Temporal Buffers
   # -- Render Fallback Glyph
   renderFallback(atlas, temp)
   # -- Render Charset Ranges
@@ -220,7 +218,7 @@ proc renderCharset(atlas: var CTXAtlas, charset: openArray[uint16]) =
       pixel = atlas.w * point.y + point.x
       i: int16 # Bitmap Row Iterator
     while i < glyph.h: # Copy Glyph Pixel Rows
-      copyMem(addr dest[pixel], addr temp[cursor], int(glyph.w) * 4)
+      copyMem(addr dest[pixel], addr temp[cursor], glyph.w)
       cursor += glyph.w; pixel += atlas.w; inc(i) # Next Pixel Row
     # Save Texture UV Coordinates Box
     glyph.x1 = point.x; glyph.x2 = point.x + glyph.w
@@ -237,14 +235,19 @@ proc renderCharset(atlas: var CTXAtlas, charset: openArray[uint16]) =
   # Use Nearest Pixel Filter
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, cast[GLint](GL_NEAREST))
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, cast[GLint](GL_NEAREST))
+  # Swizzle pixel components to 1-1-1-RED
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_SWIZZLE_R, GL_ONE)
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_SWIZZLE_G, GL_ONE)
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_SWIZZLE_B, GL_ONE)
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_SWIZZLE_A, cast[GLint](GL_RED))
   # Copy Arranged Bitmap Buffer to Texture
-  glTexImage2D(GL_TEXTURE_2D, 0, cast[int32](GL_RGBA8), atlas.w, atlas.h, 0, GL_RGBA,
+  glTexImage2D(GL_TEXTURE_2D, 0, cast[int32](GL_R8), atlas.w, atlas.h, 0, GL_RED,
       GL_UNSIGNED_BYTE, addr dest[0])
   # Unbind White Pixel Texture
   glBindTexture(GL_TEXTURE_2D, 0)
 
 proc renderOnDemand(atlas: var CTXAtlas, charcode: uint16): ptr TEXGlyph =
-  var temp: seq[uint32] # Temp Buffer
+  var temp: seq[byte] # Temp Buffer
   renderCharcode(atlas, charcode, temp)
   # Return Fallback or Rendered Glyph
   if len(temp) == 0: # Failed Loaded
@@ -265,8 +268,9 @@ proc renderOnDemand(atlas: var CTXAtlas, charcode: uint16): ptr TEXGlyph =
     glyph.x1 = point.x; glyph.x2 = point.x + glyph.w
     glyph.y1 = point.y; glyph.y2 = point.y + glyph.h
     # Save Glyph To Affected Texture Region
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1)
     glTexSubImage2D(GL_TEXTURE_2D, 0, point.x, point.y, 
-      glyph.w, glyph.h, GL_RGBA, GL_UNSIGNED_BYTE, addr temp[0])
+      glyph.w, glyph.h, GL_RED, GL_UNSIGNED_BYTE, addr temp[0])
     glyph # Return Glyph
 
 # -------------------
