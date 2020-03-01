@@ -24,6 +24,7 @@ type # Atlas Objects
     # GLYPH ATLAS BITMAP
     buffer: seq[byte]
     status: BUFStatus
+    x1, x2, y1, y2: int16
     # OPENGL INFORMATION
     texID*: uint32 # Texture
     whiteU*, whiteV*: int16
@@ -303,6 +304,12 @@ proc renderOnDemand(atlas: var CTXAtlas, code: uint16): ptr TEXGlyph =
       # Save New Packed UV Coordinated to Glyph
       glyph.x1 = point.x; glyph.x2 = point.x + glyph.w
       glyph.y1 = point.y; glyph.y2 = point.y + glyph.h
+      # Extend Dirty Rect
+      if atlas.status == bufDirty:
+        atlas.x1 = min(atlas.x1, glyph.x1)
+        atlas.y1 = min(atlas.y1, glyph.y1)
+        atlas.x2 = max(atlas.x2, glyph.x2)
+        atlas.y2 = max(atlas.y2, glyph.y2)
     # -- Copy New Glyph To Atlas Buffer
     var # Copy Rows Iterator
       pixel = atlas.w * glyph.y1 + glyph.x1
@@ -362,24 +369,34 @@ iterator runes16*(str: string): uint16 =
 
 proc check*(atlas: var CTXAtlas) =
   case atlas.status:
-  of bufNormal: discard
-  of bufDirty: # Added Glyphs
+  of bufNormal: return
+  of bufDirty: # Has New Glyphs
     # Ajust Unpack Aligment for copy
     glPixelStorei(GL_UNPACK_ALIGNMENT, 1)
+    glPixelStorei(GL_UNPACK_ROW_LENGTH, atlas.w)
+    glPixelStorei(GL_UNPACK_SKIP_PIXELS, atlas.x1)
+    glPixelStorei(GL_UNPACK_SKIP_ROWS, atlas.y1)
     # Copy Dirty Area to Texture
-    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 
-      atlas.w, atlas.h, GL_RED, GL_UNSIGNED_BYTE, 
-      addr atlas.buffer[0])
+    glTexSubImage2D(GL_TEXTURE_2D, 0, atlas.x1, atlas.y1, 
+      atlas.x2 - atlas.x1, atlas.y2 - atlas.y1, GL_RED, 
+      GL_UNSIGNED_BYTE, addr atlas.buffer[0])
     # Reset Unpack Aligment to default
     glPixelStorei(GL_UNPACK_ALIGNMENT, 4)
+    glPixelStorei(GL_UNPACK_ROW_LENGTH, 0)
+    glPixelStorei(GL_UNPACK_SKIP_PIXELS, 0)
+    glPixelStorei(GL_UNPACK_SKIP_ROWS, 0)
     # Set Buffer to Normal
     atlas.status = bufNormal
-  of bufResize: # Resized Atlas
+  of bufResize: # Has Been Resized
     glTexImage2D(GL_TEXTURE_2D, 0, cast[int32](GL_R8), 
       atlas.w, atlas.h, 0, GL_RED, GL_UNSIGNED_BYTE, 
       addr atlas.buffer[0])
     # Set Buffer to Normal
     atlas.status = bufNormal
+  # Reset Dirty Texture Region
+  atlas.x1 = cast[int16](atlas.w)
+  atlas.y1 = cast[int16](atlas.h)
+  atlas.x2 = 0; atlas.y2 = 0
 
 proc lookup*(atlas: var CTXAtlas, charcode: uint16): ptr TEXGlyph =
   # Check if lookup needs expand
