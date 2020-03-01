@@ -298,7 +298,8 @@ proc renderOnDemand(atlas: var CTXAtlas, code: uint16): ptr TEXGlyph =
         point = pack(atlas, glyph.w, glyph.h)
         # Mark as Invalid
         atlas.status = bufResize
-      else: atlas.status = bufDirty
+      elif atlas.status == bufNormal:
+        atlas.status = bufDirty
       # Save New Packed UV Coordinated to Glyph
       glyph.x1 = point.x; glyph.x2 = point.x + glyph.w
       glyph.y1 = point.y; glyph.y2 = point.y + glyph.h
