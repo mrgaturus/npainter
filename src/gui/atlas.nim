@@ -10,6 +10,8 @@ type # Atlas Objects
     x1*, x2*, y1*, y2*: int16 # UV Coords
     xo*, yo*, advance*: int16 # Positioning
     w*, h*: int16 # Bitmap Dimensions
+  BUFStatus = enum # Bitmap Buffer Status
+    bufNormal, bufDirty, bufResize
   CTXAtlas* = object
     # FT2 FONT FACE
     face: FT2Face
@@ -19,6 +21,9 @@ type # Atlas Objects
     # GLYPHS INFORMATION
     lookup: seq[uint16]
     glyphs: seq[TEXGlyph]
+    # GLYPH ATLAS BITMAP
+    buffer: seq[byte]
+    status: BUFStatus
     # OPENGL INFORMATION
     texID*: uint32 # Texture
     whiteU*, whiteV*: int16
@@ -131,7 +136,7 @@ proc pack*(atlas: var CTXAtlas, w, h: int16): tuple[x, y: int16] =
 # ATLAS GLYPH RENDERING PROCS
 # ---------------------------
 
-proc renderFallback(atlas: var CTXAtlas, temp: var seq[byte]) =
+proc renderFallback(atlas: var CTXAtlas) =
   # Add A Glyph for a white rectangle
   atlas.glyphs.add TEXGlyph(
     glyphIDX: 0, # Use Invalid IDX
@@ -141,12 +146,12 @@ proc renderFallback(atlas: var CTXAtlas, temp: var seq[byte]) =
     advance: atlas.offsetY shr 1 + 2 # *[]*
   ) # End Add Glyph to Glyph Cache
   # Alloc White Rectangle
-  var i = len(temp)
-  temp.setLen(i + atlas.offsetY * atlas.offsetY shr 1)
-  while i < len(temp): 
-    temp[i] = high(byte); inc(i)
+  var i = len(atlas.buffer)
+  atlas.buffer.setLen(i + atlas.offsetY * atlas.offsetY shr 1)
+  while i < len(atlas.buffer): 
+    atlas.buffer[i] = high(byte); inc(i)
 
-proc renderCharcode(atlas: var CTXAtlas, code: uint16, temp: var seq[byte]) =
+proc renderCharcode(atlas: var CTXAtlas, code: uint16) =
   let glyphIDX = ft2_getCharIndex(atlas.face, code)
   if glyphIDX != 0 and ft2_loadGlyph(atlas.face, glyphIDX, FT_LOAD_RENDER) == 0:
     let slot = atlas.face.glyph # Shorcut
@@ -163,22 +168,21 @@ proc renderCharcode(atlas: var CTXAtlas, code: uint16, temp: var seq[byte]) =
     ) # End Add Glyph to Glyph Cache
     # -- Copy Bitmap to temporal buffer
     # Expand Temporal Buffer for Copy Bitmap
-    let i = len(temp) # Pivot Pixel Index before Expand
-    temp.setLen(i + int slot.bitmap.width * slot.bitmap.rows)
+    let i = len(atlas.buffer) # Pivot Pixel Index before Expand
+    atlas.buffer.setLen(i + int slot.bitmap.width * slot.bitmap.rows)
     # Copy Bitmap To Temporal Buffer
-    if i < len(temp): # Is Really Allocated?
-      copyMem(addr temp[i], slot.bitmap.buffer, 
+    if i < len(atlas.buffer): # Is Really Allocated?
+      copyMem(addr atlas.buffer[i], slot.bitmap.buffer, 
         slot.bitmap.width * slot.bitmap.rows)
     # -- Save Glyph Index at Lookup
     atlas.lookup[code] = uint16(high atlas.glyphs)
   else: atlas.lookup[code] = 0xFFFF
 
 proc renderCharset(atlas: var CTXAtlas, charset: openArray[uint16]) =
-  var temp, dest: seq[byte] # Temporal Buffers
+  var dest: seq[byte] # Arranged Buffer
   # -- Render Fallback Glyph
-  renderFallback(atlas, temp)
-  # -- Render Charset Ranges
-  block: # s..e pairs
+  renderFallback(atlas)
+  block: # -- Render Charset Ranges
     var # Iterators
       s, e: uint16 # Charcode Iter
       i = 0 # Range Iter
@@ -192,12 +196,11 @@ proc renderCharset(atlas: var CTXAtlas, charset: openArray[uint16]) =
         atlas.lookup.setLen(1 + int32 s)
       # Render Charcodes one by one
       while s <= e: # Iterate Charcodes
-        renderCharcode(atlas, s, temp)
+        renderCharcode(atlas, s)
         inc(s) # Next Charcode
       i += 2 # Next Range Pair
-  # -- Alloc Arranged Atlas Buffer
-  block: # Get power of two side*2 * side
-    let side = len(temp).float32.sqrt().ceil().int.nextPowerOfTwo()
+  block: # -- Alloc Arranged Atlas Buffer
+    let side = len(atlas.buffer).float32.sqrt().ceil().int.nextPowerOfTwo()
     # Set new Atlas Diemsions
     atlas.w = cast[int32](side shl 1)
     atlas.h = cast[int32](side)
@@ -218,7 +221,7 @@ proc renderCharset(atlas: var CTXAtlas, charset: openArray[uint16]) =
       pixel = atlas.w * point.y + point.x
       i: int16 # Bitmap Row Iterator
     while i < glyph.h: # Copy Glyph Pixel Rows
-      copyMem(addr dest[pixel], addr temp[cursor], glyph.w)
+      copyMem(addr dest[pixel], addr atlas.buffer[cursor], glyph.w)
       cursor += glyph.w; pixel += atlas.w; inc(i) # Next Pixel Row
     # Save Texture UV Coordinates Box
     glyph.x1 = point.x; glyph.x2 = point.x + glyph.w
@@ -245,33 +248,72 @@ proc renderCharset(atlas: var CTXAtlas, charset: openArray[uint16]) =
       GL_UNSIGNED_BYTE, addr dest[0])
   # Unbind White Pixel Texture
   glBindTexture(GL_TEXTURE_2D, 0)
+  # -- Replace Current Buffer
+  atlas.buffer = dest
 
-proc renderOnDemand(atlas: var CTXAtlas, charcode: uint16): ptr TEXGlyph =
-  var temp: seq[byte] # Temp Buffer
-  renderCharcode(atlas, charcode, temp)
-  # Return Fallback or Rendered Glyph
-  if len(temp) == 0: # Failed Loaded
-    addr atlas.glyphs[0]
-  else: # Save Texture to Atlas
-    let # Load Rendered Glyph
-      lookup = atlas.lookup[charcode]
-      glyph = addr atlas.glyphs[lookup]
-    # Use Skyline For Pack Glyph
-    var point = atlas.pack(glyph.w, glyph.h)
-    if point.x == -1 or point.y == -1:
-      if atlas.w == atlas.h: # Resize Atlas Dimensions
-        atlas.w *= 2; atlas.rw *= 0.5
-      else: atlas.h *= 2; atlas.rw *= 0.5
-      # Try Skyline Again With New Dimensions
-      point = atlas.pack(glyph.w, glyph.h)
-    # Save Texture UV Coordinates Box
-    glyph.x1 = point.x; glyph.x2 = point.x + glyph.w
-    glyph.y1 = point.y; glyph.y2 = point.y + glyph.h
-    # Save Glyph To Affected Texture Region
-    glPixelStorei(GL_UNPACK_ALIGNMENT, 1)
-    glTexSubImage2D(GL_TEXTURE_2D, 0, point.x, point.y, 
-      glyph.w, glyph.h, GL_RED, GL_UNSIGNED_BYTE, addr temp[0])
-    glyph # Return Glyph
+proc renderOnDemand(atlas: var CTXAtlas, code: uint16): ptr TEXGlyph =
+  let glyphIDX = ft2_getCharIndex(atlas.face, code)
+  if glyphIDX != 0 and ft2_loadGlyph(atlas.face, glyphIDX, FT_LOAD_RENDER) == 0:
+    var # Auxiliar Vars
+      glyph: ptr TEXGlyph
+      buffer: cstring
+    block: # -- Save New Glyph to Glyphs Seq
+      let slot = atlas.face.glyph # Shorcut
+      # Expand Glyphs for a New Glyph
+      atlas.glyphs.setLen(1 + atlas.glyphs.len)
+      glyph = addr atlas.glyphs[^1]
+      # Save FT2 Glyph Index
+      glyph.glyphIDX = glyphIDX
+      # Save Bitmap Dimensions
+      glyph.w = cast[int16](slot.bitmap.width)
+      glyph.h = cast[int16](slot.bitmap.rows)
+      # Save Position Offsets
+      glyph.xo = cast[int16](slot.bitmap_left)
+      glyph.yo = cast[int16](slot.bitmap_top)
+      glyph.advance = cast[int16](slot.advance.x shr 6)
+      # Set Aux Buffer Pointer
+      buffer = slot.bitmap.buffer
+    block: # -- Arrange Glyph To Atlas
+      var point = pack(atlas, glyph.w, glyph.h)
+      if point.x == -1 or point.y == -1:
+        let stride = atlas.w # Prev W
+        # Expand Atlas To Next Power Of Two
+        if atlas.w == atlas.h:
+          atlas.w *= 2; atlas.rw *= 0.5
+          atlas.nodes.add SKYNode(
+            x: int16 stride, y: 0, 
+            w: int16 atlas.w - stride)
+        else: atlas.h *= 2; atlas.rh *= 0.5
+        # Move Buffer to a new Seq
+        var # Copy Rows
+          dest: seq[byte]
+          i, k: int32
+        dest.setLen(atlas.w * atlas.h)
+        while i < len(atlas.buffer):
+          copyMem(addr dest[k], addr atlas.buffer[i], stride)
+          i += stride; k += atlas.w
+        # Replace Buffer With New One
+        atlas.buffer = dest
+        # Try Pack Again, Guaranted
+        point = pack(atlas, glyph.w, glyph.h)
+        # Mark as Invalid
+        atlas.status = bufResize
+      else: atlas.status = bufDirty
+      # Save New Packed UV Coordinated to Glyph
+      glyph.x1 = point.x; glyph.x2 = point.x + glyph.w
+      glyph.y1 = point.y; glyph.y2 = point.y + glyph.h
+    # -- Copy New Glyph To Atlas Buffer
+    var # Copy Rows Iterator
+      pixel = atlas.w * glyph.y1 + glyph.x1
+      i: int16 # Pixel Row
+    while i < glyph.h:
+      copyMem(addr atlas.buffer[pixel], 
+        addr buffer[glyph.w * i], glyph.w)
+      pixel += atlas.w; inc(i)
+    # -- Save Glyph Index at Lookup
+    atlas.lookup[code] = uint16(high atlas.glyphs)
+    glyph # Return Recently Created Glyph
+  else: atlas.lookup[code] = 0xFFFF; addr atlas.glyphs[0]
 
 # -------------------
 # ATLAS CREATION PROC
@@ -289,9 +331,9 @@ proc newCTXAtlas*(ft2: FT2Library, charset: openArray[uint16]): CTXAtlas =
   # 3 -- Render Selected Charset
   renderCharset(result, charset)
 
-# --------------------------
-# ATLAS CHACODE LOOKUP PROCS
-# --------------------------
+# ----------------------
+# ATLAS ON RUNNING PROCS
+# ----------------------
 
 # Very fast uint16 Rune Iterator
 iterator runes16*(str: string): uint16 =
@@ -317,12 +359,33 @@ iterator runes16*(str: string): uint16 =
     # Yield Rune
     yield result
 
+proc check*(atlas: var CTXAtlas) =
+  case atlas.status:
+  of bufNormal: discard
+  of bufDirty: # Added Glyphs
+    # Ajust Unpack Aligment for copy
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1)
+    # Copy Dirty Area to Texture
+    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 
+      atlas.w, atlas.h, GL_RED, GL_UNSIGNED_BYTE, 
+      addr atlas.buffer[0])
+    # Reset Unpack Aligment to default
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 4)
+    # Set Buffer to Normal
+    atlas.status = bufNormal
+  of bufResize: # Resized Atlas
+    glTexImage2D(GL_TEXTURE_2D, 0, cast[int32](GL_R8), 
+      atlas.w, atlas.h, 0, GL_RED, GL_UNSIGNED_BYTE, 
+      addr atlas.buffer[0])
+    # Set Buffer to Normal
+    atlas.status = bufNormal
+
 proc lookup*(atlas: var CTXAtlas, charcode: uint16): ptr TEXGlyph =
   # Check if lookup needs expand
   if int32(charcode) >= len(atlas.lookup):
     atlas.lookup.setLen(1 + int32 charcode)
   # Get Glyph Index of the lookup
-  var lookup = atlas.lookup[charcode]
+  let lookup = atlas.lookup[charcode]
   case lookup # Check Found Index
   of 0: renderOnDemand(atlas, charcode)
   of 0xFFFF: addr atlas.glyphs[0]

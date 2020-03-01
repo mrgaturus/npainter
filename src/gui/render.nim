@@ -140,6 +140,8 @@ proc clear*(ctx: var CTXRender) =
   ctx.color = 0 # Nothing Color
 
 proc render*(ctx: var CTXRender) =
+  # Check Atlas Buffer
+  check(ctx.atlas)
   # Upload Elements
   glBufferData(GL_ELEMENT_ARRAY_BUFFER, 
     len(ctx.elements)*sizeof(uint16),

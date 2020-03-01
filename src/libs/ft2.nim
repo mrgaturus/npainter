@@ -20,7 +20,7 @@ type # Trimmed Types for basic usage
     rows*: cuint
     width*: cuint
     pitch*: cint
-    buffer*: ptr UncheckedArray[byte]
+    buffer*: cstring
     num_grays*: cushort
     pixel_mode*: cuchar
     palette_mode*: cuchar
