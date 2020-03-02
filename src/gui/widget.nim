@@ -31,19 +31,19 @@ const # For now is better use traditional flags
   wHoverGrab* = 0x300'u16
 
 type
+  GUIFlags* = uint16
   GUIHandle* = enum
     inFocus, inHover, inHold, inFrame
     outFocus, outHover, outHold, outFrame
-  GUIFlags* = uint16
-  GUISignals = set[0'u8..63'u8] # 64
   GUIWidget* {.inheritable.} = ref object
     # Widget Neighbords
     next*, prev*: GUIWidget
-    # Widget Basic Info
-    signals*: GUISignals
+    # Widget Flags
     flags*: GUIFlags
     # Widget Rect&Hint
     rect*, hint*: GUIRect
+    # Signal Groups
+    signals*: set[0u8..63u8]
 
 signal Frame:
   Open # Open Floating
