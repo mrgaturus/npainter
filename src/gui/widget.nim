@@ -35,8 +35,8 @@ type
     inFocus, inHover, inHold, inFrame
     outFocus, outHover, outHold, outFrame
   GUIFlags* = uint16
-  GUISignals = set[0'u8..63'u8]
-  GUIWidget* = ref object of RootObj
+  GUISignals = set[0'u8..63'u8] # 64
+  GUIWidget* {.inheritable.} = ref object
     # Widget Neighbords
     next*, prev*: GUIWidget
     # Widget Basic Info
