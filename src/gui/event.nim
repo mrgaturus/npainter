@@ -53,10 +53,10 @@ type
     of sCallback:
       cb: GUICallback
     # Signal Data
-    data*: GUISData
+    data*: GUIOpaque
   # Signal Generic Data
   GUICallback* = proc(g, d: pointer) {.nimcall.}
-  GUISData* = object
+  GUIOpaque* = object
   # GUI Signal and Queue
   GUISignal* = ptr Signal
   GUIQueue* = object
@@ -214,5 +214,5 @@ template pushCallback*(cb: proc, data: pointer, size: Natural) =
 # SIGNAL DATA CONVERTER
 # ---------------------
 
-template convert*(data: GUISData, t: type): untyped =
+template convert*(data: GUIOpaque, t: type): untyped =
   cast[ptr t](addr data)

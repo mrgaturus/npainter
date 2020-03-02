@@ -1,7 +1,7 @@
 import macros
 
 # Signal Builder
-var lastID {.compileTime.} : uint8 = 0
+var lastID {.compileTime.}: uint8 = 0
 macro signal*(name: untyped, messages: untyped) =
   # Expected Parameters
   name.expectKind(nnkIdent)

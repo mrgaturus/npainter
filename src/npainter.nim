@@ -93,8 +93,7 @@ when isMainModule:
   )
   # Create a new Window
   var win: GUIWindow
-  # Create Widgets
-  block:
+  block: # Create Widgets
     # Create two blanks
     var
       sub, blank: GUIBlank
