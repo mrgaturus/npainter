@@ -403,12 +403,10 @@ proc checkTexture*(atlas: var CTXAtlas): bool =
   of bufResize: # Has Been Resized
     glTexImage2D(GL_TEXTURE_2D, 0, cast[int32](GL_R8), 
       atlas.w, atlas.h, 0, GL_RED, GL_UNSIGNED_BYTE, 
-      addr atlas.buffer[0])
+      addr atlas.buffer[0]); result = true
   # Reset Dirty Texture Region
   atlas.x1 = cast[int16](atlas.w)
   atlas.y1 = cast[int16](atlas.h)
   atlas.x2 = 0; atlas.y2 = 0
   # Set Status to Normal
   atlas.status = bufNormal
-  # Return if Atlas Resized
-  atlas.status == bufResize
