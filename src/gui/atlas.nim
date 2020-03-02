@@ -339,9 +339,9 @@ proc newCTXAtlas*(ft2: FT2Library, charset: openArray[uint16]): CTXAtlas =
   # 3 -- Render Selected Charset
   renderCharset(result, charset)
 
-# ----------------------
-# ATLAS ON RUNNING PROCS
-# ----------------------
+# ------------------------
+# ATLAS GLYPH LOOKUP PROCS
+# ------------------------
 
 # Very fast uint16 Rune Iterator
 iterator runes16*(str: string): uint16 =
@@ -367,9 +367,24 @@ iterator runes16*(str: string): uint16 =
     # Yield Rune
     yield result
 
-proc check*(atlas: var CTXAtlas) =
+proc lookup*(atlas: var CTXAtlas, charcode: uint16): ptr TEXGlyph =
+  # Check if lookup needs expand
+  if int32(charcode) >= len(atlas.lookup):
+    atlas.lookup.setLen(1 + int32 charcode)
+  # Get Glyph Index of the lookup
+  let lookup = atlas.lookup[charcode]
+  case lookup # Check Found Index
+  of 0: renderOnDemand(atlas, charcode)
+  of 0xFFFF: addr atlas.glyphs[0]
+  else: addr atlas.glyphs[lookup]
+
+# ---------------------------
+# ATLAS TEXTURE UPDATING PROC
+# ---------------------------
+
+proc checkTexture*(atlas: var CTXAtlas): bool =
   case atlas.status:
-  of bufNormal: return
+  of bufNormal: return false
   of bufDirty: # Has New Glyphs
     # Ajust Unpack Aligment for copy
     glPixelStorei(GL_UNPACK_ALIGNMENT, 1)
@@ -385,26 +400,15 @@ proc check*(atlas: var CTXAtlas) =
     glPixelStorei(GL_UNPACK_ROW_LENGTH, 0)
     glPixelStorei(GL_UNPACK_SKIP_PIXELS, 0)
     glPixelStorei(GL_UNPACK_SKIP_ROWS, 0)
-    # Set Buffer to Normal
-    atlas.status = bufNormal
   of bufResize: # Has Been Resized
     glTexImage2D(GL_TEXTURE_2D, 0, cast[int32](GL_R8), 
       atlas.w, atlas.h, 0, GL_RED, GL_UNSIGNED_BYTE, 
       addr atlas.buffer[0])
-    # Set Buffer to Normal
-    atlas.status = bufNormal
   # Reset Dirty Texture Region
   atlas.x1 = cast[int16](atlas.w)
   atlas.y1 = cast[int16](atlas.h)
   atlas.x2 = 0; atlas.y2 = 0
-
-proc lookup*(atlas: var CTXAtlas, charcode: uint16): ptr TEXGlyph =
-  # Check if lookup needs expand
-  if int32(charcode) >= len(atlas.lookup):
-    atlas.lookup.setLen(1 + int32 charcode)
-  # Get Glyph Index of the lookup
-  let lookup = atlas.lookup[charcode]
-  case lookup # Check Found Index
-  of 0: renderOnDemand(atlas, charcode)
-  of 0xFFFF: addr atlas.glyphs[0]
-  else: addr atlas.glyphs[lookup]
+  # Set Status to Normal
+  atlas.status = bufNormal
+  # Return if Atlas Resized
+  atlas.status == bufResize
