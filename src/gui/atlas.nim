@@ -230,25 +230,6 @@ proc renderCharset(atlas: var CTXAtlas, charset: openArray[uint16]) =
   # -- Use Fallback for Locate White Pixel
   atlas.whiteU = atlas.glyphs[0].x1
   atlas.whiteV = atlas.glyphs[0].y1
-  # -- Copy Arranged Atlas to Texture
-  glGenTextures(1, addr atlas.texID)
-  glBindTexture(GL_TEXTURE_2D, atlas.texID)
-  # Clamp Atlas to Edge
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, cast[GLint](GL_CLAMP_TO_EDGE))
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, cast[GLint](GL_CLAMP_TO_EDGE))
-  # Use Nearest Pixel Filter
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, cast[GLint](GL_NEAREST))
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, cast[GLint](GL_NEAREST))
-  # Swizzle pixel components to 1-1-1-RED
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_SWIZZLE_R, GL_ONE)
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_SWIZZLE_G, GL_ONE)
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_SWIZZLE_B, GL_ONE)
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_SWIZZLE_A, cast[GLint](GL_RED))
-  # Copy Arranged Bitmap Buffer to Texture
-  glTexImage2D(GL_TEXTURE_2D, 0, cast[int32](GL_R8), atlas.w, atlas.h, 0, GL_RED,
-      GL_UNSIGNED_BYTE, addr dest[0])
-  # Unbind White Pixel Texture
-  glBindTexture(GL_TEXTURE_2D, 0)
   # -- Replace Current Buffer
   atlas.buffer = dest
 
@@ -338,6 +319,25 @@ proc newCTXAtlas*(ft2: FT2Library, charset: openArray[uint16]): CTXAtlas =
     (result.face.ascender + result.face.descender) shr 6
   # 3 -- Render Selected Charset
   renderCharset(result, charset)
+  # 4 -- Copy Buffer to a New Texture
+  glGenTextures(1, addr result.texID)
+  glBindTexture(GL_TEXTURE_2D, result.texID)
+  # Clamp Atlas to Edge
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, cast[GLint](GL_CLAMP_TO_EDGE))
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, cast[GLint](GL_CLAMP_TO_EDGE))
+  # Use Nearest Pixel Filter
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, cast[GLint](GL_NEAREST))
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, cast[GLint](GL_NEAREST))
+  # Swizzle pixel components to 1-1-1-RED
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_SWIZZLE_R, GL_ONE)
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_SWIZZLE_G, GL_ONE)
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_SWIZZLE_B, GL_ONE)
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_SWIZZLE_A, cast[GLint](GL_RED))
+  # Copy Arranged Bitmap Buffer to Texture
+  glTexImage2D(GL_TEXTURE_2D, 0, cast[int32](GL_R8), result.w, result.h, 0, GL_RED,
+      GL_UNSIGNED_BYTE, addr result.buffer[0])
+  # Unbind New Atlas Texture
+  glBindTexture(GL_TEXTURE_2D, 0)
 
 # ------------------------
 # ATLAS GLYPH LOOKUP PROCS
