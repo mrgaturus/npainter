@@ -14,8 +14,16 @@ type
     hold, focus, hover: GUIWidget # Cache Pointers
     color*: GUIColor # Background Color
 
-# LAYOUT ABSTRACT METHOD
-method arrange*(container: GUIContainer) {.base.} = discard
+# --------------------------
+# CONTAINER ABSTRACT METHODS
+# --------------------------
+
+method arrange*(self: GUIContainer) {.base.} = discard
+method provoke*(self: GUIContainer, signal: GUISignal) {.base.} = discard
+
+# -------------------------
+# CONTAINER ADD WIDGET PROC
+# -------------------------
 
 proc add*(self: GUIContainer, widget: GUIWidget) =
   # Merge Widget Signals to Self
@@ -26,8 +34,12 @@ proc add*(self: GUIContainer, widget: GUIWidget) =
   else:
     widget.prev = self.last
     self.last.next = widget
-
+  # Set Widget To Last
   self.last = widget
+
+# -----------------------
+# CONTAINER PRIVATE PROCS
+# -----------------------
 
 proc semiReactive(self: GUIContainer, flags: GUIFlags) =
   self.flags = self.flags or (flags and cReactive)
@@ -81,7 +93,10 @@ proc reactive(self: GUIContainer, widget: GUIWidget) =
   elif (check and wFocus) == wFocus and check > wFocus:
     widget.clear(wFocus) # Invalid focus
 
-# CONTAINER METHODS
+# ------------------------
+# CONTAINER WIDGET METHODS
+# ------------------------
+
 method draw(self: GUIContainer, ctx: ptr CTXRender) =
   # Push Clipping
   ctx.push(self.rect)
@@ -160,6 +175,8 @@ method trigger(self: GUIContainer, signal: GUISignal) =
     if signal.id in widget:
       widget.trigger(signal)
       self.reactive(widget)
+  # Provoke Changes to Container
+  self.provoke(signal)
 
 method step(self: GUIContainer, back: bool) =
   var focus =
