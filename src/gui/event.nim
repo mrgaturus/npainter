@@ -176,8 +176,9 @@ proc pushSignal*(id: uint8, msg: enum, data: pointer, size: Natural) =
   # Assign Msg
   nsignal.id = id
   nsignal.msg = uint8(msg)
-  # Copy Extra Data
-  copyMem(addr nsignal.data, data, size)
+  # Copy Optionally Data
+  if size > 0 and not isNil(data):
+    copyMem(addr nsignal.data, data, size)
   # Add new signal to Front
   if queue.front.isNil:
     queue.back = nsignal
@@ -194,8 +195,9 @@ proc pushCallback(cb: GUICallback, data: pointer, size: Natural) =
   # Assign Callback
   nsignal.kind = sCallback
   nsignal.cb = cb
-  # Copy Extra Data
-  copyMem(addr nsignal.data, data, size)
+  # Copy Optionally Data
+  if size > 0 and not isNil(data):
+    copyMem(addr nsignal.data, data, size)
   # Add new signal to Front
   if queue.front.isNil:
     queue.back = nsignal
@@ -211,11 +213,17 @@ proc pushCallback(cb: GUICallback, data: pointer, size: Natural) =
 template pushSignal*(id: uint8, msg: enum, data: typed) =
   pushSignal(id, msg, addr data, sizeof(data))
 
+template pushSignal*(id: uint8, msg: enum) =
+  pushSignal(id, msg, nil, 0)
+
 template pushCallback*(cb: proc, data: pointer, size: Natural) =
   pushCallback(cast[GUICallback](cb), data, size)
 
 template pushCallback*(cb: proc, data: typed) =
   pushCallback(cast[GUICallback](cb), addr data, sizeof(data))
+
+template pushCallback*(cb: proc) =
+  pushCallback(cast[GUICallback](cb), nil, 0)
 
 template convert*(data: GUIOpaque, t: type): ptr t =
   cast[ptr t](addr data)
