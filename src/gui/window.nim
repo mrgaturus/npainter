@@ -2,7 +2,6 @@ import widget, event, render
 import x11/xlib, x11/x
 import ../libs/egl
 
-from builder import signal
 from timer import sleep
 from ../libs/ft2 import FT2Library, ft2_init, ft2_done
 from ../libs/gl import gladLoadGL

@@ -1,7 +1,8 @@
-# GUI Objects
-from builder import signal
-from event import GUIState, GUISignal, pushSignal
-from render import CTXRender, GUIRect
+from event import 
+  GUIState, GUISignal, 
+  signal, pushSignal
+from render import 
+  CTXRender, GUIRect
 
 const # For now is better use traditional flags
   # Rendering on Screen

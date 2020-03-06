@@ -1,5 +1,7 @@
+import macros
 import x11/xlib, x11/x
-from x11/keysym import XK_Tab, XK_ISO_Left_Tab
+from x11/keysym import 
+  XK_Tab, XK_ISO_Left_Tab
 
 const
   # Mouse Buttons
@@ -117,18 +119,16 @@ proc translateXEvent*(state: var GUIState, display: PDisplay, event: PXEvent,
   # Event is valid
   return true
 
-# ------------
-# SIGNAL QUEUE
-# ------------
+# ------------------
+# SIGNAL QUEUE PROCS
+# ------------------
 
-var queue: ptr GUIQueue = nil
+var queue: ptr GUIQueue
 proc allocQueue*(g: pointer) =
   if queue.isNil:
     queue = cast[ptr GUIQueue](
       alloc0(sizeof(GUIQueue))
-    )
-    # Define Global Data
-    queue.global = g
+    ); queue.global = g
 
 proc disposeQueue*() =
   var signal = queue.back
@@ -152,27 +152,25 @@ iterator pollQueue*(): GUISignal =
   queue.back = nil
   queue.front = nil
 
-# ---------------
-# CALLBACK CALLER
-# ---------------
+# --------------------
+# CALLBACK CALLER PROC
+# --------------------
 
 proc callSignal*(signal: GUISignal): bool =
   result = signal.kind == sCallback
-  if result: signal.cb(
-    queue.global,
+  if result: signal.cb(queue.global,
     cast[pointer](addr signal.data)
   )
 
-# ------------
-# SIGNAL PUSHER
-# ------------
+# -------------------
+# SIGNAL PUSHER PROCS
+# -------------------
 
 proc pushSignal*(id: uint8, msg: enum, data: pointer, size: Natural) =
   # Allocs new signal
   let nsignal = cast[GUISignal](
     alloc0(sizeof(Signal) + size)
-  )
-  nsignal.next = nil
+  ); nsignal.next = nil
   # Signal Kind
   nsignal.kind = sSignal
   # Assign Msg
@@ -192,8 +190,7 @@ proc pushCallback(cb: GUICallback, data: pointer, size: Natural) =
   # Allocs new signal
   let nsignal = cast[GUISignal](
     alloc0(sizeof(Signal) + size)
-  )
-  nsignal.next = nil
+  ); nsignal.next = nil
   # Assign Callback
   nsignal.kind = sCallback
   nsignal.cb = cb
@@ -207,12 +204,55 @@ proc pushCallback(cb: GUICallback, data: pointer, size: Natural) =
     queue.front.next = nsignal
     queue.front = nsignal
 
+# -----------------------
+# SIGNAL PUBLIC TEMPLATES
+# -----------------------
+
+template pushSignal*(id: uint8, msg: enum, data: typed) =
+  pushSignal(id, msg, addr data, sizeof(data))
+
 template pushCallback*(cb: proc, data: pointer, size: Natural) =
   pushCallback(cast[GUICallback](cb), data, size)
 
-# ---------------------
-# SIGNAL DATA CONVERTER
-# ---------------------
+template pushCallback*(cb: proc, data: typed) =
+  pushCallback(cast[GUICallback](cb), addr data, sizeof(data))
 
-template convert*(data: GUIOpaque, t: type): untyped =
+template convert*(data: GUIOpaque, t: type): ptr t =
   cast[ptr t](addr data)
+
+# -----------------------
+# SIGNAL ID BUILDER MACRO
+# -----------------------
+
+var lastID {.compileTime.}: uint8 = 0
+macro signal*(name, messages: untyped) =
+  # Expected Parameters
+  name.expectKind(nnkIdent)
+  messages.expectKind(nnkStmtList)
+  # Check signal limit count
+  if lastID > cast[uint8](63):
+    error("exceded max signal count")
+  # Create a new Stmt Tree
+  result = nnkStmtList.newTree().add(
+    newNimNode(nnkConstSection).add(
+      newNimNode(nnkConstDef).add(
+        newNimNode(nnkPostfix).add(
+          newIdentNode("*"), 
+          newIdentNode(name.strVal & "ID")
+        ), newEmptyNode(), newLit(lastID) ) ) )
+  # Create Msg Enum if not discarded
+  if messages[0].kind != nnkDiscardStmt:
+    let msgEnum = # Create Enum Fields Node
+      newNimNode(nnkEnumTy).add newEmptyNode()
+    for m in messages:
+      m.expectKind(nnkIdent)
+      msgEnum.add newIdentNode("msg" & m.strVal)
+    result.add( # Create Enum Typedef Node
+      newNimNode(nnkTypeSection).add(
+        newNimNode(nnkTypeDef).add(
+          newNimNode(nnkPostfix).add(
+            newIdentNode("*"),
+            newIdentNode(name.strVal & "Msg")
+          ), newEmptyNode(), msgEnum ) ) )
+  # Increment Last ID
+  inc(lastID)

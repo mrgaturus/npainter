@@ -1,7 +1,6 @@
 import libs/gl
 import libs/ft2
 import gui/[window, widget, render, container, event, timer]
-from gui/builder import signal
 
 signal Example:
   A
