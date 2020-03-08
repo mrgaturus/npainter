@@ -1,3 +1,4 @@
+import ../logger
 import widget, event, render
 import x11/xlib, x11/x
 import ../libs/egl
@@ -70,14 +71,12 @@ proc setlocale(category: cint, locale: cstring): cstring
 
 proc createXIM(win: var GUIWindow) =
   if setlocale(LC_ALL, "").isNil or XSetLocaleModifiers("").isNil:
-    echo "WARNING: proper C locale not found"
-
+    log(lvWarning, "proper C locale not found")
   win.xim = XOpenIM(win.display, nil, nil, nil)
   win.xic = XCreateIC(win.xim, XNInputStyle, XIMPreeditNothing or
       XIMStatusNothing, XNClientWindow, win.xID, nil)
-
   if win.xic == nil:
-    echo "WARNING: failed creating XIM context"
+    log(lvWarning, "failed creating XIM context")
 
 proc createXWindow(dsp: PDisplay, w, h: uint32): TWindow =
   let root = DefaultRootWindow(dsp)
@@ -89,12 +88,10 @@ proc createXWindow(dsp: PDisplay, w, h: uint32): TWindow =
     ButtonReleaseMask or
     PointerMotionMask or
     StructureNotifyMask
-
   result = XCreateWindow(dsp, root, 0, 0, w, h, 0, CopyFromParent,
       CopyFromParent, nil, CWEventMask, addr attr)
-
   if result == 0:
-    echo "ERROR: failed creating X11 win"
+    log(lvError, "failed creating X11 window")
 
 proc createEGL(win: var GUIWindow) =
   var
@@ -107,46 +104,39 @@ proc createEGL(win: var GUIWindow) =
     ignore: EGLint
     cfgNum: EGLint
     ok: EGLBoolean
-
   # Bind OpenGL API
   ok = eglBindAPI(EGL_OPENGL_API)
   if not ok: return
-
   # Get EGL Display
   eglDsp = eglGetDisplay(win.display)
   if eglDsp.pointer.isNil: return
-
   # Initialize EGL
   ok = eglInitialize(eglDsp, ignore.addr, ignore.addr)
   if not ok: return
-
   # Choose Config
   ok = eglChooseConfig(eglDsp, cast[ptr EGLint](attEGL[0].unsafeAddr),
       eglCfg.addr, 1, cfgNum.addr)
   if not ok or cfgNum == 0: return
-
   # Create Context and Window Surface
   eglCtx = eglCreateContext(eglDsp, eglCfg, EGL_NO_CONTEXT, cast[ptr EGLint](
       attCTX[0].unsafeAddr))
   eglSur = eglCreateWindowSurface(eglDsp, eglCfg, win.xID, cast[ptr EGLint](
       attSUR[0].unsafeAddr))
   if eglCtx.pointer.isNil or eglSur.pointer.isNil: return
-
   # Make Current
   ok = eglMakeCurrent(eglDsp, eglSur, eglSur, eglCtx)
   if not ok: return
-
+  # Check if EGL is created properly
   if eglDsp.pointer.isNil or
       eglCfg.pointer.isNil or
       eglCtx.pointer.isNil or
       eglSur.pointer.isNil:
-    echo "ERROR: failed creating EGL Context"
+    log(lvError, "failed creating EGL context")
     return
-
+  # Check if GL procs was loaded
   if not gladLoadGL(eglGetProcAddress):
-    echo "ERROR: failed loading GL Functions"
+    log(lvError, "failed loading GL functions")
     return
-
   # Save new EGL Context
   win.eglDsp = eglDsp
   win.eglCfg = eglCfg
@@ -160,8 +150,8 @@ proc createEGL(win: var GUIWindow) =
 proc newGUIWindow*(root: GUIWidget, global: pointer): GUIWindow =
   # Create new X11 Display
   result.display = XOpenDisplay(nil)
-  if result.display.isNil:
-    echo "ERROR: failed opening X11 display"
+  if isNil(result.display):
+    log(lvError, "failed opening X11 display")
   # Initialize X11 Window
   result.xID = createXWindow(result.display, 
     uint32(root.rect.w), uint32(root.rect.h)
@@ -172,7 +162,7 @@ proc newGUIWindow*(root: GUIWidget, global: pointer): GUIWindow =
   result.state.utf8buffer(32)
   # Initialize Freetype2
   if ft2_init(addr result.ft2) != 0:
-    echo "ERROR: failed initialize FT2"
+    log(lvError, "failed initialize FT2")
   # Initialize EGL and GL
   result.createEGL()
   result.ctx = newCTXRender(
@@ -432,7 +422,7 @@ proc handleEvents(win: var GUIWindow) =
     if XFilterEvent(addr event, 0) != 0:
       continue
     case event.theType:
-    of Expose: echo "look why use exposed"
+    of Expose: discard
     of ConfigureNotify: # Resize
       let rect = addr win.root.rect
       if event.xconfigure.window == win.xID and

@@ -1,8 +1,5 @@
 # C Math only for this software
 
-# Import SSE Intrinsics
-{.emit: "#include <xmmintrin.h>".}
-
 # -------------------
 # GUI VEC2 MATH
 # -------------------

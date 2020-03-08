@@ -108,7 +108,6 @@ proc translateXEvent*(state: var GUIState, display: PDisplay, event: PXEvent,
           nEvent.xkey.time == event.xkey.time and
           nEvent.xkey.keycode == event.xkey.keycode:
         return false
-
     let mods: cint = cast[cint](event.xkey.state)
     # Ignoring UTF8Chars when key releasing
     state.key =
