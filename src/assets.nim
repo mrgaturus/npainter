@@ -1,15 +1,33 @@
+# TODO: Use fontconfig for extra fonts
+# TODO: Use /usr/share/npainter
+
 import logger
 import libs/gl
+from libs/ft2 import
+  FT2Face,
+  FT2Library,
+  ft2_newFace,
+  ft2_setCharSize
+
+const
+  shaderPath = "data/glsl/"
+  fontPath = "data/font.ttf"
 
 # ---------------------
 # FT2 FONT LOADING PROC
 # ---------------------
 
+proc newFont*(ft2: FT2Library, size: int32): FT2Face =
+  if ft2_newFace(ft2, fontPath, 0, addr result) != 0:
+    log(lvError, "failed loading font file: ", fontPath)
+  if ft2_setCharSize(result, 0, size shl 6, 96, 96) != 0:
+    log(lvWarning, "font size was setted not properly")
+
 # -------------------
 # SHADER LOADING PROC
 # -------------------
 
-proc newProgram*(vert, frag: string): GLuint =
+proc newShader*(vert, frag: string): GLuint =
   var # Prepare Vars
     vertShader = glCreateShader(GL_VERTEX_SHADER)
     fragShader = glCreateShader(GL_FRAGMENT_SHADER)
@@ -17,12 +35,12 @@ proc newProgram*(vert, frag: string): GLuint =
     bAddr: cstring
     success: GLint
   try: # -- LOAD VERTEX SHADER
-    buffer = readFile(vert)
+    buffer = readFile(shaderPath & vert)
     bAddr = addr buffer[0]
   except: log(lvError, "failed loading shader: ", vert)
   glShaderSource(vertShader, 1, cast[cstringArray](addr bAddr), nil)
   try: # -- LOAD FRAGMENT SHADER
-    buffer = readFile(frag)
+    buffer = readFile(shaderPath & frag)
     bAddr = addr buffer[0]
   except: log(lvError, "failed loading shader: ", frag)
   glShaderSource(fragShader, 1, cast[cstringArray](addr bAddr), nil)

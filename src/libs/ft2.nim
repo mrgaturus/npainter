@@ -85,9 +85,9 @@ const # FT2 CONSTANTS
 
 {.passL: "-lfreetype".} # FT2 PROCS
 proc ft2_init*(lib: ptr FT2Library): int32 {.importc: "FT_Init_FreeType", cdecl.}
-proc ft2_done*(lib: FT2Library): int32 {.importc: "FT_Done_FreeType", cdecl.}
 proc ft2_newFace*(lib: FT2Library, file: cstring, faceIndex: int32, face: ptr FT2Face): int32 {.importc: "FT_New_Face", cdecl.}
 proc ft2_setCharSize*(face: FT2Face, cWidth, cHeight: int32, width, height: uint32): int32 {.importc: "FT_Set_Char_Size", cdecl.}
 proc ft2_getCharIndex*(face: FT2Face, charcode: culong): uint32 {.importc: "FT_Get_Char_Index", cdecl.}
 proc ft2_loadGlyph*(face: FT2Face, glyphIndex: uint32, loadFlags: int32): int32 {.importc: "FT_Load_Glyph", cdecl.}
 proc ft2_getKerning*(face: FT2Face, left, right, mode: uint32, kvec: ptr FT2Vector): int32 {.importc: "FT_Get_Kerning", cdecl.}
+proc ft2_done*(lib: FT2Library): int32 {.importc: "FT_Done_FreeType", cdecl.}

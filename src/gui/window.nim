@@ -6,7 +6,7 @@ import ../libs/egl
 from timer import sleep
 from ../libs/ft2 import FT2Library, ft2_init, ft2_done
 from ../libs/gl import gladLoadGL
-from atlas import newCTXAtlas, csLatin
+from ../assets import newFont
 
 let
   # NPainter EGL Configurations
@@ -160,14 +160,13 @@ proc newGUIWindow*(root: GUIWidget, global: pointer): GUIWindow =
   result.createXIM()
   # Alloc a 32 byte UTF8Buffer
   result.state.utf8buffer(32)
-  # Initialize Freetype2
-  if ft2_init(addr result.ft2) != 0:
-    log(lvError, "failed initialize FT2")
   # Initialize EGL and GL
   result.createEGL()
-  result.ctx = newCTXRender(
-    newCTXAtlas(result.ft2, csLatin)
-  )
+  # Initialize Freetype2 and Renderer
+  if ft2_init(addr result.ft2) != 0:
+    log(lvError, "failed initialize FT2")
+  else: result.ctx = newCTXRender:
+    newFont(result.ft2, 10)
   # Disable VSync - Avoid Input Lag
   discard eglSwapInterval(result.eglDsp, 0)
   # Root has Window and Frame Signals

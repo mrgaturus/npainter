@@ -1,5 +1,6 @@
-from math import sqrt, ceil, nextPowerOfTwo
-import ../logger
+from math import 
+  sqrt, ceil,
+  nextPowerOfTwo
 import ../libs/gl
 import ../libs/ft2
 
@@ -309,15 +310,11 @@ proc renderOnDemand(atlas: var CTXAtlas, code: uint16): ptr TEXGlyph =
 # ATLAS CREATION PROC
 # -------------------
 
-proc newCTXAtlas*(ft2: FT2Library, charset: openArray[uint16]): CTXAtlas =
-  # 1-A -- Create New Face, TODO: Use FT_New_Memory_Face
-  if ft2_newFace(ft2, "data/font.ttf", 0, addr result.face) != 0:
-    log(lvError, "failed loading gui font file")
-  if ft2_setCharSize(result.face, 0, 10 shl 6, 96, 96) != 0:
-    log(lvWarning, "font size was setted no properly")
-  # 2 -- Set max y offset for top-to-bottom positioning
+proc newCTXAtlas*(face: FT2Face, charset: openArray[uint16]): CTXAtlas =
+  # 1 -- Set Face and Max Y Offset
+  result.face = face # Set FT2 Face
   result.offsetY = # Ascender - -Descender = Offset Y
-    (result.face.ascender + result.face.descender) shr 6
+    (face.ascender + face.descender) shr 6
   # 3 -- Render Selected Charset
   renderCharset(result, charset)
   # 4 -- Copy Buffer to a New Texture

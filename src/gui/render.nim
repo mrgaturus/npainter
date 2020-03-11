@@ -1,5 +1,6 @@
 from ../cmath import guiProjection
-from ../shader import newProgram
+from ../assets import newShader
+from ../libs/ft2 import FT2Face
 # Texture Atlas
 import atlas
 # OpenGL 3.2+
@@ -58,11 +59,11 @@ type
 # GUI CANVAS CREATION PROCS
 # -------------------------
 
-proc newCTXRender*(atlas: CTXAtlas): CTXRender =
+proc newCTXRender*(face: FT2Face): CTXRender =
   # -- Set Texture Atlas
-  result.atlas = atlas
+  result.atlas = newCTXAtlas(face, csLatin)
   # -- Create new Program
-  result.program = newProgram("data/glsl/gui.vert", "data/glsl/gui.frag")
+  result.program = newShader("gui.vert", "gui.frag")
   # Use Program for Define Uniforms
   glUseProgram(result.program)
   # Define Projection and Texture Uniforms
