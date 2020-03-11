@@ -62,7 +62,7 @@ proc newCTXRender*(atlas: CTXAtlas): CTXRender =
   # -- Set Texture Atlas
   result.atlas = atlas
   # -- Create new Program
-  result.program = newProgram("shaders/gui.vert", "shaders/gui.frag")
+  result.program = newProgram("data/glsl/gui.vert", "data/glsl/gui.frag")
   # Use Program for Define Uniforms
   glUseProgram(result.program)
   # Define Projection and Texture Uniforms
