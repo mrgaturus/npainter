@@ -182,10 +182,8 @@ proc renderCharcode(atlas: var CTXAtlas, code: uint16) =
   else: atlas.lookup[code] = 0xFFFF
 
 proc renderCharset(atlas: var CTXAtlas, charset: openArray[uint16]) =
-  var dest: seq[byte] # Arranged Buffer
-  # -- Render Fallback Glyph
-  renderFallback(atlas)
-  block: # -- Render Charset Ranges
+  # -- Render Fallback and Charset
+  renderFallback(atlas); block:
     var # Iterators
       s, e: uint16 # Charcode Iter
       i = 0 # Range Iter
@@ -202,7 +200,8 @@ proc renderCharset(atlas: var CTXAtlas, charset: openArray[uint16]) =
         renderCharcode(atlas, s)
         inc(s) # Next Charcode
       i += 2 # Next Range Pair
-  block: # -- Alloc Arranged Atlas Buffer
+  # -- Alloc Arranged Atlas Buffer
+  var dest: seq[byte]; block: 
     let side = len(atlas.buffer).float32.sqrt().ceil().int.nextPowerOfTwo()
     # Set new Atlas Diemsions
     atlas.w = cast[int32](side shl 1)
@@ -233,7 +232,7 @@ proc renderCharset(atlas: var CTXAtlas, charset: openArray[uint16]) =
   atlas.whiteU = atlas.glyphs[0].x1
   atlas.whiteV = atlas.glyphs[0].y1
   # -- Replace Current Buffer
-  atlas.buffer = dest
+  shallowCopy(atlas.buffer, dest)
 
 proc renderOnDemand(atlas: var CTXAtlas, code: uint16): ptr TEXGlyph =
   let glyphIDX = ft2_getCharIndex(atlas.face, code)
@@ -277,7 +276,7 @@ proc renderOnDemand(atlas: var CTXAtlas, code: uint16): ptr TEXGlyph =
           copyMem(addr dest[k], addr atlas.buffer[i], stride)
           i += stride; k += atlas.w
         # Replace Buffer With New One
-        atlas.buffer = dest
+        shallowCopy(atlas.buffer, dest)
         # Try Pack Again, Guaranted
         point = pack(atlas, glyph.w, glyph.h)
         # Mark as Invalid

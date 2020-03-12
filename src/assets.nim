@@ -18,8 +18,10 @@ const
 # ---------------------
 
 proc newFont*(ft2: FT2Library, size: int32): FT2Face =
+  # Load Default Font File using FT2 Loader
   if ft2_newFace(ft2, fontPath, 0, addr result) != 0:
     log(lvError, "failed loading font file: ", fontPath)
+  # Set Size With 96 of DPI, system DPI handling is bad
   if ft2_setCharSize(result, 0, size shl 6, 96, 96) != 0:
     log(lvWarning, "font size was setted not properly")
 
