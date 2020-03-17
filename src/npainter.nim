@@ -1,10 +1,15 @@
 import libs/gl
 import libs/ft2
 import gui/[window, widget, render, container, event, timer]
+from assets import setIcons
 
 signal Example:
   A
   B
+
+setIcons 16:
+  iconAdd = "add.svg"
+  iconDel = "del.svg"
 
 type
   Counter = object

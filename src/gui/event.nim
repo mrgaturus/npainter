@@ -240,13 +240,13 @@ macro signal*(name, messages: untyped) =
   if lastID > cast[uint8](63):
     error("exceded max signal count")
   # Create a new Stmt Tree
-  result = nnkStmtList.newTree().add(
-    newNimNode(nnkConstSection).add(
+  result = nnkStmtList.newTree().add:
+    newNimNode(nnkConstSection).add:
       newNimNode(nnkConstDef).add(
         newNimNode(nnkPostfix).add(
           newIdentNode("*"), 
           newIdentNode(name.strVal & "ID")
-        ), newEmptyNode(), newLit(lastID) ) ) )
+        ), newEmptyNode(), newLit(lastID) )
   # Create Msg Enum if not discarded
   if messages[0].kind != nnkDiscardStmt:
     let msgEnum = # Create Enum Fields Node
@@ -254,12 +254,11 @@ macro signal*(name, messages: untyped) =
     for m in messages:
       m.expectKind(nnkIdent)
       msgEnum.add newIdentNode("msg" & m.strVal)
-    result.add( # Create Enum Typedef Node
-      newNimNode(nnkTypeSection).add(
+    result.add newNimNode(nnkTypeSection).add(
         newNimNode(nnkTypeDef).add(
           newNimNode(nnkPostfix).add(
             newIdentNode("*"),
             newIdentNode(name.strVal & "Msg")
-          ), newEmptyNode(), msgEnum ) ) )
+          ), newEmptyNode(), msgEnum ) )
   # Increment Last ID
   inc(lastID)
