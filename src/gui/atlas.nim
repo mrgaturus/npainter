@@ -9,7 +9,7 @@ type # Atlas Objects
   SKYNode = object
     x, y, w: int16
   TEXGlyph = object
-    glyphIDX*: uint32 # FT2 Glyph Index
+    index*: uint32 # FT2 Glyph Index
     x1*, x2*, y1*, y2*: int16 # UV Coords
     xo*, yo*, advance*: int16 # Positioning
     w*, h*: int16 # Bitmap Dimensions
@@ -35,9 +35,8 @@ type # Atlas Objects
     texID*: uint32 # Texture
     whiteU*, whiteV*: int16
     rw*, rh*: float32 # Normalized
-    # OFFSET Y - TOP TO BOTTOM
-    offsetY*: int16
-    iconSize*: int32
+    # MAX GLYPH AND ICON SIZE
+    fontSize*, iconSize*: int16
 
 let # Charset Common Ranges for Preloading
   csLatin* = # English, Spanish, etc.
@@ -145,27 +144,28 @@ proc pack*(atlas: var CTXAtlas, w, h: int16): tuple[x, y: int16] =
 # ---------------------------
 
 proc renderFallback(atlas: var CTXAtlas) =
+  let size = atlas.fontSize
   # Add A Glyph for a white rectangle
   atlas.glyphs.add TEXGlyph(
-    glyphIDX: 0, # Use Invalid IDX
-    w: atlas.offsetY shr 1, # W is Half H
-    h: atlas.offsetY, # H is Font Size
-    xo: 1, yo: atlas.offsetY, # xBearing, yBearing
-    advance: atlas.offsetY shr 1 + 2 # *[]*
+    index: 0, # Use Invalid Index
+    w: size shr 1, # W is Half H
+    h: size, # H is Font Size
+    xo: 1, yo: size, # xBearing, yBearing
+    advance: size shr 1 + 2 # *[]*
   ) # End Add Glyph to Glyph Cache
   # Alloc White Rectangle
   var i = len(atlas.buffer)
-  atlas.buffer.setLen(i + atlas.offsetY * atlas.offsetY shr 1)
+  atlas.buffer.setLen(i + size * size shr 1)
   while i < len(atlas.buffer): 
     atlas.buffer[i] = high(byte); inc(i)
 
 proc renderCharcode(atlas: var CTXAtlas, code: uint16) =
-  let glyphIDX = ft2_getCharIndex(atlas.face, code)
-  if glyphIDX != 0 and ft2_loadGlyph(atlas.face, glyphIDX, FT_LOAD_RENDER) == 0:
+  let index = ft2_getCharIndex(atlas.face, code)
+  if index != 0 and ft2_loadGlyph(atlas.face, index, FT_LOAD_RENDER) == 0:
     let slot = atlas.face.glyph # Shorcut
     # -- Add Glyph to Glyph Cache
     atlas.glyphs.add TEXGlyph(
-      glyphIDX: glyphIDX, # Save FT2 Index
+      index: index, # Save FT2 Index
       # Save new dimensions, very small values
       w: cast[int16](slot.bitmap.width),
       h: cast[int16](slot.bitmap.rows),
@@ -205,8 +205,8 @@ proc renderCharset(atlas: var CTXAtlas, charset: openArray[uint16]) =
     i += 2 # Next Range Pair
 
 proc renderOnDemand(atlas: var CTXAtlas, code: uint16): ptr TEXGlyph =
-  let glyphIDX = ft2_getCharIndex(atlas.face, code)
-  if glyphIDX != 0 and ft2_loadGlyph(atlas.face, glyphIDX, FT_LOAD_RENDER) == 0:
+  let index = ft2_getCharIndex(atlas.face, code)
+  if index != 0 and ft2_loadGlyph(atlas.face, index, FT_LOAD_RENDER) == 0:
     var # Auxiliar Vars
       glyph: ptr TEXGlyph
       buffer: cstring
@@ -215,8 +215,8 @@ proc renderOnDemand(atlas: var CTXAtlas, code: uint16): ptr TEXGlyph =
       # Expand Glyphs for a New Glyph
       atlas.glyphs.setLen(1 + atlas.glyphs.len)
       glyph = addr atlas.glyphs[^1]
-      # Save FT2 Glyph Index
-      glyph.glyphIDX = glyphIDX
+      # Save Glyph Index
+      glyph.index = index
       # Save Bitmap Dimensions
       glyph.w = cast[int16](slot.bitmap.width)
       glyph.h = cast[int16](slot.bitmap.rows)
@@ -286,7 +286,7 @@ proc newCTXAtlas*(): CTXAtlas =
   result.icons.setLen(icons.count)
   # 1 -- Set Font and Max Y Offset
   result.face = newFont(10) # Set FT2 Face
-  result.offsetY = # Ascender - -Descender = Offset Y
+  result.fontSize = # Ascender - -Descent
     (result.face.ascender + result.face.descender) shr 6
   # 2 -- Render Selected Charset
   renderFallback(result)
@@ -359,9 +359,9 @@ proc newCTXAtlas*(): CTXAtlas =
   # Unbind New Atlas Texture
   glBindTexture(GL_TEXTURE_2D, 0)
 
-# ------------------------
-# ATLAS GLYPH LOOKUP PROCS
-# ------------------------
+# --------------------------
+# ATLAS RUNE UINT16 ITERATOR
+# --------------------------
 
 # Very fast uint16 Rune Iterator
 iterator runes16*(str: string): uint16 =
@@ -386,6 +386,10 @@ iterator runes16*(str: string): uint16 =
     else: inc(i, 1); continue
     # Yield Rune
     yield result
+
+# ----------------------------------
+# ATLAS GLYPH AND ICONS LOOKUP PROCS
+# ----------------------------------
 
 proc lookupGlyph*(atlas: var CTXAtlas, charcode: uint16): ptr TEXGlyph =
   # Check if lookup needs expand
