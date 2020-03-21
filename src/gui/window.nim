@@ -1,12 +1,12 @@
+# TODO: Use ibus instead XIM
+
 import ../logger
 import widget, event, render
 import x11/xlib, x11/x
 import ../libs/egl
 
 from timer import sleep
-from ../libs/ft2 import FT2Library, ft2_init, ft2_done
 from ../libs/gl import gladLoadGL
-from ../assets import newFont
 
 let
   # NPainter EGL Configurations
@@ -35,8 +35,6 @@ type
     # X11 Input Method
     xim: TXIM
     xic: TXIC
-    # FT2 Library
-    ft2: FT2Library
     # EGL Context
     eglDsp: EGLDisplay
     eglCfg: EGLConfig
@@ -163,10 +161,7 @@ proc newGUIWindow*(root: GUIWidget, global: pointer): GUIWindow =
   # Initialize EGL and GL
   result.createEGL()
   # Initialize Freetype2 and Renderer
-  if ft2_init(addr result.ft2) != 0:
-    log(lvError, "failed initialize FT2")
-  else: result.ctx = newCTXRender:
-    newFont(result.ft2, 10)
+  result.ctx = newCTXRender()
   # Disable VSync - Avoid Input Lag
   discard eglSwapInterval(result.eglDsp, 0)
   # Root has Window and Frame Signals

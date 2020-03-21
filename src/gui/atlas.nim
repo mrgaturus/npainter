@@ -3,6 +3,7 @@ from math import
   nextPowerOfTwo
 import ../libs/gl
 import ../libs/ft2
+import ../assets
 
 type # Atlas Objects
   SKYNode = object
@@ -12,6 +13,8 @@ type # Atlas Objects
     x1*, x2*, y1*, y2*: int16 # UV Coords
     xo*, yo*, advance*: int16 # Positioning
     w*, h*: int16 # Bitmap Dimensions
+  TEXIcon = object
+    x1*, x2*, y1*, y2*: int16
   BUFStatus = enum # Bitmap Buffer Status
     bufNormal, bufDirty, bufResize
   CTXAtlas* = object
@@ -23,6 +26,7 @@ type # Atlas Objects
     # GLYPHS INFORMATION
     lookup: seq[uint16]
     glyphs: seq[TEXGlyph]
+    icons: seq[TEXIcon]
     # GLYPH ATLAS BITMAP
     buffer: seq[byte]
     status: BUFStatus
@@ -309,13 +313,13 @@ proc renderOnDemand(atlas: var CTXAtlas, code: uint16): ptr TEXGlyph =
 # ATLAS CREATION PROC
 # -------------------
 
-proc newCTXAtlas*(face: FT2Face, charset: openArray[uint16]): CTXAtlas =
+proc newCTXAtlas*(): CTXAtlas =
   # 1 -- Set Face and Max Y Offset
-  result.face = face # Set FT2 Face
+  result.face = newFont(10) # Set FT2 Face
   result.offsetY = # Ascender - -Descender = Offset Y
-    (face.ascender + face.descender) shr 6
+    (result.face.ascender + result.face.descender) shr 6
   # 3 -- Render Selected Charset
-  renderCharset(result, charset)
+  renderCharset(result, csLatin)
   # 4 -- Copy Buffer to a New Texture
   glGenTextures(1, addr result.texID)
   glBindTexture(GL_TEXTURE_2D, result.texID)

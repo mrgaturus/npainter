@@ -40,7 +40,7 @@ type # Trimmed Types for basic usage
     vertBearingY*: FT2Pos
     vertAdvance*: FT2Pos
   # FT2 Important Objects -Trimmed-
-  FT2Library* = pointer
+  FT2Library* = distinct pointer
   FT2Glyph* {.bycopy.} = ptr object
     library*: FT2Library
     face*: FT2Face
@@ -91,3 +91,6 @@ proc ft2_getCharIndex*(face: FT2Face, charcode: culong): uint32 {.importc: "FT_G
 proc ft2_loadGlyph*(face: FT2Face, glyphIndex: uint32, loadFlags: int32): int32 {.importc: "FT_Load_Glyph", cdecl.}
 proc ft2_getKerning*(face: FT2Face, left, right, mode: uint32, kvec: ptr FT2Vector): int32 {.importc: "FT_Get_Kerning", cdecl.}
 proc ft2_done*(lib: FT2Library): int32 {.importc: "FT_Done_FreeType", cdecl.}
+# FT2 Destructor
+proc `=destroy`(ft2: var FT2Library) =
+  discard ft2_done(ft2)
