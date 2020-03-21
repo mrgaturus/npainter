@@ -13,7 +13,8 @@ from libs/ft2 import
 
 type # Buffer Data
   DATIcons = ref object
-    size*, count*: int32
+    size*: int16 # size*size
+    count*, len*: int32
     buffer*: UncheckedArray[byte]
 const # Common Paths
   shaderPath = "data/glsl/"

@@ -8,8 +8,10 @@ signal Example:
   B
 
 setIcons 16:
-  iconAdd = "add.svg"
-  iconDel = "del.svg"
+  iconBrush = "brush.svg"
+  iconClear = "clear.svg"
+  iconClose = "close.svg"
+  iconReset = "reset.svg"
 
 type
   Counter = object
@@ -52,6 +54,10 @@ method draw*(widget: GUIBlank, ctx: ptr CTXRender) =
     drawAtlas(ctx, widget.rect)
     #ctx.texture(widget.rect, 0)
     ctx.text(widget.rect.x, widget.rect.y - 20, "Hello World, ララ")
+    ctx.icon(widget.rect.x, widget.rect.y - 40, int32 iconBrush)
+    ctx.icon(widget.rect.x + 20, widget.rect.y - 40, int32 iconReset)
+    ctx.icon(widget.rect.x + 40, widget.rect.y - 40, int32 iconClear)
+    ctx.icon(widget.rect.x + 60, widget.rect.y - 40, int32 iconClose)
 
 method event*(widget: GUIBlank, state: ptr GUIState) =
   #echo "cursor mx: ", state.mx, " cursor my: ", state.my

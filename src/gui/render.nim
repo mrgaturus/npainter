@@ -359,7 +359,7 @@ proc text*(ctx: ptr CTXRender, x,y: int32, str: string) =
   # Render Text Top to Bottom
   for rune in runes16(str):
     let glyph = # Load Glyph
-      ctx.atlas.lookup(rune)
+      ctx.atlas.lookupGlyph(rune)
     # Reserve Quad Vertex and Elements
     ctx.addVerts(4, 6); block:
       let # Quad Coordinates
@@ -377,6 +377,23 @@ proc text*(ctx: ptr CTXRender, x,y: int32, str: string) =
     triangle(3, 1,2,3)
     # To Next Glyph X Position
     (unsafeAddr x)[] += glyph.advance
+
+proc icon*(ctx: ptr CTXRender, x,y: int32, icon: int32) =
+  ctx.addVerts(4, 6)
+  let icon = ctx.atlas.lookupIcon(icon)
+  block: # Rect Triangles
+    let
+      x = float32 x
+      y = float32 y
+      xw = x + float32 ctx.atlas.iconSize
+      yh = y + float32 ctx.atlas.iconSize
+    vertexUV(0, x, y, icon.x1, icon.y1)
+    vertexUV(1, xw, y, icon.x2, icon.y1)
+    vertexUV(2, x, yh, icon.x1, icon.y2)
+    vertexUV(3, xw, yh, icon.x2, icon.y2)
+  # Elements Definition
+  triangle(0, 0,1,2)
+  triangle(3, 1,2,3)
 
 proc drawAtlas*(ctx: ptr CTXRender, rect: var GUIRect) =
   ctx.texture(rect, ctx.atlas.texID)

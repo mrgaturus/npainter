@@ -9,6 +9,11 @@
 #define INVALID_SVG 2
 #define INVALID_OUTPUT 3
 
+typedef struct {
+  short size; // size*size
+  int count, len;
+} header_t;
+
 int main (int argc, char **argv) {
   // Check arguments
   if (argc < 4) {
@@ -16,7 +21,9 @@ int main (int argc, char **argv) {
     return INVALID_ARGS;
   }
   // Selected Size
-  int size, count, stride;
+  header_t header;
+  short size;
+  int stride;
   // SVG Dimensions
   int has_w, has_h;
   RsvgLength width, height;
@@ -25,17 +32,19 @@ int main (int argc, char **argv) {
   cairo_surface_t* surface;
   RsvgHandle* rsvg;
   // Get Selected Dimensions
-  if (sscanf(argv[2], "%d", &size) == 0) {
+  if (sscanf(argv[2], "%hd", &size) == 0) {
     printf("argument error: <size> must be a number \n");
     return INVALID_ARGS;
   }
-  count = argc - 3;
+  header.size = size;
+  header.count = argc - 3;
   stride = size * size;
+  header.len = stride * header.count;
   // Create an image cairo surface
   surface = cairo_image_surface_create(CAIRO_FORMAT_A8, size, size);
   cr = cairo_create(surface); // Create a Cairo Surface
   // Alloc Icons Data on a Buffer
-  unsigned char* icons = malloc(stride * count);
+  unsigned char* icons = malloc(header.len);
   unsigned char* cursor = icons;
   // Render Each SVG File
   for (int i = 3; i < argc; i++, cursor += stride) {
@@ -77,9 +86,8 @@ int main (int argc, char **argv) {
   FILE* output = fopen(argv[1], "w");
   if (output) {
     // Save Header and Buffer
-    int header[2] = {size, count};
-    fwrite(header, sizeof(int), 2, output);
-    fwrite(icons, sizeof(char), stride * count, output);
+    fwrite(&header, sizeof(header), 1, output);
+    fwrite(icons, sizeof(char), header.len, output);
     // Close File
     fclose(output);
   } else {

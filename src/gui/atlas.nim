@@ -37,6 +37,7 @@ type # Atlas Objects
     rw*, rh*: float32 # Normalized
     # OFFSET Y - TOP TO BOTTOM
     offsetY*: int16
+    iconSize*: int32
 
 let # Charset Common Ranges for Preloading
   csLatin* = # English, Spanish, etc.
@@ -186,57 +187,22 @@ proc renderCharcode(atlas: var CTXAtlas, code: uint16) =
   else: atlas.lookup[code] = 0xFFFF
 
 proc renderCharset(atlas: var CTXAtlas, charset: openArray[uint16]) =
-  # -- Render Fallback and Charset
-  renderFallback(atlas); block:
-    var # Iterators
-      s, e: uint16 # Charcode Iter
-      i = 0 # Range Iter
-    while i < len(charset):
-      s = charset[i] # Start
-      e = charset[i+1] # End
-      # Check if lookup is big enough
-      if int32(e) >= len(atlas.lookup):
-        atlas.lookup.setLen(1 + int32 e)
-      elif int32(s) >= len(atlas.lookup):
-        atlas.lookup.setLen(1 + int32 s)
-      # Render Charcodes one by one
-      while s <= e: # Iterate Charcodes
-        renderCharcode(atlas, s)
-        inc(s) # Next Charcode
-      i += 2 # Next Range Pair
-  # -- Alloc Arranged Atlas Buffer
-  var dest: seq[byte]; block: 
-    let side = len(atlas.buffer).float32.sqrt().ceil().int.nextPowerOfTwo()
-    # Set new Atlas Diemsions
-    atlas.w = cast[int32](side shl 1)
-    atlas.h = cast[int32](side)
-    # Set Normalized Atlas Dimensions for get MAD
-    atlas.rw = 1 / atlas.w # vertex.u * uDim.w
-    atlas.rh = 1 / atlas.h # vertex.v * uDim.h
-    # Add Initial Skyline Node
-    atlas.nodes.add SKYNode(w: int16 atlas.w)
-    # Alloc Buffer with new dimensions
-    dest.setLen(side*side shl 1)
-  # -- Arrange Glyphs Using Skyline
-  var # Aux Pixel Vars
-    cursor: int32 # Buffer Cursor
-    point: tuple[x, y: int16] # Arranged
-  for glyph in mitems(atlas.glyphs):
-    point = pack(atlas, glyph.w, glyph.h)
-    var # Copy Glyph Bitmap To New Position
-      pixel = atlas.w * point.y + point.x
-      i: int16 # Bitmap Row Iterator
-    while i < glyph.h: # Copy Glyph Pixel Rows
-      copyMem(addr dest[pixel], addr atlas.buffer[cursor], glyph.w)
-      cursor += glyph.w; pixel += atlas.w; inc(i) # Next Pixel Row
-    # Save Texture UV Coordinates Box
-    glyph.x1 = point.x; glyph.x2 = point.x + glyph.w
-    glyph.y1 = point.y; glyph.y2 = point.y + glyph.h
-  # -- Use Fallback for Locate White Pixel
-  atlas.whiteU = atlas.glyphs[0].x1
-  atlas.whiteV = atlas.glyphs[0].y1
-  # -- Replace Current Buffer
-  shallowCopy(atlas.buffer, dest)
+  var # Charset Iterator
+    s, e: uint16 # Charcode Iter
+    i = 0 # Range Iter
+  while i < len(charset):
+    s = charset[i] # Start
+    e = charset[i+1] # End
+    # Check if lookup is big enough
+    if int32(e) >= len(atlas.lookup):
+      atlas.lookup.setLen(1 + int32 e)
+    elif int32(s) >= len(atlas.lookup):
+      atlas.lookup.setLen(1 + int32 s)
+    # Render Charcodes one by one
+    while s <= e: # Iterate Charcodes
+      renderCharcode(atlas, s)
+      inc(s) # Next Charcode
+    i += 2 # Next Range Pair
 
 proc renderOnDemand(atlas: var CTXAtlas, code: uint16): ptr TEXGlyph =
   let glyphIDX = ft2_getCharIndex(atlas.face, code)
@@ -314,13 +280,66 @@ proc renderOnDemand(atlas: var CTXAtlas, code: uint16): ptr TEXGlyph =
 # -------------------
 
 proc newCTXAtlas*(): CTXAtlas =
-  # 1 -- Set Face and Max Y Offset
+  # 1 -- Load Icons DAT File
+  let icons = newIcons() # Load Icons
+  result.iconSize = icons.size
+  result.icons.setLen(icons.count)
+  # 1 -- Set Font and Max Y Offset
   result.face = newFont(10) # Set FT2 Face
   result.offsetY = # Ascender - -Descender = Offset Y
     (result.face.ascender + result.face.descender) shr 6
-  # 3 -- Render Selected Charset
+  # 2 -- Render Selected Charset
+  renderFallback(result)
   renderCharset(result, csLatin)
-  # 4 -- Copy Buffer to a New Texture
+  # 3 -- Alloc True Atlas Buffer
+  var dest: seq[byte]; block:
+    var side = icons.len + result.buffer.len
+    side = side.float32.sqrt().ceil().int.nextPowerOfTwo()
+    # Set new Atlas Diemsions
+    result.w = cast[int32](side shl 1)
+    result.h = cast[int32](side)
+    # Set Normalized Atlas Dimensions for get MAD
+    result.rw = 1 / result.w # vertex.u * uDim.w
+    result.rh = 1 / result.h # vertex.v * uDim.h
+    # Add Initial Skyline Node
+    result.nodes.add SKYNode(w: int16 result.w)
+    # Alloc Buffer with new dimensions
+    dest.setLen(side*side shl 1)
+  # 4 -- Arrange Rects Using Skyline
+  var # Aux Pixel Vars
+    cursor: int32 # Buffer Cursor
+    point: tuple[x, y: int16] # Arranged
+  # -- Arrange Icons from DAT File
+  for icon in mitems(result.icons):
+    point = pack(result, icons.size, icons.size)
+    var # Copy Icon Bitmap to New Position
+      pixel = result.w * point.y + point.x
+      i: int16 # Bitmap Row Iterator
+    while i < icons.size: # Copy Icon Pixel Rows
+      copyMem(addr dest[pixel], addr icons.buffer[cursor], icons.size)
+      cursor += icons.size; pixel += result.w; inc(i) # Next Pixel Row
+    # Save Texture UV Coordinates
+    icon.x1 = point.x; icon.x2 = point.x + icons.size
+    icon.y1 = point.y; icon.y2 = point.y + icons.size
+  # -- Arrange Font Charset Glyphs
+  cursor = 0 # Reset Cursor
+  for glyph in mitems(result.glyphs):
+    point = pack(result, glyph.w, glyph.h)
+    var # Copy Glyph Bitmap To New Position
+      pixel = result.w * point.y + point.x
+      i: int16 # Bitmap Row Iterator
+    while i < glyph.h: # Copy Glyph Pixel Rows
+      copyMem(addr dest[pixel], addr result.buffer[cursor], glyph.w)
+      cursor += glyph.w; pixel += result.w; inc(i) # Next Pixel Row
+    # Save Texture UV Coordinates Box
+    glyph.x1 = point.x; glyph.x2 = point.x + glyph.w
+    glyph.y1 = point.y; glyph.y2 = point.y + glyph.h
+  # Use Fallback for Locate White Pixel
+  result.whiteU = result.glyphs[0].x1
+  result.whiteV = result.glyphs[0].y1
+  # Replace Current Buffer
+  shallowCopy(result.buffer, dest)
+  # 5 -- Copy Buffer to a New Texture
   glGenTextures(1, addr result.texID)
   glBindTexture(GL_TEXTURE_2D, result.texID)
   # Clamp Atlas to Edge
@@ -368,7 +387,7 @@ iterator runes16*(str: string): uint16 =
     # Yield Rune
     yield result
 
-proc lookup*(atlas: var CTXAtlas, charcode: uint16): ptr TEXGlyph =
+proc lookupGlyph*(atlas: var CTXAtlas, charcode: uint16): ptr TEXGlyph =
   # Check if lookup needs expand
   if int32(charcode) >= len(atlas.lookup):
     atlas.lookup.setLen(1 + int32 charcode)
@@ -378,6 +397,9 @@ proc lookup*(atlas: var CTXAtlas, charcode: uint16): ptr TEXGlyph =
   of 0: renderOnDemand(atlas, charcode)
   of 0xFFFF: addr atlas.glyphs[0]
   else: addr atlas.glyphs[lookup]
+
+proc lookupIcon*(atlas: var CTXAtlas, icon: int32): ptr TEXIcon =
+  result = addr atlas.icons[icon] # Get Icon UV Coords
 
 # ---------------------------
 # ATLAS TEXTURE UPDATING PROC
