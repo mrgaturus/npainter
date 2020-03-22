@@ -355,7 +355,7 @@ proc texture*(ctx: ptr CTXRender, rect: var GUIRect, texID: GLuint) =
 
 proc text*(ctx: ptr CTXRender, x,y: int32, str: string) =
   # Offset Y to Atlas Font Y Offset Metric
-  (unsafeAddr y)[] += ctx.atlas.fontSize
+  (unsafeAddr y)[] += ctx.atlas.baseline
   # Render Text Top to Bottom
   for rune in runes16(str):
     let glyph = # Load Glyph

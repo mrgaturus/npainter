@@ -51,9 +51,9 @@ method draw*(widget: GUIBlank, ctx: ptr CTXRender) =
     ctx.color = 0xFF000000'u32
     fill(ctx, widget.rect)
     ctx.color = high(uint32)
-    drawAtlas(ctx, widget.rect)
+    #drawAtlas(ctx, widget.rect)
     #ctx.texture(widget.rect, 0)
-    ctx.text(widget.rect.x, widget.rect.y, "Hello World AWAY BRAVO BRA VO bravo Bravo, ララ")
+    ctx.text(widget.rect.x, widget.rect.y, "Hello World AWAY BRAVO BRA VO bravo Bravo, gggjjjjララ")
     ctx.icon(widget.rect.x, widget.rect.y - 40, int32 iconBrush)
     ctx.icon(widget.rect.x + 20, widget.rect.y - 40, int32 iconReset)
     ctx.icon(widget.rect.x + 40, widget.rect.y - 40, int32 iconClear)

@@ -35,8 +35,11 @@ type # Atlas Objects
     texID*: uint32 # Texture
     whiteU*, whiteV*: int16
     rw*, rh*: float32 # Normalized
-    # MAX GLYPH AND ICON SIZE
-    fontSize*, iconSize*: int16
+    # FT2 FACE METRICS CALCULATED
+    ascender*, descender*: int16
+    height*, baseline*: int16
+    # MAX ICON SIZE
+    iconSize*: int16
 
 let # Charset Common Ranges for Preloading
   csLatin* = # English, Spanish, etc.
@@ -144,19 +147,20 @@ proc pack*(atlas: var CTXAtlas, w, h: int16): tuple[x, y: int16] =
 # ---------------------------
 
 proc renderFallback(atlas: var CTXAtlas) =
-  let size = atlas.fontSize
+  let # Fallback Metrics
+    size = atlas.baseline
+    half = size shr 1
   # Add A Glyph for a white rectangle
   atlas.glyphs.add TEXGlyph(
     index: 0, # Use Invalid Index
-    w: size shr 1, # W is Half H
-    h: size, # H is Font Size
+    w: half, h: size, # W is Half Size
     xo: 1, yo: size, # xBearing, yBearing
-    advance: size shr 1 + 2 # *[]*
+    advance: half + 2 # *[]*
   ) # End Add Glyph to Glyph Cache
   # Alloc White Rectangle
   var i = len(atlas.buffer)
-  atlas.buffer.setLen(i + size * size shr 1)
-  while i < len(atlas.buffer): 
+  atlas.buffer.setLen(i + half * size)
+  while i < len(atlas.buffer):
     atlas.buffer[i] = high(byte); inc(i)
 
 proc renderCharcode(atlas: var CTXAtlas, code: uint16) =
@@ -286,8 +290,12 @@ proc newCTXAtlas*(): CTXAtlas =
   result.icons.setLen(icons.count)
   # 1 -- Set Font and Max Y Offset
   result.face = newFont(10) # Set FT2 Face
-  result.fontSize = # Ascender - -Descent
-    (result.face.ascender + result.face.descender) shr 6
+  # Set Font Face Metrics with Pixel Units
+  let metrics = addr result.face.size.metrics; block:
+    result.height = cast[int16](metrics.height shr 6)
+    result.ascender = cast[int16](metrics.ascender shr 6)
+    result.descender = cast[int16](metrics.descender shr 6)
+    result.baseline = result.ascender + result.descender
   # 2 -- Render Selected Charset
   renderFallback(result)
   renderCharset(result, csLatin)

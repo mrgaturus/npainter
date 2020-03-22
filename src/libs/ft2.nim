@@ -39,6 +39,16 @@ type # Trimmed Types for basic usage
     vertBearingX*: FT2Pos
     vertBearingY*: FT2Pos
     vertAdvance*: FT2Pos
+  # Face Metrics using selected size
+  FT2SizeMetrics = object
+    xppem, yppem: FT2UShort
+    xscale, yscale: FT2Fixed
+    ascender*, descender*: FT2Pos
+    height*, max_advance*: FT2Pos
+  FT2Size = ptr object
+    face: FT2Face
+    generic: FT2Generic
+    metrics*: FT2SizeMetrics
   # FT2 Important Objects -Trimmed-
   FT2Library* = distinct pointer
   FT2Glyph* {.bycopy.} = ptr object
@@ -77,7 +87,9 @@ type # Trimmed Types for basic usage
     max_advance_height*: FT2Short
     underline_position*: FT2Short
     underline_thickness*: FT2Short
+    # Important Here
     glyph*: FT2Glyph
+    size*: FT2Size
 
 const # FT2 CONSTANTS
   FT_LOAD_RENDER* = 1 shl 2
