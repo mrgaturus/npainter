@@ -286,8 +286,8 @@ proc newCTXAtlas*(): CTXAtlas =
   result.icons.setLen(icons.count)
   # 1 -- Set Font and Max Y Offset
   result.face = newFont(10) # Set FT2 Face
-  # Set Font Face Metrics with Pixel Units
-  let metrics = addr result.face.size.metrics; block:
+  block: # Set Font Face Metrics with Pixel Units
+    let metrics = addr result.face.size.metrics
     result.height = cast[int16](metrics.height shr 6)
     result.ascender = cast[int16](metrics.ascender shr 6)
     result.descender = cast[int16](metrics.descender shr 6)

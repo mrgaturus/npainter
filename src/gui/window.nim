@@ -160,7 +160,7 @@ proc newGUIWindow*(root: GUIWidget, global: pointer): GUIWindow =
   result.state.utf8buffer(32)
   # Initialize EGL and GL
   result.createEGL()
-  # Initialize Freetype2 and Renderer
+  # Initialize CTX Renderer
   result.ctx = newCTXRender()
   # Disable VSync - Avoid Input Lag
   discard eglSwapInterval(result.eglDsp, 0)
@@ -195,8 +195,6 @@ proc exit*(win: var GUIWindow) =
   discard eglDestroySurface(win.eglDsp, win.eglSur)
   discard eglDestroyContext(win.eglDsp, win.eglCtx)
   discard eglTerminate(win.eglDsp)
-  # Dispose Freetype2
-  #discard ft2_done(win.ft2)
   # Dispose all X Stuff
   XDestroyIC(win.xic)
   discard XCloseIM(win.xim)
