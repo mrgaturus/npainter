@@ -165,7 +165,7 @@ proc callSignal*(signal: GUISignal): bool =
 # SIGNAL PUSHER PROCS
 # -------------------
 
-proc pushSignal*(id: uint8, msg: enum, data: pointer, size: Natural) =
+proc pushSignal(id, msg: uint8, data: pointer, size: Natural) =
   # Allocs new signal
   let nsignal = cast[GUISignal](
     alloc0(sizeof(Signal) + size)
@@ -174,7 +174,7 @@ proc pushSignal*(id: uint8, msg: enum, data: pointer, size: Natural) =
   nsignal.kind = sSignal
   # Assign Msg
   nsignal.id = id
-  nsignal.msg = uint8(msg)
+  nsignal.msg = msg
   # Copy Optionally Data
   if size > 0 and not isNil(data):
     copyMem(addr nsignal.data, data, size)
@@ -209,11 +209,14 @@ proc pushCallback(cb: GUICallback, data: pointer, size: Natural) =
 # SIGNAL PUBLIC TEMPLATES
 # -----------------------
 
+template pushSignal*(id: uint8, msg: enum, data: pointer, size: Natural) =
+  pushSignal(id, cast[uint8](msg), data, size)
+
 template pushSignal*(id: uint8, msg: enum, data: typed) =
-  pushSignal(id, msg, addr data, sizeof(data))
+  pushSignal(id, cast[uint8](msg), addr data, sizeof(data))
 
 template pushSignal*(id: uint8, msg: enum) =
-  pushSignal(id, msg, nil, 0)
+  pushSignal(id, cast[uint8](msg), nil, 0)
 
 template pushCallback*(cb: proc, data: pointer, size: Natural) =
   pushCallback(cast[GUICallback](cb), data, size)
