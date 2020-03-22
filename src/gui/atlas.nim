@@ -22,9 +22,10 @@ type # Atlas Objects
     # SKYLINE BIN PACKING
     w, h: int32 # Dimensions
     nodes: seq[SKYNode]
+    # ICONS INFORMATION
+    icons: seq[TEXIcon]
     # GLYPHS INFORMATION
     lookup: seq[uint16]
-    icons: seq[TEXIcon]
     glyphs: seq[TEXGlyph]
     # GLYPH ATLAS BITMAP
     buffer: seq[byte]
@@ -405,7 +406,7 @@ proc lookupGlyph*(atlas: var CTXAtlas, charcode: uint16): ptr TEXGlyph =
   of 0xFFFF: addr atlas.glyphs[0]
   else: addr atlas.glyphs[lookup]
 
-proc lookupIcon*(atlas: var CTXAtlas, icon: int32): ptr TEXIcon =
+proc lookupIcon*(atlas: var CTXAtlas, icon: uint16): ptr TEXIcon =
   result = addr atlas.icons[icon] # Get Icon UV Coords
 
 # ---------------------------

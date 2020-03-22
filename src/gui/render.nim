@@ -378,7 +378,7 @@ proc text*(ctx: ptr CTXRender, x,y: int32, str: string) =
     # To Next Glyph X Position
     (unsafeAddr x)[] += glyph.advance
 
-proc icon*(ctx: ptr CTXRender, x,y: int32, icon: int32) =
+proc icon*(ctx: ptr CTXRender, x,y: int32, icon: uint16) =
   ctx.addVerts(4, 6)
   let icon = ctx.atlas.lookupIcon(icon)
   block: # Rect Triangles

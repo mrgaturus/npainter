@@ -231,7 +231,7 @@ template convert*(data: GUIOpaque, t: type): ptr t =
 # SIGNAL ID BUILDER MACRO
 # -----------------------
 
-var lastID {.compileTime.}: uint8 = 0
+var lastID {.compileTime.}: uint8
 macro signal*(name, messages: untyped) =
   # Expected Parameters
   name.expectKind(nnkIdent)

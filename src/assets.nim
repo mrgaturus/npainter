@@ -56,34 +56,32 @@ proc newIcons*(): DATIcons =
     log(lvError, "failed loading icons file: ", iconsPath)
 
 macro setIcons*(size: Natural, list: untyped) =
-  let icoEnum = # Create Enum Fields Node
-    newNimNode(nnkEnumTy).add newEmptyNode()
+  var index: uint16 # Current Icon ID
+  result = newNimNode(nnkConstSection)
   when defined(packIcons): # Generate Dat file
     var args = # icons_pack arguments
       @[icons_pack, iconsPath, $size.intVal]
     for icon in list:
-      # Add Enum Field
+      # Create New Icon Constant
       expectKind(icon[0], nnkIdent)
-      icoEnum.add(icon[0])
+      result.add(newNimNode(nnkConstDef).add(
+        postfix(icon[0], "*"), newEmptyNode(), newLit(index)))
       # Add Icon Pack Argument
       expectKind(icon[1], nnkStrLit)
       args.add icon[1].strVal
+      # Next Icon ID
+      inc(index)
     # Create Icon Data using icon_pack
     let exec = gorgeEx(args.join " ")
     if exec.exitCode != 0: error(exec.output)
   else: # Only Generate Enum
     for icon in list:
-      # Add Enum Field
+      # Create New Icon Constant
       expectKind(icon[0], nnkIdent)
-      icoEnum.add(icon[0])
-  # Create Icons Enum Type
-  result = newTree(nnkStmtList).add:
-    newNimNode(nnkTypeSection).add:
-      newNimNode(nnkTypeDef).add(
-        newNimNode(nnkPostfix).add(
-          newIdentNode("*"),
-          newIdentNode("PKGIcons")
-        ), newEmptyNode(), icoEnum)
+      result.add(newNimNode(nnkConstDef).add(
+        postfix(icon[0], "*"), newEmptyNode(), newLit(index)))
+      # Next Icon ID
+      inc(index)
 
 # -------------------
 # SHADER LOADING PROC

@@ -54,10 +54,8 @@ method draw*(widget: GUIBlank, ctx: ptr CTXRender) =
     #drawAtlas(ctx, widget.rect)
     #ctx.texture(widget.rect, 0)
     ctx.text(widget.rect.x, widget.rect.y, "Hello World AWAY BRAVO BRA VO bravo Bravo, gggjjjjララ")
-    ctx.icon(widget.rect.x, widget.rect.y - 40, int32 iconBrush)
-    ctx.icon(widget.rect.x + 20, widget.rect.y - 40, int32 iconReset)
-    ctx.icon(widget.rect.x + 40, widget.rect.y - 40, int32 iconClear)
-    ctx.icon(widget.rect.x + 60, widget.rect.y - 40, int32 iconClose)
+    ctx.icon(widget.rect.x + 40, widget.rect.y - 40, iconClear)
+    ctx.icon(widget.rect.x + 60, widget.rect.y - 40, iconClose)
 
 method event*(widget: GUIBlank, state: ptr GUIState) =
   #echo "cursor mx: ", state.mx, " cursor my: ", state.my
