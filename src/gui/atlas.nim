@@ -8,13 +8,12 @@ import ../assets
 type # Atlas Objects
   SKYNode = object
     x, y, w: int16
+  TEXIcon = object
+    x1*, x2*, y1*, y2*: int16
   TEXGlyph = object
-    index*: uint32 # FT2 Glyph Index
     x1*, x2*, y1*, y2*: int16 # UV Coords
     xo*, yo*, advance*: int16 # Positioning
     w*, h*: int16 # Bitmap Dimensions
-  TEXIcon = object
-    x1*, x2*, y1*, y2*: int16
   BUFStatus = enum # Bitmap Buffer Status
     bufNormal, bufDirty, bufResize
   CTXAtlas* = object
@@ -25,8 +24,8 @@ type # Atlas Objects
     nodes: seq[SKYNode]
     # GLYPHS INFORMATION
     lookup: seq[uint16]
-    glyphs: seq[TEXGlyph]
     icons: seq[TEXIcon]
+    glyphs: seq[TEXGlyph]
     # GLYPH ATLAS BITMAP
     buffer: seq[byte]
     status: BUFStatus
@@ -152,7 +151,6 @@ proc renderFallback(atlas: var CTXAtlas) =
     half = size shr 1
   # Add A Glyph for a white rectangle
   atlas.glyphs.add TEXGlyph(
-    index: 0, # Use Invalid Index
     w: half, h: size, # W is Half Size
     xo: 1, yo: size, # xBearing, yBearing
     advance: half + 2 # *[]*
@@ -169,7 +167,6 @@ proc renderCharcode(atlas: var CTXAtlas, code: uint16) =
     let slot = atlas.face.glyph # Shorcut
     # -- Add Glyph to Glyph Cache
     atlas.glyphs.add TEXGlyph(
-      index: index, # Save FT2 Index
       # Save new dimensions, very small values
       w: cast[int16](slot.bitmap.width),
       h: cast[int16](slot.bitmap.rows),
@@ -219,8 +216,6 @@ proc renderOnDemand(atlas: var CTXAtlas, code: uint16): ptr TEXGlyph =
       # Expand Glyphs for a New Glyph
       atlas.glyphs.setLen(1 + atlas.glyphs.len)
       glyph = addr atlas.glyphs[^1]
-      # Save Glyph Index
-      glyph.index = index
       # Save Bitmap Dimensions
       glyph.w = cast[int16](slot.bitmap.width)
       glyph.h = cast[int16](slot.bitmap.rows)
