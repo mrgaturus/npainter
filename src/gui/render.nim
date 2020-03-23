@@ -17,7 +17,7 @@ type
   GUIColor* = uint32
   # Clip Levels
   CTXCommand = object
-    offset, size, base: int32
+    offset, base, size: int32
     texID: GLuint
     clip: GUIRect
   # Vertex Format XYUVRGBA 16-byte
