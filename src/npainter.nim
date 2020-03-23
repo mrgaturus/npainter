@@ -64,6 +64,8 @@ method draw*(widget: GUIBlank, ctx: ptr CTXRender) =
       float32(widget.rect.y) + widget.rect.h / 2,
       float32(widget.rect.x) + widget.rect.w / 4,
       float32 widget.rect.y)
+    ctx.color(0xFFCCBBAA'u32)
+    ctx.circle(float32 widget.rect.x, float32 widget.rect.y, float32 widget.rect.h / 2)
 method event*(widget: GUIBlank, state: ptr GUIState) =
   #echo "cursor mx: ", state.mx, " cursor my: ", state.my
   if state.eventType == evMouseClick:

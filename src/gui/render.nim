@@ -1,6 +1,8 @@
 from ../cmath import
+  fastSqrt,
   invertedSqrt,
   guiProjection
+from math import sin, cos, PI
 from ../assets import newShader
 # Texture Atlas
 import atlas
@@ -246,9 +248,9 @@ template vertexUV(i: int32, a,b: float32, c,d: int16) =
 
 # Last Vert Index + Offset
 template triangle(o: int32, a,b,c: int32) =
-  ctx.pElem[o] = ctx.cursor + a
-  ctx.pElem[o+1] = ctx.cursor + b
-  ctx.pElem[o+2] = ctx.cursor + c
+  ctx.pElem[o] = ctx.cursor + cast[uint16](a)
+  ctx.pElem[o+1] = ctx.cursor + cast[uint16](b)
+  ctx.pElem[o+2] = ctx.cursor + cast[uint16](c)
 
 # -----------------------
 # GUI CLIP/COLOR LEVELS PROCS
@@ -395,6 +397,39 @@ proc triangle*(ctx: ptr CTXRender, x1,y1, x2,y2, x3,y3: float32) =
   ctx.smoother(x1, y1, x2, y2)
   ctx.smoother(x2, y2, x3, y3)
   ctx.smoother(x3, y3, x1, y1)
+
+proc circle*(ctx: ptr CTXRender, x,y,r: float32) =
+  let # Angle Constants
+    n = int32 4 * fastSqrt(r)
+    theta = 2 * PI / float32(n)
+  var # Iterator
+    i: int32
+    o: float32
+  # Offset X and Y to center
+  (unsafeAddr x)[] += r
+  (unsafeAddr y)[] += r
+  # Circle Triangles
+  ctx.addVerts(n, n * 3)
+  while i < n:
+    # Vertex Information
+    vertex(i, x + cos(o) * r, y + sin(o) * r)
+    if i + 1 < n: # Element Triangle
+      triangle(i * 3, 0, i, i + 1)
+    else: triangle(i * 3, 0, i, 0)
+    # Next Angle and Segment
+    inc(i); o += theta;
+  # Apply Antialiasing
+  let vertex = ctx.pVert
+  i = 0; while i < n:
+    if i + 1 < n: # Smooth
+      ctx.smoother(
+        vertex[i+1].x, vertex[i+1].y,
+        vertex[i].x, vertex[i].y)
+    else: # Smooth End
+      ctx.smoother(
+        vertex[0].x, vertex[0].y,
+        vertex[i].x, vertex[i].y)
+    inc(i) # Next Segment
 
 # ----------------------------
 # TEXT & ICONS RENDERING PROCS
