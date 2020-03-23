@@ -1,4 +1,6 @@
-from ../cmath import guiProjection
+from ../cmath import
+  invertedSqrt,
+  guiProjection
 from ../assets import newShader
 # Texture Atlas
 import atlas
@@ -12,8 +14,6 @@ type
   # GUI RECT AND COLOR
   GUIRect* = object
     x*, y*, w*, h*: int32
-  GUIPoint* = object
-    x*, y*: int32
   GUIColor* = uint32
   # Clip Levels
   CTXCommand = object
@@ -41,7 +41,7 @@ type
     atlas: CTXAtlas
     vao, ebo, vbo: GLuint
     # Color and Clips
-    color*: uint32
+    color, colorAA: uint32
     levels: seq[GUIRect]
     # Vertex index
     size, cursor: uint16
@@ -228,6 +228,14 @@ template vertex(i: int32, a,b: float32) =
   ctx.pVert[i].v = ctx.atlas.whiteV # White V
   ctx.pVert[i].color = ctx.color # Color RGBA
 
+## X,Y,WHITEU,WHITEV,COLORAA
+template vertexAA(i: int32, a,b: float32) =
+  ctx.pVert[i].x = a # Position X
+  ctx.pVert[i].y = b # Position Y
+  ctx.pVert[i].u = ctx.atlas.whiteU # White U
+  ctx.pVert[i].v = ctx.atlas.whiteV # White V
+  ctx.pVert[i].color = ctx.colorAA # Color Antialias
+
 # X,Y,U,V,COLOR
 template vertexUV(i: int32, a,b: float32, c,d: int16) =
   ctx.pVert[i].x = a # Position X
@@ -268,6 +276,10 @@ proc pop*(ctx: ptr CTXRender) {.inline.} =
   ctx.pCMD = nil
   # Remove Last CMD from Stack
   ctx.levels.setLen(max(ctx.levels.len - 1, 0))
+
+proc color*(ctx: ptr CTXRender, color: uint32) {.inline.} =
+  ctx.color = color # Normal Solid Color
+  ctx.colorAA = color and 0xFFFFFF # Antialiased
 
 # ---------------------------
 # GUI BASIC SHAPES DRAW PROCS
@@ -326,18 +338,9 @@ proc rectangle*(ctx: ptr CTXRender, rect: var GUIRect, s: float32) =
   triangle(18, 10,9,1)
   triangle(21, 1,2,9)
 
-proc triangle*(ctx: ptr CTXRender, x1,y1, x2,y2, x3,y3: int32) =
-  ctx.addVerts(3, 3)
-  # Triangle Description
-  vertex(0, float32 x1, float32 y1)
-  vertex(1, float32 x2, float32 y2)
-  vertex(2, float32 x3, float32 y3)
-  # Elements Description
-  triangle(0, 0,1,2)
-
 proc texture*(ctx: ptr CTXRender, rect: var GUIRect, texID: GLuint) =
   ctx.addCommand() # Create New Command
-  ctx.pCMD.texID = ctx.atlas.texID # Set Texture
+  ctx.pCMD.texID = texID # Set Texture
   # Add 4 Vertexes for a Quad
   ctx.verts.setLen(ctx.verts.len + 4)
   ctx.pVert = cast[CTXVertexMap](addr ctx.verts[^4])
@@ -352,6 +355,50 @@ proc texture*(ctx: ptr CTXRender, rect: var GUIRect, texID: GLuint) =
   vertexUV(3, xw, yh, 1, 1)
   # Invalidate CMD
   ctx.pCMD = nil
+
+# ----------------------------
+# ANTIALIAS SUB RENDERING PROC
+# ----------------------------
+
+proc smoother(ctx: ptr CTXRender, x1,y1,x2,y2: float32) =
+  var # Normalized Vector
+    x = y1 - y2
+    y = x2 - x1
+  block: # Get Vector Normal
+    let norm = invertedSqrt(x*x + y*y)
+    x *= norm; y *= norm
+  # Alloc Vertexs and Elements
+  ctx.addVerts(4, 6)
+  # Set Filled Vertexs
+  vertex(0, x1, y1)
+  vertex(1, x2, y2)
+  # Set Antialised Gradient
+  vertexAA(2, x1 + x, y1 + y)
+  vertexAA(3, x2 + x, y2 + y)
+  # Elements Definition
+  triangle(0, 0,1,2)
+  triangle(3, 1,2,3)
+
+# ------------------------
+# ANTIALIASED SHAPES PROCS
+# ------------------------
+
+proc triangle*(ctx: ptr CTXRender, x1,y1, x2,y2, x3,y3: float32) =
+  ctx.addVerts(3, 3)
+  # Triangle Description
+  vertex(0, x1, y1)
+  vertex(1, x2, y2)
+  vertex(2, x3, y3)
+  # Elements Description
+  triangle(0, 0,1,2)
+  # Antialiasing Fill
+  ctx.smoother(x1, y1, x2, y2)
+  ctx.smoother(x2, y2, x3, y3)
+  ctx.smoother(x3, y3, x1, y1)
+
+# ----------------------------
+# TEXT & ICONS RENDERING PROCS
+# ----------------------------
 
 proc text*(ctx: ptr CTXRender, x,y: int32, str: string) =
   # Offset Y to Atlas Font Y Offset Metric
@@ -394,6 +441,3 @@ proc icon*(ctx: ptr CTXRender, x,y: int32, icon: uint16) =
   # Elements Definition
   triangle(0, 0,1,2)
   triangle(3, 1,2,3)
-
-proc drawAtlas*(ctx: ptr CTXRender, rect: var GUIRect) =
-  ctx.texture(rect, ctx.atlas.texID)

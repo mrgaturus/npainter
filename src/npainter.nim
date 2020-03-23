@@ -36,27 +36,34 @@ proc release*(g: ptr Counter, d: pointer) =
 
 method draw*(widget: GUIBlank, ctx: ptr CTXRender) =
   if widget.test(wHover):
-    let color = # Test Color
+    let state = # Test Color
       if widget.test(wHover): 0xAA252525'u32
       elif widget.test(wGrab): 0xAAFF00FF'u32
       elif widget.test(wFocus): 0xAAFFFF00'u32
       else: 0xAAFFFFFF'u32
-    ctx.color = color
+    ctx.color(state)
     fill(ctx, widget.rect)
-    ctx.color = high(uint32)
+    ctx.color(high uint32)
     #drawAtlas(ctx, widget.rect)
-    ctx.color = 0xAACCCCCC'u32
+    ctx.color(0xAACCCCCC'u32)
     #triangle(ctx, widget.rect, toDown)
   else:
-    ctx.color = 0xFF000000'u32
+    ctx.color(0xFF000000'u32)
     fill(ctx, widget.rect)
-    ctx.color = high(uint32)
+    ctx.color(high uint32)
     #drawAtlas(ctx, widget.rect)
     #ctx.texture(widget.rect, 0)
     ctx.text(widget.rect.x, widget.rect.y, "Hello World AWAY BRAVO BRA VO bravo Bravo, gggjjjjララ")
     ctx.icon(widget.rect.x + 40, widget.rect.y - 40, iconClear)
     ctx.icon(widget.rect.x + 60, widget.rect.y - 40, iconClose)
-
+    ctx.color(0xFFAABBCC'u32)
+    ctx.triangle(
+      float32 widget.rect.x, 
+      float32 widget.rect.y + widget.rect.h, 
+      float32 widget.rect.x + widget.rect.w, 
+      float32(widget.rect.y) + widget.rect.h / 2,
+      float32(widget.rect.x) + widget.rect.w / 4,
+      float32 widget.rect.y)
 method event*(widget: GUIBlank, state: ptr GUIState) =
   #echo "cursor mx: ", state.mx, " cursor my: ", state.my
   if state.eventType == evMouseClick:

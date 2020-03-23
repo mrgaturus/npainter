@@ -102,7 +102,7 @@ method draw(self: GUIContainer, ctx: ptr CTXRender) =
   ctx.push(self.rect)
   # Draw Background
   if (self.flags and wOpaque) == 0:
-    ctx.color = self.color
+    ctx.color(self.color)
     ctx.fill(self.rect)
   # Draw Widgets
   for widget in forward(self.first):
