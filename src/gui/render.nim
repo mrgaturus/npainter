@@ -74,6 +74,16 @@ proc point*(x, y: int32): GUIPoint {.inline.} =
   result.x = float32(x)
   result.y = float32(y)
 
+proc normal*(a, b: GUIPoint): GUIPoint =
+  result.x = a.y - b.y
+  result.y = b.x - a.x
+  let norm = invertedSqrt(
+    result.x*result.x + 
+    result.y*result.y)
+  # Normalize Point
+  result.x *= norm
+  result.y *= norm
+
 # -------------------------
 # GUI CANVAS CREATION PROCS
 # -------------------------
@@ -376,45 +386,37 @@ proc texture*(ctx: ptr CTXRender, rect: var GUIRect, texID: GLuint) =
   # Invalidate CMD
   ctx.pCMD = nil
 
-# ----------------------------
-# ANTIALIAS SUB RENDERING PROC
-# ----------------------------
-
-proc smoother(ctx: ptr CTXRender, x1,y1,x2,y2: float32) =
-  var # Normalized Vector
-    x = y1 - y2
-    y = x2 - x1
-  block: # Get Vector Normal
-    let norm = invertedSqrt(x*x + y*y)
-    x *= norm; y *= norm
-  # Alloc Vertexs and Elements
-  ctx.addVerts(4, 6)
-  # Set Filled Vertexs
-  vertex(0, x1, y1)
-  vertex(1, x2, y2)
-  # Set Antialised Gradient
-  vertexAA(2, x1 + x, y1 + y)
-  vertexAA(3, x2 + x, y2 + y)
-  # Elements Definition
-  triangle(0, 0,1,2)
-  triangle(3, 1,2,3)
-
 # ------------------------
 # ANTIALIASED SHAPES PROCS
 # ------------------------
 
 proc triangle*(ctx: ptr CTXRender, a,b,c: GUIPoint) =
-  ctx.addVerts(3, 3)
+  ctx.addVerts(9, 21)
   # Triangle Description
   vertex(0, a.x, a.y)
   vertex(1, b.x, b.y)
   vertex(2, c.x, c.y)
   # Elements Description
   triangle(0, 0,1,2)
-  # Apply Antialiasing Fill
-  ctx.smoother(a.x, a.y, b.x, b.y)
-  ctx.smoother(b.x, b.y, c.x, c.y)
-  ctx.smoother(c.x, c.y, a.x, a.y)
+  var # Antialiased
+    i, j: int32 # Sides
+    k, l: int32 = 3 # AA
+    x, y, norm: float32
+  while i < 3:
+    j = (i + 1) mod 3 # Truncate Side
+    x = ctx.pVert[i].y - ctx.pVert[j].y
+    y = ctx.pVert[j].x - ctx.pVert[i].x
+    # Normalize Orientation Vector
+    norm = invertedSqrt(x*x + y*y)
+    x *= norm; y *= norm
+    # Add Antialiased Vertexs
+    vertexAA(k, ctx.pVert[i].x + x, ctx.pVert[i].y + y)
+    vertexAA(k+1, ctx.pVert[j].x + x, ctx.pVert[j].y + y)
+    # Add Antialiased Elements
+    triangle(l, i, j, k)
+    triangle(l+3, j, k, k+1)
+    # Next Triangle Size
+    i += 1; k += 2; l += 6
 
 proc circle*(ctx: ptr CTXRender, p: GUIPoint, r: float32) =
   # Move X & Y to Center
@@ -424,30 +426,31 @@ proc circle*(ctx: ptr CTXRender, p: GUIPoint, r: float32) =
     n = int32 4 * fastSqrt(r)
     theta = 2 * PI / float32(n)
   var # Iterator
-    i: int32
-    o: float32
+    o, ox, oy: float32
+    i, j, k: int32
   # Circle Triangles
-  ctx.addVerts(n, n * 3)
+  ctx.addVerts(n shl 1, n * 9)
   while i < n:
+    # Direction Normals
+    ox = cos(o); oy = sin(o)
     # Vertex Information
-    vertex(i, p.x + cos(o) * r, p.y + sin(o) * r)
-    if i + 1 < n: # Element Triangle
-      triangle(i * 3, 0, i, i + 1)
-    else: triangle(i * 3, 0, i, 0)
-    # Next Angle and Segment
-    inc(i); o += theta;
-  # Apply Antialiasing
-  let vertex = ctx.pVert
-  i = 0; while i < n:
-    if i + 1 < n: # Smooth
-      ctx.smoother(
-        vertex[i+1].x, vertex[i+1].y,
-        vertex[i].x, vertex[i].y)
-    else: # Smooth End
-      ctx.smoother(
-        vertex[0].x, vertex[0].y,
-        vertex[i].x, vertex[i].y)
-    inc(i) # Next Segment
+    vertex(j, # Solid
+      p.x + ox * r, 
+      p.y + oy * r)
+    vertexAA(j + 1, # AA
+      ctx.pVert[j].x + ox,
+      ctx.pVert[j].y + oy)
+    if i + 1 < n:
+      triangle(k, 0, j, j + 2)
+      triangle(k + 3, j, j + 1, j + 2)
+      triangle(k + 6, j + 1, j + 2, j + 3)
+    else: # Connect Last With First
+      triangle(k, 0, j, 0)
+      triangle(k + 3, 0, 1, j)
+      triangle(k + 6, 1, j, j + 1)
+    # Next Circle Triangle
+    i += 1; j += 2; k += 9
+    o += theta; # Next Angle
 
 # ----------------------------
 # TEXT & ICONS RENDERING PROCS
