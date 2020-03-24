@@ -71,8 +71,8 @@ proc point*(x, y: float32): GUIPoint {.inline.} =
   result.x = x; result.y = y
 
 proc point*(x, y: int32): GUIPoint {.inline.} =
-  result.x = cast[float32](x)
-  result.y = cast[float32](y)
+  result.x = float32(x)
+  result.y = float32(y)
 
 # -------------------------
 # GUI CANVAS CREATION PROCS
