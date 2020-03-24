@@ -10,13 +10,17 @@ import atlas
 import ../libs/gl
 
 const 
-  STRIDE_SIZE = # XYUVRGBA 16bytes
-    sizeof(float32)*2 + sizeof(int16)*2 + sizeof(uint32)
+  STRIDE_SIZE = # 16bytes
+    sizeof(float32)*2 + # XY
+    sizeof(int16)*2 + # UV
+    sizeof(uint32) # RGBA
 type
-  # GUI RECT AND COLOR
+  # RENDER PRIMITIVES
+  GUIColor* = uint32
+  GUIPoint* = object
+    x*, y*: float32
   GUIRect* = object
     x*, y*, w*, h*: int32
-  GUIColor* = uint32
   # Clip Levels
   CTXCommand = object
     offset, base, size: int32
@@ -55,6 +59,20 @@ type
     cmds: seq[CTXCommand]
     elements: seq[uint16]
     verts: seq[CTXVertex]
+
+# ----------------------------
+# GUI PRIMITIVE CREATION PROCS
+# ----------------------------
+
+proc rgba*(r, g, b, a: uint8): GUIColor {.inline.} =
+  result = r or (g shl 8) or (b shl 16) or (a shl 24)
+
+proc point*(x, y: float32): GUIPoint {.inline.} =
+  result.x = x; result.y = y
+
+proc point*(x, y: int32): GUIPoint {.inline.} =
+  result.x = cast[float32](x)
+  result.y = cast[float32](y)
 
 # -------------------------
 # GUI CANVAS CREATION PROCS
@@ -385,34 +403,34 @@ proc smoother(ctx: ptr CTXRender, x1,y1,x2,y2: float32) =
 # ANTIALIASED SHAPES PROCS
 # ------------------------
 
-proc triangle*(ctx: ptr CTXRender, x1,y1, x2,y2, x3,y3: float32) =
+proc triangle*(ctx: ptr CTXRender, a,b,c: GUIPoint) =
   ctx.addVerts(3, 3)
   # Triangle Description
-  vertex(0, x1, y1)
-  vertex(1, x2, y2)
-  vertex(2, x3, y3)
+  vertex(0, a.x, a.y)
+  vertex(1, b.x, b.y)
+  vertex(2, c.x, c.y)
   # Elements Description
   triangle(0, 0,1,2)
-  # Antialiasing Fill
-  ctx.smoother(x1, y1, x2, y2)
-  ctx.smoother(x2, y2, x3, y3)
-  ctx.smoother(x3, y3, x1, y1)
+  # Apply Antialiasing Fill
+  ctx.smoother(a.x, a.y, b.x, b.y)
+  ctx.smoother(b.x, b.y, c.x, c.y)
+  ctx.smoother(c.x, c.y, a.x, a.y)
 
-proc circle*(ctx: ptr CTXRender, x,y,r: float32) =
+proc circle*(ctx: ptr CTXRender, p: GUIPoint, r: float32) =
+  # Move X & Y to Center
+  unsafeAddr(p.x)[] += r
+  unsafeAddr(p.y)[] += r
   let # Angle Constants
     n = int32 4 * fastSqrt(r)
     theta = 2 * PI / float32(n)
   var # Iterator
     i: int32
     o: float32
-  # Offset X and Y to center
-  (unsafeAddr x)[] += r
-  (unsafeAddr y)[] += r
   # Circle Triangles
   ctx.addVerts(n, n * 3)
   while i < n:
     # Vertex Information
-    vertex(i, x + cos(o) * r, y + sin(o) * r)
+    vertex(i, p.x + cos(o) * r, p.y + sin(o) * r)
     if i + 1 < n: # Element Triangle
       triangle(i * 3, 0, i, i + 1)
     else: triangle(i * 3, 0, i, 0)
@@ -437,7 +455,7 @@ proc circle*(ctx: ptr CTXRender, x,y,r: float32) =
 
 proc text*(ctx: ptr CTXRender, x,y: int32, str: string) =
   # Offset Y to Atlas Font Y Offset Metric
-  (unsafeAddr y)[] += ctx.atlas.baseline
+  unsafeAddr(y)[] += ctx.atlas.baseline
   # Render Text Top to Bottom
   for rune in runes16(str):
     let glyph = # Load Glyph
@@ -458,7 +476,7 @@ proc text*(ctx: ptr CTXRender, x,y: int32, str: string) =
     triangle(0, 0,1,2)
     triangle(3, 1,2,3)
     # To Next Glyph X Position
-    (unsafeAddr x)[] += glyph.advance
+    unsafeAddr(x)[] += glyph.advance
 
 proc icon*(ctx: ptr CTXRender, x,y: int32, icon: uint16) =
   ctx.addVerts(4, 6)

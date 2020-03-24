@@ -58,14 +58,11 @@ method draw*(widget: GUIBlank, ctx: ptr CTXRender) =
     ctx.icon(widget.rect.x + 60, widget.rect.y - 40, iconClose)
     ctx.color(0xFFAABBCC'u32)
     ctx.triangle(
-      float32 widget.rect.x, 
-      float32 widget.rect.y + widget.rect.h, 
-      float32 widget.rect.x + widget.rect.w, 
-      float32(widget.rect.y) + widget.rect.h / 2,
-      float32(widget.rect.x) + widget.rect.w / 4,
-      float32 widget.rect.y)
+      point(widget.rect.x, widget.rect.y + widget.rect.h),
+      point(widget.rect.x + widget.rect.w, widget.rect.y + widget.rect.h shr 1),
+      point(widget.rect.x + widget.rect.w shr 2, widget.rect.y))
     ctx.color(0xFFCCBBAA'u32)
-    ctx.circle(float32 widget.rect.x, float32 widget.rect.y, float32 widget.rect.h / 2)
+    ctx.circle(point(widget.rect.x, widget.rect.y), float32 widget.rect.h shr 1)
 method event*(widget: GUIBlank, state: ptr GUIState) =
   #echo "cursor mx: ", state.mx, " cursor my: ", state.my
   if state.eventType == evMouseClick:
