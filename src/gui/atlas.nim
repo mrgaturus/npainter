@@ -1,6 +1,6 @@
-from math import 
-  sqrt, ceil,
-  nextPowerOfTwo
+from math import sqrt, ceil, nextPowerOfTwo
+from config import metrics
+
 import ../libs/gl
 import ../libs/ft2
 import ../assets
@@ -35,11 +35,6 @@ type # Atlas Objects
     texID*: uint32 # Texture
     whiteU*, whiteV*: int16
     rw*, rh*: float32 # Normalized
-    # FT2 FACE METRICS CALCULATED
-    ascender*, descender*: int16
-    height*, baseline*: int16
-    # MAX ICON SIZE
-    iconSize*: int16
 
 let # Charset Common Ranges for Preloading
   csLatin* = # English, Spanish, etc.
@@ -148,7 +143,7 @@ proc pack*(atlas: var CTXAtlas, w, h: int16): tuple[x, y: int16] =
 
 proc renderFallback(atlas: var CTXAtlas) =
   let # Fallback Metrics
-    size = atlas.baseline
+    size = metrics.baseline
     half = size shr 1
   # Add A Glyph for a white rectangle
   atlas.glyphs.add TEXGlyph(
@@ -282,16 +277,17 @@ proc renderOnDemand(atlas: var CTXAtlas, code: uint16): ptr TEXGlyph =
 proc newCTXAtlas*(): CTXAtlas =
   # 1 -- Load Icons DAT File
   let icons = newIcons() # Load Icons
-  result.iconSize = icons.size
   result.icons.setLen(icons.count)
   # 1 -- Set Font and Max Y Offset
   result.face = newFont(10) # Set FT2 Face
-  block: # Set Font Face Metrics with Pixel Units
-    let metrics = addr result.face.size.metrics
-    result.height = cast[int16](metrics.height shr 6)
-    result.ascender = cast[int16](metrics.ascender shr 6)
-    result.descender = cast[int16](metrics.descender shr 6)
-    result.baseline = result.ascender + result.descender
+  block: # Set Metrics with Pixel Units
+    let m = addr result.face.size.metrics
+    metrics.fontSize = cast[int16](m.height shr 6)
+    metrics.ascender = cast[int16](m.ascender shr 6)
+    metrics.descender = cast[int16](m.descender shr 6)
+    metrics.baseline = metrics.ascender + metrics.descender
+    # Icon Size Metric side*side
+    metrics.iconSize = icons.size
   # 2 -- Render Selected Charset
   renderFallback(result)
   renderCharset(result, csLatin)

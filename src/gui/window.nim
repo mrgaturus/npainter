@@ -6,6 +6,7 @@ import x11/xlib, x11/x
 import ../libs/egl
 
 from timer import sleep
+from config import metrics
 from ../libs/gl import gladLoadGL
 
 let
@@ -181,8 +182,11 @@ proc exec*(win: var GUIWindow): bool =
   # Shows the win on the screen
   result = XMapWindow(win.display, win.xID) != BadWindow
   discard XSync(win.display, 0) # Wait for show it
-  # Set Viewport To Rect for First Time
-  viewport(win.ctx, win.root.rect.w, win.root.rect.h)
+  # Set Global Dimensions
+  metrics.width = win.root.rect.w
+  metrics.height = win.root.rect.h
+  # Set Renderer Viewport Dimension
+  viewport(win.ctx, metrics.width, metrics.height)
   # Mark root as Dirty
   set(win.root, wDirty)
 
@@ -422,6 +426,9 @@ proc handleEvents(win: var GUIWindow) =
           event.xconfigure.height != rect.h):
         rect.w = event.xconfigure.width
         rect.h = event.xconfigure.height
+        # Set Global Metrics
+        metrics.width = rect.w
+        metrics.height = rect.h
         # Set Renderer Viewport
         viewport(win.ctx, rect.w, rect.h)
         # Relayout and Redraw GUI

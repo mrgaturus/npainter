@@ -1,8 +1,11 @@
+# Math and Fast Math Modules
+from math import sin, cos, PI
 from ../cmath import
   fastSqrt,
   invertedSqrt,
   guiProjection
-from math import sin, cos, PI
+# Assets and Metrics
+from config import metrics
 from ../assets import newShader
 # Texture Atlas
 import atlas
@@ -406,10 +409,10 @@ proc triangle*(ctx: ptr CTXRender, a,b,c: GUIPoint) =
     j = (i + 1) mod 3 # Truncate Side
     x = ctx.pVert[i].y - ctx.pVert[j].y
     y = ctx.pVert[j].x - ctx.pVert[i].x
-    # Normalize Orientation Vector
+    # Normalize Position Vector
     norm = invertedSqrt(x*x + y*y)
     x *= norm; y *= norm
-    # Add Antialiased Vertexs
+    # Add Antialiased Vertexs to Triangle Sides
     vertexAA(k, ctx.pVert[i].x + x, ctx.pVert[i].y + y)
     vertexAA(k+1, ctx.pVert[j].x + x, ctx.pVert[j].y + y)
     # Add Antialiased Elements
@@ -425,11 +428,11 @@ proc circle*(ctx: ptr CTXRender, p: GUIPoint, r: float32) =
   let # Angle Constants
     n = int32 4 * fastSqrt(r)
     theta = 2 * PI / float32(n)
+  # Circle Triangles and Elements
+  ctx.addVerts(n shl 1, n * 9)
   var # Iterator
     o, ox, oy: float32
     i, j, k: int32
-  # Circle Triangles
-  ctx.addVerts(n shl 1, n * 9)
   while i < n:
     # Direction Normals
     ox = cos(o); oy = sin(o)
@@ -446,8 +449,8 @@ proc circle*(ctx: ptr CTXRender, p: GUIPoint, r: float32) =
       triangle(k + 6, j + 1, j + 2, j + 3)
     else: # Connect Last With First
       triangle(k, 0, j, 0)
-      triangle(k + 3, 0, 1, j)
-      triangle(k + 6, 1, j, j + 1)
+      triangle(k + 3, j, 1, 0)
+      triangle(k + 6, j, j + 1, 1)
     # Next Circle Triangle
     i += 1; j += 2; k += 9
     o += theta; # Next Angle
@@ -458,7 +461,7 @@ proc circle*(ctx: ptr CTXRender, p: GUIPoint, r: float32) =
 
 proc text*(ctx: ptr CTXRender, x,y: int32, str: string) =
   # Offset Y to Atlas Font Y Offset Metric
-  unsafeAddr(y)[] += ctx.atlas.baseline
+  unsafeAddr(y)[] += metrics.baseline
   # Render Text Top to Bottom
   for rune in runes16(str):
     let glyph = # Load Glyph
@@ -488,8 +491,8 @@ proc icon*(ctx: ptr CTXRender, x,y: int32, icon: uint16) =
     let
       x = float32 x
       y = float32 y
-      xw = x + float32 ctx.atlas.iconSize
-      yh = y + float32 ctx.atlas.iconSize
+      xw = x + float32 metrics.iconSize
+      yh = y + float32 metrics.iconSize
     vertexUV(0, x, y, icon.x1, icon.y1)
     vertexUV(1, xw, y, icon.x2, icon.y1)
     vertexUV(2, x, yh, icon.x1, icon.y2)
