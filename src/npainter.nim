@@ -1,6 +1,8 @@
 import libs/gl
 import libs/ft2
 import gui/[window, widget, render, container, event, timer]
+from gui/widgets/button import newButton
+from gui/widgets/checkbox import newCheckbox
 from assets import setIcons
 
 signal Example:
@@ -19,6 +21,9 @@ type
   GUIBlank = ref object of GUIWidget
     frame: GUIWidget
     t: GUITimer
+
+proc helloworld*(g, d: pointer) =
+  echo "hello world"
 
 # ------------------
 # GUI BLANK METHODS
@@ -42,18 +47,18 @@ method draw*(widget: GUIBlank, ctx: ptr CTXRender) =
       elif widget.test(wFocus): 0xAAFFFF00'u32
       else: 0xAAFFFFFF'u32
     ctx.color(state)
-    fill(ctx, widget.rect)
+    ctx.fill rect(widget.rect)
     ctx.color(high uint32)
     #drawAtlas(ctx, widget.rect)
     ctx.color(0xAACCCCCC'u32)
     #triangle(ctx, widget.rect, toDown)
   else:
     ctx.color(0xFF000000'u32)
-    fill(ctx, widget.rect)
+    ctx.fill rect(widget.rect)
     ctx.color(high uint32)
     #drawAtlas(ctx, widget.rect)
     #ctx.texture(widget.rect, 0)
-    ctx.text(widget.rect.x, widget.rect.y, "Hello World AWAY BRAVO BRA VO bravo Bravo, gggjjjjララ")
+    ctx.text(widget.rect.x, widget.rect.y, "Hello World AWAY BRAVO BRA VO bravo Bravo, gggjjjjララ", true)
     ctx.icon(widget.rect.x + 40, widget.rect.y - 40, iconClear)
     ctx.icon(widget.rect.x + 60, widget.rect.y - 40, iconClose)
     ctx.color(0xFFAABBCC'u32)
@@ -97,6 +102,7 @@ method handle*(widget: GUIBlank, kind: GUIHandle) =
 
 when isMainModule:
   var ft: FT2Library
+  var bolo: bool
   # Initialize Freetype2
   if ft2_init(addr ft) != 0:
     echo "ERROR: failed initialize FT2"
@@ -118,6 +124,7 @@ when isMainModule:
     root.rect.h = 600
     root.color = 0xFF000000'u32
     root.flags = wStandard or wOpaque
+    win = newGUIWindow(root, addr counter)
     # --- Blank #1 ---
     blank = new GUIBlank
     blank.flags = wStandard
@@ -164,8 +171,15 @@ when isMainModule:
       # Add Blank 2
       blank.frame = con
     root.add(blank)
+    # Add a GUI Button
+    let button = newButton("Puto el que lo lea", helloworld)
+    button.geometry(20, 200, 200, button.hint.h)
+    let check = newCheckbox("Mi Check", addr bolo)
+    check.geometry(20, 250, 200, check.hint.h)
+    root.add(check)
+    root.add(button)
     # Creates new Window
-    win = newGUIWindow(root, addr counter)
+    
   # MAIN LOOP
   var running = win.exec()
 

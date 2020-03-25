@@ -103,7 +103,7 @@ method draw(self: GUIContainer, ctx: ptr CTXRender) =
   # Draw Background
   if (self.flags and wOpaque) == 0:
     ctx.color(self.color)
-    ctx.fill(self.rect)
+    ctx.fill rect(self.rect)
   # Draw Widgets
   for widget in forward(self.first):
     # Draw Widget if is Visible
@@ -128,9 +128,11 @@ method event(self: GUIContainer, state: ptr GUIState) =
     case state.eventType # Mouse or Keyboard
     of evMouseMove, evMouseClick, evMouseRelease, evMouseAxis:
       found = self.hover # Cached Widget
-      # If is Grabbed don't find
-      if self.test(wGrab) and state.eventType != evMouseClick: discard
-      elif isNil(found) or not pointOnArea(found, state.mx, state.my):
+      # If is Grabbed don't find otherwise find
+      if isNil(found) and (self.test(wGrab) or
+        state.eventType == evMouseRelease): discard
+      elif isNil(found) or not found.test(wGrab) and
+          not pointOnArea(found, state.mx, state.my):
         # Handle HoverOut
         if not isNil(found):
           found.handle(outHover)

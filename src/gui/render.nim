@@ -20,10 +20,12 @@ const
 type
   # RENDER PRIMITIVES
   GUIColor* = uint32
-  GUIPoint* = object
-    x*, y*: float32
   GUIRect* = object
     x*, y*, w*, h*: int32
+  CTXPoint* = object
+    x*, y*: float32
+  CTXRect* = object
+    x*, y*, xw*, yh*: float32
   # Clip Levels
   CTXCommand = object
     offset, base, size: int32
@@ -70,14 +72,26 @@ type
 proc rgba*(r, g, b, a: uint8): GUIColor {.inline.} =
   result = r or (g shl 8) or (b shl 16) or (a shl 24)
 
-proc point*(x, y: float32): GUIPoint {.inline.} =
+proc rect*(x, y, w, h: int32): CTXRect {.inline.} =
+  result.x = float32(x) 
+  result.y = float32(y)
+  result.xw = float32(x + w) 
+  result.yh = float32(y + h)
+
+proc rect*(r: GUIRect): CTXRect =
+  result.x = float32(r.x)
+  result.y = float32(r.y)
+  result.xw = float32(r.x + r.w)
+  result.yh = float32(r.y + r.h)
+
+proc point*(x, y: float32): CTXPoint {.inline.} =
   result.x = x; result.y = y
 
-proc point*(x, y: int32): GUIPoint {.inline.} =
+proc point*(x, y: int32): CTXPoint {.inline.} =
   result.x = float32(x)
   result.y = float32(y)
 
-proc normal*(a, b: GUIPoint): GUIPoint =
+proc normal*(a, b: CTXPoint): CTXPoint =
   result.x = a.y - b.y
   result.y = b.x - a.x
   let norm = invertedSqrt(
@@ -318,46 +332,34 @@ proc color*(ctx: ptr CTXRender, color: uint32) {.inline.} =
 # GUI BASIC SHAPES DRAW PROCS
 # ---------------------------
 
-proc fill*(ctx: ptr CTXRender, rect: var GUIRect) =
+proc fill*(ctx: ptr CTXRender, r: CTXRect) =
   ctx.addVerts(4, 6)
-  block: # Rect Triangles
-    let
-      x = float32 rect.x
-      y = float32 rect.y
-      xw = x + float32 rect.w
-      yh = y + float32 rect.h
-    vertex(0, x, y)
-    vertex(1, xw, y)
-    vertex(2, x, yh)
-    vertex(3, xw, yh)
+  vertex(0, r.x, r.y)
+  vertex(1, r.xw, r.y)
+  vertex(2, r.x, r.yh)
+  vertex(3, r.xw, r.yh)
   # Elements Definition
   triangle(0, 0,1,2)
   triangle(3, 1,2,3)
 
-proc rectangle*(ctx: ptr CTXRender, rect: var GUIRect, s: float32) =
+proc rectangle*(ctx: ptr CTXRender, r: CTXRect, s: float32) =
   ctx.addVerts(12, 24)
-  block: # Box Vertex
-    let
-      x = float32 rect.x
-      y = float32 rect.y
-      xw = x + float32 rect.w
-      yh = y + float32 rect.h
-    # Top Left Corner
-    vertex(0, x, y+s)
-    vertex(1, x, y)
-    vertex(2, x+s, y)
-    # Top Right Corner
-    vertex(3, xw-s, y)
-    vertex(4, xw, y)
-    vertex(5, xw, y+s)
-    # Bottom Right Corner
-    vertex(6, xw, yh-s)
-    vertex(7, xw, yh)
-    vertex(8, xw-s, yh)
-    # Bottom Left Corner
-    vertex(9, x+s, yh)
-    vertex(10, x, yh)
-    vertex(11, x, yh-s)
+  # Top Left Corner
+  vertex(0, r.x,    r.y+s)
+  vertex(1, r.x,    r.y)
+  vertex(2, r.x+s,  r.y)
+  # Top Right Corner
+  vertex(3, r.xw-s, r.y)
+  vertex(4, r.xw,   r.y)
+  vertex(5, r.xw,   r.y+s)
+  # Bottom Right Corner
+  vertex(6, r.xw,   r.yh-s)
+  vertex(7, r.xw,   r.yh)
+  vertex(8, r.xw-s, r.yh)
+  # Bottom Left Corner
+  vertex(9,  r.x+s,  r.yh)
+  vertex(10, r.x,    r.yh)
+  vertex(11, r.x,    r.yh-s)
   # Top Rect
   triangle(0, 0,1,5)
   triangle(3, 5,4,1)
@@ -393,7 +395,7 @@ proc texture*(ctx: ptr CTXRender, rect: var GUIRect, texID: GLuint) =
 # ANTIALIASED SHAPES PROCS
 # ------------------------
 
-proc triangle*(ctx: ptr CTXRender, a,b,c: GUIPoint) =
+proc triangle*(ctx: ptr CTXRender, a,b,c: CTXPoint) =
   ctx.addVerts(9, 21)
   # Triangle Description
   vertex(0, a.x, a.y)
@@ -421,7 +423,7 @@ proc triangle*(ctx: ptr CTXRender, a,b,c: GUIPoint) =
     # Next Triangle Size
     i += 1; k += 2; l += 6
 
-proc circle*(ctx: ptr CTXRender, p: GUIPoint, r: float32) =
+proc circle*(ctx: ptr CTXRender, p: CTXPoint, r: float32) =
   # Move X & Y to Center
   unsafeAddr(p.x)[] += r
   unsafeAddr(p.y)[] += r
@@ -459,13 +461,15 @@ proc circle*(ctx: ptr CTXRender, p: GUIPoint, r: float32) =
 # TEXT & ICONS RENDERING PROCS
 # ----------------------------
 
-proc text*(ctx: ptr CTXRender, x,y: int32, str: string) =
+proc text*(ctx: ptr CTXRender, x,y: int32, str: string, center = false) =
   # Offset Y to Atlas Font Y Offset Metric
   unsafeAddr(y)[] += metrics.baseline
+  if center: # Offset X Half Size of String
+    unsafeAddr(x)[] -= ctx.atlas.calcWidth(str) shr 1
   # Render Text Top to Bottom
   for rune in runes16(str):
     let glyph = # Load Glyph
-      ctx.atlas.lookupGlyph(rune)
+      ctx.atlas.getGlyph(rune)
     # Reserve Quad Vertex and Elements
     ctx.addVerts(4, 6); block:
       let # Quad Coordinates
@@ -486,7 +490,7 @@ proc text*(ctx: ptr CTXRender, x,y: int32, str: string) =
 
 proc icon*(ctx: ptr CTXRender, x,y: int32, icon: uint16) =
   ctx.addVerts(4, 6)
-  let icon = ctx.atlas.lookupIcon(icon)
+  let icon = ctx.atlas.getIcon(icon)
   block: # Rect Triangles
     let
       x = float32 x

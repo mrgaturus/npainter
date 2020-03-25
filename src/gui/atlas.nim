@@ -391,7 +391,7 @@ iterator runes16*(str: string): uint16 =
 # ATLAS GLYPH AND ICONS LOOKUP PROCS
 # ----------------------------------
 
-proc lookupGlyph*(atlas: var CTXAtlas, charcode: uint16): ptr TEXGlyph =
+proc getGlyph*(atlas: var CTXAtlas, charcode: uint16): ptr TEXGlyph =
   # Check if lookup needs expand
   if int32(charcode) >= len(atlas.lookup):
     atlas.lookup.setLen(1 + int32 charcode)
@@ -402,7 +402,12 @@ proc lookupGlyph*(atlas: var CTXAtlas, charcode: uint16): ptr TEXGlyph =
   of 0xFFFF: addr atlas.glyphs[0]
   else: addr atlas.glyphs[lookup]
 
-proc lookupIcon*(atlas: var CTXAtlas, icon: uint16): ptr TEXIcon =
+proc calcWidth*(atlas: var CTXAtlas, text: string): int32 =
+  for rune in runes16(text):
+    result += # Sum glyph advances
+      atlas.getGlyph(rune).advance
+
+proc getIcon*(atlas: var CTXAtlas, icon: uint16): ptr TEXIcon =
   result = addr atlas.icons[icon] # Get Icon UV Coords
 
 # ---------------------------
