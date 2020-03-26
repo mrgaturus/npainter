@@ -308,7 +308,7 @@ proc newCTXAtlas*(): CTXAtlas =
     # Save Texture UV Coordinates
     icon.x1 = point.x; icon.x2 = point.x + icons.size
     icon.y1 = point.y; icon.y2 = point.y + icons.size
-  dealloc(icons); icons = nil # Dealloc Global Icons
+  dealloc(icons) # Dealloc Global Icons
   # -- Arrange Font Charset Glyphs
   cursor = 0 # Reset Cursor
   for glyph in mitems(result.glyphs):

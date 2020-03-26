@@ -31,8 +31,8 @@ var # Global State
   cflags*: uint
 
 proc initialized*(): bool =
-  # Check if there is a GUIWindow
-  isNil(icons) and not isNil(font)
+  # Check if there is a GUIWindow 
+  not isNil(font) and not isNil(icons)
 
 proc loadResources*() =
   font = newFont(10)
