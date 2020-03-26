@@ -77,9 +77,10 @@ proc createXIM(win: var GUIWindow) =
   if win.xic == nil:
     log(lvWarning, "failed creating XIM context")
 
-proc createXWindow(dsp: PDisplay, w, h: uint32): TWindow =
-  let root = DefaultRootWindow(dsp)
-  var attr: TXSetWindowAttributes
+proc createXWindow(win: var GUIWindow, w, h: uint32) =
+  var # Attributes and EGL
+    attr: TXSetWindowAttributes
+    eglSur: EGLSurface
   attr.event_mask =
     KeyPressMask or
     KeyReleaseMask or
@@ -87,10 +88,25 @@ proc createXWindow(dsp: PDisplay, w, h: uint32): TWindow =
     ButtonReleaseMask or
     PointerMotionMask or
     StructureNotifyMask
-  result = XCreateWindow(dsp, root, 0, 0, w, h, 0, CopyFromParent,
-      CopyFromParent, nil, CWEventMask, addr attr)
-  if result == 0:
+  # Get Default Root Window From Display
+  let root = DefaultRootWindow(win.display)
+  # Create X11 Window With Default Flags
+  win.xID = XCreateWindow(win.display, root, 0, 0, w, h, 0, 
+    CopyFromParent, CopyFromParent, nil, CWEventMask, addr attr)
+  if win.xID == 0: # Check if Window was created properly
     log(lvError, "failed creating X11 window")
+  # Create EGL Surface and Make it Current
+  eglSur = eglCreateWindowSurface(win.eglDsp, win.eglCfg, 
+    win.xID, cast[ptr EGLint](attSUR[0].unsafeAddr))
+  if eglSur.pointer.isNil or not # Make Context Current
+      eglMakeCurrent(win.eglDsp, eglSur, eglSur, win.eglCtx):
+    log(lvError, "failed creating EGL Surface")
+  # Load GL functions and check it
+  if not gladLoadGL(eglGetProcAddress):
+    log(lvError, "failed loading GL functions")
+    return
+  # Set New EGL Surface
+  win.eglSur = eglSur
 
 proc createEGL(win: var GUIWindow) =
   var
@@ -98,93 +114,74 @@ proc createEGL(win: var GUIWindow) =
     eglDsp: EGLDisplay
     eglCfg: EGLConfig
     eglCtx: EGLContext
-    eglSur: EGLSurface
     # Checks
     ignore: EGLint
     cfgNum: EGLint
     ok: EGLBoolean
   # Bind OpenGL API
   ok = eglBindAPI(EGL_OPENGL_API)
-  if not ok: return
-  # Get EGL Display
+  # Get EGL Display from X11 Display
   eglDsp = eglGetDisplay(win.display)
-  if eglDsp.pointer.isNil: return
   # Initialize EGL
-  ok = eglInitialize(eglDsp, ignore.addr, ignore.addr)
-  if not ok: return
-  # Choose Config
-  ok = eglChooseConfig(eglDsp, cast[ptr EGLint](attEGL[0].unsafeAddr),
-      eglCfg.addr, 1, cfgNum.addr)
-  if not ok or cfgNum == 0: return
+  ok = ok and eglInitialize(eglDsp, ignore.addr, ignore.addr)
+  # Choose EGL Configuration for Standard OpenGL
+  ok = ok and eglChooseConfig(eglDsp, cast[ptr EGLint](attEGL[0].unsafeAddr),
+      eglCfg.addr, 1, cfgNum.addr) and cfgNum != 0
   # Create Context and Window Surface
   eglCtx = eglCreateContext(eglDsp, eglCfg, EGL_NO_CONTEXT, cast[ptr EGLint](
       attCTX[0].unsafeAddr))
-  eglSur = eglCreateWindowSurface(eglDsp, eglCfg, win.xID, cast[ptr EGLint](
-      attSUR[0].unsafeAddr))
-  if eglCtx.pointer.isNil or eglSur.pointer.isNil: return
-  # Make Current
-  ok = eglMakeCurrent(eglDsp, eglSur, eglSur, eglCtx)
-  if not ok: return
-  # Check if EGL is created properly
-  if eglDsp.pointer.isNil or
-      eglCfg.pointer.isNil or
-      eglCtx.pointer.isNil or
-      eglSur.pointer.isNil:
+  # Check if EGL was created properly
+  if not ok or eglDsp.pointer.isNil or 
+      eglCfg.pointer.isNil or eglCtx.pointer.isNil:
     log(lvError, "failed creating EGL context")
-    return
-  # Check if GL procs was loaded
-  if not gladLoadGL(eglGetProcAddress):
-    log(lvError, "failed loading GL functions")
     return
   # Save new EGL Context
   win.eglDsp = eglDsp
   win.eglCfg = eglCfg
   win.eglCtx = eglCtx
-  win.eglSur = eglSur
 
 # --------------------
 # WINDOW CREATION PROCS
 # --------------------
 
-proc newGUIWindow*(root: GUIWidget, global: pointer): GUIWindow =
+proc newGUIWindow*(global: pointer): GUIWindow =
   # Create new X11 Display
   result.display = XOpenDisplay(nil)
   if isNil(result.display):
     log(lvError, "failed opening X11 display")
-  # Initialize X11 Window
-  result.xID = createXWindow(result.display, 
-    uint32(root.rect.w), uint32(root.rect.h)
-  ) # Use root initial dimensions
-  # Initialize XIM/XIC
-  result.createXIM()
   # Alloc a 32 byte UTF8Buffer
   result.state.utf8buffer(32)
-  # Initialize EGL and GL
+  # Create EGL Context
   result.createEGL()
-  # Initialize CTX Renderer
-  result.ctx = newCTXRender()
   # Disable VSync - Avoid Input Lag
   discard eglSwapInterval(result.eglDsp, 0)
-  # Root has Window and Frame Signals
-  root.signals = {WindowID, FrameID}
-  root.flags = wStandard or wOpaque
-  # Set the new root at first and next
-  result.root = root
-  result.last = root
-  # Alloc GUIQueue in Global
+  # Alloc GUIQueue With Global Pointer
   allocQueue(global)
 
 # --------------
 # WINDOW EXEC/EXIT
 # --------------
 
-proc exec*(win: var GUIWindow): bool =
-  # Shows the win on the screen
+proc exec*(win: var GUIWindow, root: GUIWidget): bool =
+  # Set the new root at first and next
+  win.root = root; win.last = root
+  # Root has Window and Frame Signals
+  root.signals = {WindowID, FrameID}
+  root.flags = wStandard or wOpaque
+  # Set Global Dimensions
+  metrics.width = root.rect.w
+  metrics.height = root.rect.h
+  # Create X11 Window
+  win.createXWindow( # With Root Dimensions
+    uint32 metrics.width, uint32 metrics.height)
+  # Initialize CTX Renderer
+  win.ctx = newCTXRender()
+  metrics.opaque = addr win.ctx.atlas
+  # Create X11 IM
+  win.createXIM()
+  # Shows the Window on the screen
   result = XMapWindow(win.display, win.xID) != BadWindow
   discard XSync(win.display, 0) # Wait for show it
-  # Set Global Dimensions
-  metrics.width = win.root.rect.w
-  metrics.height = win.root.rect.h
   # Set Renderer Viewport Dimension
   viewport(win.ctx, metrics.width, metrics.height)
   # Mark root as Dirty

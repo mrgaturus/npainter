@@ -49,7 +49,7 @@ type
     vWidth, vHeight: int32
     vCache: array[16, float32]
     # Atlas & Buffer Objects
-    atlas: CTXAtlas
+    atlas*: CTXAtlas
     vao, ebo, vbo: GLuint
     # Color and Clips
     color, colorAA: uint32
@@ -58,8 +58,8 @@ type
     size, cursor: uint16
     # Write Pointers
     pCMD: ptr CTXCommand
-    pVert: CTXVertexMap
-    pElem: CTXElementMap
+    pVert*: CTXVertexMap
+    pElem*: CTXElementMap
     # Allocated Buffer Data
     cmds: seq[CTXCommand]
     elements: seq[uint16]
@@ -248,7 +248,7 @@ proc addCommand(ctx: ptr CTXRender) =
   ) # End Add Command
   ctx.pCMD = addr ctx.cmds[^1]
 
-proc addVerts(ctx: ptr CTXRender, vSize, eSize: int32) =
+proc addVerts*(ctx: ptr CTXRender, vSize, eSize: int32) =
   # Create new Command if is reseted
   if isNil(ctx.pCMD): addCommand(ctx)
   # Set New Vertex and Elements Lenght
@@ -461,11 +461,9 @@ proc circle*(ctx: ptr CTXRender, p: CTXPoint, r: float32) =
 # TEXT & ICONS RENDERING PROCS
 # ----------------------------
 
-proc text*(ctx: ptr CTXRender, x,y: int32, str: string, center = false) =
+proc text*(ctx: ptr CTXRender, x,y: int32, str: string) =
   # Offset Y to Atlas Font Y Offset Metric
   unsafeAddr(y)[] += metrics.baseline
-  if center: # Offset X Half Size of String
-    unsafeAddr(x)[] -= ctx.atlas.calcWidth(str) shr 1
   # Render Text Top to Bottom
   for rune in runes16(str):
     let glyph = # Load Glyph

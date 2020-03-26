@@ -58,7 +58,7 @@ method draw*(widget: GUIBlank, ctx: ptr CTXRender) =
     ctx.color(high uint32)
     #drawAtlas(ctx, widget.rect)
     #ctx.texture(widget.rect, 0)
-    ctx.text(widget.rect.x, widget.rect.y, "Hello World AWAY BRAVO BRA VO bravo Bravo, gggjjjjララ", true)
+    ctx.text(widget.rect.x, widget.rect.y, "Hello World AWAY BRAVO BRA VO bravo Bravo, gggjjjjララ")
     ctx.icon(widget.rect.x + 40, widget.rect.y - 40, iconClear)
     ctx.icon(widget.rect.x + 60, widget.rect.y - 40, iconClose)
     ctx.color(0xFFAABBCC'u32)
@@ -102,7 +102,7 @@ method handle*(widget: GUIBlank, kind: GUIHandle) =
 
 when isMainModule:
   var ft: FT2Library
-  var bolo: bool
+  var bolo, bala: bool
   # Initialize Freetype2
   if ft2_init(addr ft) != 0:
     echo "ERROR: failed initialize FT2"
@@ -112,19 +112,18 @@ when isMainModule:
     released: 0
   )
   # Create a new Window
-  var win: GUIWindow
+  var win = newGUIWindow(addr counter)
+  let root = new GUIContainer
   block: # Create Widgets
     # Create two blanks
     var
       sub, blank: GUIBlank
       con: GUIContainer
     # Initialize Root
-    let root = new GUIContainer
     root.rect.w = 1024
     root.rect.h = 600
     root.color = 0xFF000000'u32
     root.flags = wStandard or wOpaque
-    win = newGUIWindow(root, addr counter)
     # --- Blank #1 ---
     blank = new GUIBlank
     blank.flags = wStandard
@@ -172,16 +171,19 @@ when isMainModule:
       blank.frame = con
     root.add(blank)
     # Add a GUI Button
-    let button = newButton("Puto el que lo lea", helloworld)
+    let button = newButton("Test Button CB", helloworld)
     button.geometry(20, 200, 200, button.hint.h)
-    let check = newCheckbox("Mi Check", addr bolo)
-    check.geometry(20, 250, 200, check.hint.h)
+    var check = newCheckbox("Check B", addr bolo)
+    check.geometry(20, 250, 100, check.hint.h)
+    root.add(check)
+    check = newCheckbox("Check A", addr bala)
+    check.geometry(120, 250, 100, check.hint.h)
     root.add(check)
     root.add(button)
     # Creates new Window
     
   # MAIN LOOP
-  var running = win.exec()
+  var running = win.exec(root)
 
   while running:
     # Render Main Program

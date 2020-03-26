@@ -30,10 +30,9 @@ method draw(self: GUIButton, ctx: ptr CTXRender) =
   ctx.color(high uint32)
   ctx.text( # Draw Centered Text
     self.rect.x + self.rect.w shr 1, 
-    self.rect.y + 6, self.label, true)
+    self.rect.y + 6, self.label)
 
 method event*(self: GUIButton, state: ptr GUIState) =
-  if self.test(wEnabled):
-    if state.eventType == evMouseRelease and 
-        self.test(wHover) and not isNil(self.cb):
-      pushCallback(self.cb)
+  if state.eventType == evMouseRelease and 
+      self.test(wHover or wEnabled) and 
+      not isNil(self.cb): pushCallback(self.cb)

@@ -17,6 +17,8 @@ type
     # -- Font and Glyph Metrics --
     ascender*, descender*, baseline*: int16
     fontSize*, iconSize*: int32
+    # -- Font Opaque --
+    opaque*: pointer
 
 var # Global State
   colors*: CFGColors

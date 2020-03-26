@@ -402,11 +402,6 @@ proc getGlyph*(atlas: var CTXAtlas, charcode: uint16): ptr TEXGlyph =
   of 0xFFFF: addr atlas.glyphs[0]
   else: addr atlas.glyphs[lookup]
 
-proc calcWidth*(atlas: var CTXAtlas, text: string): int32 =
-  for rune in runes16(text):
-    result += # Sum glyph advances
-      atlas.getGlyph(rune).advance
-
 proc getIcon*(atlas: var CTXAtlas, icon: uint16): ptr TEXIcon =
   result = addr atlas.icons[icon] # Get Icon UV Coords
 
@@ -442,3 +437,23 @@ proc checkTexture*(atlas: var CTXAtlas): bool =
   atlas.x2 = 0; atlas.y2 = 0
   # Set Status to Normal
   atlas.status = bufNormal
+
+# --------------------------
+# ATLAS GLOBAL METRICS PROCS
+# --------------------------
+
+proc textWidth*(text: string): int32 =
+  for rune in runes16(text):
+    result += cast[ptr CTXAtlas]
+      (metrics.opaque)[]
+      .getGlyph(rune).advance
+
+proc textIndex*(text: string, w: int32): int32 =
+  var advance: int32
+  for rune in runes16(text):
+    advance += cast[ptr CTXAtlas]
+      (metrics.opaque)[]
+      .getGlyph(rune).advance
+    # Check if w is in advanced
+    if advance > w: break
+    else: inc(result)
