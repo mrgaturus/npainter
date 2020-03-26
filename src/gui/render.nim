@@ -49,7 +49,7 @@ type
     vWidth, vHeight: int32
     vCache: array[16, float32]
     # Atlas & Buffer Objects
-    atlas*: CTXAtlas
+    atlas: CTXAtlas
     vao, ebo, vbo: GLuint
     # Color and Clips
     color, colorAA: uint32

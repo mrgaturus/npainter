@@ -12,7 +12,7 @@ from libs/ft2 import
   ft2_setCharSize
 
 type # Buffer Data
-  DATIcons = ref object
+  BUFIcons* = ptr object
     size*: int16 # size*size
     count*, len*: int32
     buffer*: UncheckedArray[byte]
@@ -43,13 +43,16 @@ proc newFont*(size: int32): FT2Face =
   if ft2_setCharSize(result, 0, size shl 6, 96, 96) != 0:
     log(lvWarning, "font size was setted not properly")
 
-proc newIcons*(): DATIcons =
+proc newIcons*(): BUFIcons =
   var icons: File
   if open(icons, iconsPath):
     # Copy File to Buffer
+    var read: int # Bytes Readed
     let size = getFileSize(icons)
-    unsafeNew(result, size) # Alloc Buffer
-    discard readBuffer(icons, cast[pointer](result), size)
+    result = cast[BUFIcons](alloc size)
+    read = readBuffer(icons, result, size)
+    if read != size: # Check if was loaded correctly
+      log(lvWarning, "bad icons file size: ", iconsPath)
     # Close Icons File
     close(icons)
   else: # Failed Loading Icons

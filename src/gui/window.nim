@@ -6,7 +6,8 @@ import x11/xlib, x11/x
 import ../libs/egl
 
 from timer import sleep
-from config import metrics
+from config import 
+  initialized, loadResources, metrics
 from ../libs/gl import gladLoadGL
 
 let
@@ -90,18 +91,18 @@ proc createXWindow(win: var GUIWindow, w, h: uint32) =
     StructureNotifyMask
   # Get Default Root Window From Display
   let root = DefaultRootWindow(win.display)
-  # Create X11 Window With Default Flags
+  # -- Create X11 Window With Default Flags
   win.xID = XCreateWindow(win.display, root, 0, 0, w, h, 0, 
     CopyFromParent, CopyFromParent, nil, CWEventMask, addr attr)
   if win.xID == 0: # Check if Window was created properly
     log(lvError, "failed creating X11 window")
-  # Create EGL Surface and Make it Current
+  # -- Create EGL Surface and Make it Current
   eglSur = eglCreateWindowSurface(win.eglDsp, win.eglCfg, 
-    win.xID, cast[ptr EGLint](attSUR[0].unsafeAddr))
+    win.xID, cast[ptr EGLint](attSUR.unsafeAddr))
   if eglSur.pointer.isNil or not # Make Context Current
       eglMakeCurrent(win.eglDsp, eglSur, eglSur, win.eglCtx):
     log(lvError, "failed creating EGL Surface")
-  # Load GL functions and check it
+  # -- Load GL functions and check it
   if not gladLoadGL(eglGetProcAddress):
     log(lvError, "failed loading GL functions")
     return
@@ -125,11 +126,12 @@ proc createEGL(win: var GUIWindow) =
   # Initialize EGL
   ok = ok and eglInitialize(eglDsp, ignore.addr, ignore.addr)
   # Choose EGL Configuration for Standard OpenGL
-  ok = ok and eglChooseConfig(eglDsp, cast[ptr EGLint](attEGL[0].unsafeAddr),
-      eglCfg.addr, 1, cfgNum.addr) and cfgNum != 0
+  ok = ok and eglChooseConfig(eglDsp, 
+    cast[ptr EGLint](attEGL.unsafeAddr),
+    eglCfg.addr, 1, cfgNum.addr) and cfgNum != 0
   # Create Context and Window Surface
-  eglCtx = eglCreateContext(eglDsp, eglCfg, EGL_NO_CONTEXT, cast[ptr EGLint](
-      attCTX[0].unsafeAddr))
+  eglCtx = eglCreateContext(eglDsp, eglCfg, EGL_NO_CONTEXT, 
+    cast[ptr EGLint](attCTX.unsafeAddr))
   # Check if EGL was created properly
   if not ok or eglDsp.pointer.isNil or 
       eglCfg.pointer.isNil or eglCtx.pointer.isNil:
@@ -145,6 +147,8 @@ proc createEGL(win: var GUIWindow) =
 # --------------------
 
 proc newGUIWindow*(global: pointer): GUIWindow =
+  if initialized(): # Check if there is an instance
+    log(lvWarning, "window already created, software malformed")
   # Create new X11 Display
   result.display = XOpenDisplay(nil)
   if isNil(result.display):
@@ -157,6 +161,8 @@ proc newGUIWindow*(global: pointer): GUIWindow =
   discard eglSwapInterval(result.eglDsp, 0)
   # Alloc GUIQueue With Global Pointer
   allocQueue(global)
+  # Load Icons and Font
+  loadResources()
 
 # --------------
 # WINDOW EXEC/EXIT
@@ -176,7 +182,6 @@ proc exec*(win: var GUIWindow, root: GUIWidget): bool =
     uint32 metrics.width, uint32 metrics.height)
   # Initialize CTX Renderer
   win.ctx = newCTXRender()
-  metrics.opaque = addr win.ctx.atlas
   # Create X11 IM
   win.createXIM()
   # Shows the Window on the screen

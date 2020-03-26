@@ -92,6 +92,7 @@ type # Trimmed Types for basic usage
     size*: FT2Size
 
 const # FT2 CONSTANTS
+  FT_LOAD_DEFAULT* = 0
   FT_LOAD_RENDER* = 1 shl 2
   FT_KERNING_DEFAULT* = 0'i32
 
