@@ -1,5 +1,5 @@
 from math import sqrt, ceil, nextPowerOfTwo
-from config import metrics, font, icons
+from config import metrics
 
 import ../libs/gl
 import ../libs/ft2
@@ -16,7 +16,9 @@ type # Atlas Objects
     w*, h*: int16 # Bitmap Dimensions
   BUFStatus = enum # Bitmap Buffer Status
     bufNormal, bufDirty, bufResize
-  CTXAtlas* = object
+  CTXAtlas* = ref object
+    # FT2 FONT FACE
+    face: FT2Face
     # SKYLINE BIN PACKING
     w, h: int32 # Dimensions
     nodes: seq[SKYNode]
@@ -58,7 +60,7 @@ let # Charset Common Ranges for Preloading
 # FONTSTASH'S ATLAS SKYLINE BIN PACKING PROCS
 # -------------------------------------------
 
-proc rectFits(atlas: var CTXAtlas, idx: int32, w,h: int16): int16 =
+proc rectFits(atlas: CTXAtlas, idx: int32, w,h: int16): int16 =
   if atlas.nodes[idx].x + w > atlas.w: return -1
   var # Check if there is enough space at location i
     y = atlas.nodes[idx].y
@@ -74,7 +76,7 @@ proc rectFits(atlas: var CTXAtlas, idx: int32, w,h: int16): int16 =
     inc(i)
   return y # Yeah, Rect Fits
 
-proc addSkylineNode(atlas: var CTXAtlas, idx: int32, x,y,w,h: int16) =
+proc addSkylineNode(atlas: CTXAtlas, idx: int32, x,y,w,h: int16) =
   block: # Add New Node, not OOM checked
     var node: SKYNode
     node.x = x; node.y = y+h; node.w = w
@@ -108,7 +110,7 @@ proc addSkylineNode(atlas: var CTXAtlas, idx: int32, x,y,w,h: int16) =
       dec(i) # Reverse i-th
     inc(i) # Next Node
 
-proc pack*(atlas: var CTXAtlas, w, h: int16): tuple[x, y: int16] =
+proc pack*(atlas: CTXAtlas, w, h: int16): tuple[x, y: int16] =
   var # Initial Best Fits
     bestIDX = -1'i32
     bestX = -1'i16
@@ -139,7 +141,7 @@ proc pack*(atlas: var CTXAtlas, w, h: int16): tuple[x, y: int16] =
 # ATLAS GLYPH RENDERING PROCS
 # ---------------------------
 
-proc renderFallback(atlas: var CTXAtlas) =
+proc renderFallback(atlas: CTXAtlas) =
   let # Fallback Metrics
     size = metrics.baseline
     half = size shr 1
@@ -155,10 +157,10 @@ proc renderFallback(atlas: var CTXAtlas) =
   while i < len(atlas.buffer):
     atlas.buffer[i] = high(byte); inc(i)
 
-proc renderCharcode(atlas: var CTXAtlas, code: uint16) =
-  let index = ft2_getCharIndex(font, code) # Load Glyph from Global
-  if index != 0 and ft2_loadGlyph(font, index, FT_LOAD_RENDER) == 0:
-    let slot = font.glyph # Shorcut
+proc renderCharcode(atlas: CTXAtlas, code: uint16) =
+  let index = ft2_getCharIndex(atlas.face, code) # Load Glyph from Global
+  if index != 0 and ft2_loadGlyph(atlas.face, index, FT_LOAD_RENDER) == 0:
+    let slot = atlas.face.glyph # Shorcut
     # -- Add Glyph to Glyph Cache
     atlas.glyphs.add TEXGlyph(
       # Save new dimensions, very small values
@@ -181,7 +183,7 @@ proc renderCharcode(atlas: var CTXAtlas, code: uint16) =
     atlas.lookup[code] = uint16(high atlas.glyphs)
   else: atlas.lookup[code] = 0xFFFF
 
-proc renderCharset(atlas: var CTXAtlas, charset: openArray[uint16]) =
+proc renderCharset(atlas: CTXAtlas, charset: openArray[uint16]) =
   var # Charset Iterator
     s, e: uint16 # Charcode Iter
     i = 0 # Range Iter
@@ -199,14 +201,14 @@ proc renderCharset(atlas: var CTXAtlas, charset: openArray[uint16]) =
       inc(s) # Next Charcode
     i += 2 # Next Range Pair
 
-proc renderOnDemand(atlas: var CTXAtlas, code: uint16): ptr TEXGlyph =
-  let index = ft2_getCharIndex(font, code) # Load Glyph From Global
-  if index != 0 and ft2_loadGlyph(font, index, FT_LOAD_RENDER) == 0:
+proc renderOnDemand(atlas: CTXAtlas, code: uint16): ptr TEXGlyph =
+  let index = ft2_getCharIndex(atlas.face, code) # Load Glyph From Global
+  if index != 0 and ft2_loadGlyph(atlas.face, index, FT_LOAD_RENDER) == 0:
     var # Auxiliar Vars
       glyph: ptr TEXGlyph
       buffer: cstring
     block: # -- Save New Glyph to Glyphs Seq
-      let slot = font.glyph # Shorcut
+      let slot = atlas.face.glyph # Shorcut
       # Expand Glyphs for a New Glyph
       atlas.glyphs.setLen(1 + atlas.glyphs.len)
       glyph = addr atlas.glyphs[^1]
@@ -273,8 +275,22 @@ proc renderOnDemand(atlas: var CTXAtlas, code: uint16): ptr TEXGlyph =
 # -------------------
 
 proc newCTXAtlas*(): CTXAtlas =
-  # 1 -- Alloc Icons from Global
+  new result # Create Object
+  # 1 -- Load Icons And Face
+  let icons = newIcons()
   result.icons.setLen(icons.count)
+  # 1.5 -- Set Font and Global Metrics
+  result.face = newFont(10); block:
+    let m = addr result.face.size.metrics
+    # Set Font Metrics in pixel units
+    metrics.fontSize = cast[int16](m.height shr 6)
+    metrics.ascender = cast[int16](m.ascender shr 6)
+    metrics.descender = cast[int16](m.descender shr 6)
+    metrics.baseline = metrics.ascender + metrics.descender
+    # Set Icon Metric side*side
+    metrics.iconSize = icons.size
+    # Set Opaque For Text Metric Calc
+    metrics.opaque = cast[pointer](result)
   # 2 -- Render Selected Charset
   renderFallback(result)
   renderCharset(result, csLatin)
@@ -308,7 +324,6 @@ proc newCTXAtlas*(): CTXAtlas =
     # Save Texture UV Coordinates
     icon.x1 = point.x; icon.x2 = point.x + icons.size
     icon.y1 = point.y; icon.y2 = point.y + icons.size
-  dealloc(icons) # Dealloc Global Icons
   # -- Arrange Font Charset Glyphs
   cursor = 0 # Reset Cursor
   for glyph in mitems(result.glyphs):
@@ -379,7 +394,7 @@ iterator runes16*(str: string): uint16 =
 # ATLAS GLYPH AND ICONS LOOKUP PROCS
 # ----------------------------------
 
-proc getGlyph*(atlas: var CTXAtlas, charcode: uint16): ptr TEXGlyph =
+proc getGlyph*(atlas: CTXAtlas, charcode: uint16): ptr TEXGlyph =
   # Check if lookup needs expand
   if int32(charcode) >= len(atlas.lookup):
     atlas.lookup.setLen(1 + int32 charcode)
@@ -390,14 +405,14 @@ proc getGlyph*(atlas: var CTXAtlas, charcode: uint16): ptr TEXGlyph =
   of 0xFFFF: addr atlas.glyphs[0]
   else: addr atlas.glyphs[lookup]
 
-proc getIcon*(atlas: var CTXAtlas, icon: uint16): ptr TEXIcon =
+proc getIcon*(atlas: CTXAtlas, icon: uint16): ptr TEXIcon =
   result = addr atlas.icons[icon] # Get Icon UV Coords
 
 # ---------------------------
 # ATLAS TEXTURE UPDATING PROC
 # ---------------------------
 
-proc checkTexture*(atlas: var CTXAtlas): bool =
+proc checkTexture*(atlas: CTXAtlas): bool =
   case atlas.status:
   of bufNormal: return false
   of bufDirty: # Has New Glyphs
@@ -429,22 +444,19 @@ proc checkTexture*(atlas: var CTXAtlas): bool =
 # --------------------------
 # ATLAS GLOBAL METRICS PROCS
 # --------------------------
-# Slow on draw, not cached
 
 proc textWidth*(text: string): int32 =
-  for rune in runes16(text): # Iterate over UTF8 chars up to uint16
-    let index = ft2_getCharIndex(font, rune) # Load Glyph From Global
-    if index != 0 and ft2_loadGlyph(font, index, FT_LOAD_DEFAULT) == 0:
-      result += cast[int32](font.glyph.advance.x shr 6)
-    else: result += (metrics.baseline shr 1) + 2
+  let atlas = # Get Atlas from Global
+    cast[CTXAtlas](metrics.opaque)
+  for rune in runes16(text):
+    result += atlas.getGlyph(rune).advance
 
 proc textIndex*(text: string, w: int32): int32 =
   var advance: int32 # Current Advance
-  for rune in runes16(text): # Iterate over UTF8 chars up to uint16
-    let index = ft2_getCharIndex(font, rune) # Load Glyph From Global
-    if index != 0 and ft2_loadGlyph(font, index, FT_LOAD_DEFAULT) == 0:
-      advance += cast[int32](font.glyph.advance.x shr 6)
-    else: advance += (metrics.baseline shr 1) + 2
-    # Advance greater than w?
+  let atlas = # Get Atlas from Global
+    cast[CTXAtlas](metrics.opaque)
+  for rune in runes16(text): 
+    advance += atlas.getGlyph(rune).advance
+    # Is Advance greater than w?
     if advance > w: break
     else: inc(result)

@@ -112,7 +112,7 @@ when isMainModule:
     released: 0
   )
   # Create a new Window
-  var win = newGUIWindow(addr counter)
+  var win = newGUIWindow(1024, 600, addr counter)
   let root = new GUIContainer
   block: # Create Widgets
     # Create two blanks
@@ -120,8 +120,6 @@ when isMainModule:
       sub, blank: GUIBlank
       con: GUIContainer
     # Initialize Root
-    root.rect.w = 1024
-    root.rect.h = 600
     root.color = 0xFF000000'u32
     root.flags = wStandard or wOpaque
     # --- Blank #1 ---
@@ -183,7 +181,7 @@ when isMainModule:
     # Creates new Window
     
   # MAIN LOOP
-  var running = win.exec(root)
+  var running = win.open(root)
 
   while running:
     # Render Main Program
@@ -192,4 +190,4 @@ when isMainModule:
     # Render GUI
     running = win.tick()
   # Close Window and Dispose Resources
-  win.exit()
+  win.close()

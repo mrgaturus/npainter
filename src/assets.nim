@@ -12,7 +12,7 @@ from libs/ft2 import
   ft2_setCharSize
 
 type # Buffer Data
-  BUFIcons* = ptr object
+  BUFIcons* = ref object
     size*: int16 # size*size
     count*, len*: int32
     buffer*: UncheckedArray[byte]
@@ -49,8 +49,8 @@ proc newIcons*(): BUFIcons =
     # Copy File to Buffer
     var read: int # Bytes Readed
     let size = getFileSize(icons)
-    result = cast[BUFIcons](alloc size)
-    read = readBuffer(icons, result, size)
+    result.unsafeNew(size) # Alloc a traced Buffer
+    read = readBuffer(icons, cast[pointer](result), size)
     if read != size: # Check if was loaded correctly
       log(lvWarning, "bad icons file size: ", iconsPath)
     # Close Icons File
