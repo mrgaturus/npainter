@@ -2,7 +2,7 @@ import libs/gl
 import libs/ft2
 import gui/[window, widget, render, container, event, timer]
 from gui/widgets/button import newButton
-from gui/widgets/checkbox import newCheckbox
+from gui/widgets/check import newCheckbox
 from assets import setIcons
 
 signal Example:
@@ -58,7 +58,7 @@ method draw*(widget: GUIBlank, ctx: ptr CTXRender) =
     ctx.color(high uint32)
     #drawAtlas(ctx, widget.rect)
     #ctx.texture(widget.rect, 0)
-    ctx.text(widget.rect.x, widget.rect.y, "Hello World AWAY BRAVO BRA VO bravo Bravo, gggjjjjララ")
+    ctx.text(widget.rect.x, widget.rect.y, "Hello World")
     ctx.icon(widget.rect.x + 40, widget.rect.y - 40, iconClear)
     ctx.icon(widget.rect.x + 60, widget.rect.y - 40, iconClose)
     ctx.color(0xFFAABBCC'u32)

@@ -502,7 +502,6 @@ proc tick*(win: var GUIWindow): bool =
       # Check Handlers
       checkHandlers(win, widget)
     # Draw and Render Widget
-    clear(win.ctx) # Clear Vertex
     draw(widget, addr win.ctx)
     render(win.ctx) # Render VAO
   finish() # -- End GUI Rendering

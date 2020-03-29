@@ -175,7 +175,7 @@ proc viewport*(ctx: var CTXRender, w, h: int32) =
   guiProjection(addr ctx.vCache, float32 w, float32 h)
   ctx.vWidth = w; ctx.vHeight = h
 
-proc clear*(ctx: var CTXRender) =
+proc clear(ctx: var CTXRender) =
   # Reset Current CMD
   ctx.pCMD = nil
   # Clear Buffers
@@ -216,6 +216,7 @@ proc render*(ctx: var CTXRender) =
       # Back to Atlas Texture with Unnormalized UV
       glBindTexture(GL_TEXTURE_2D, ctx.atlas.texID)
       glUniform2f(ctx.uDim, ctx.atlas.rw, ctx.atlas.rh)
+  ctx.clear() # Clear Render State
 
 proc finish*() =
   # Unbind Texture and VAO

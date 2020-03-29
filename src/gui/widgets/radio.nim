@@ -6,15 +6,18 @@ from ../config import metrics
 type
   GUICheckBox = ref object of GUIWidget
     label: string
-    check: ptr bool
+    expected: byte
+    check: ptr byte
 
-proc newCheckbox*(label: string, check: ptr bool): GUICheckBox =
+proc newCheckbox*(label: string, expected: byte, check: ptr byte): GUICheckBox =
   new result # Initialize Button
   # Set to Font Size Metrics
   result.minimum(0, metrics.fontSize)
-  # Button Attributes
+  # Widget Standard Flag
   result.flags = wStandard
+  # Radio Button Attributes
   result.label = label
+  result.expected = expected
   result.check = check
 
 method draw(self: GUICheckBox, ctx: ptr CTXRender) =
@@ -29,8 +32,8 @@ method draw(self: GUICheckBox, ctx: ptr CTXRender) =
     self.rect.x, self.rect.y,
     self.rect.h, self.rect.h)
   ctx.color(high uint32)
-  # If Checkd Draw Mark
-  if self.check[]:
+  # If Checked Draw Mark
+  if self.check[] == self.expected:
     ctx.fill rect(
       self.rect.x + 4, self.rect.y + 4,
       self.rect.h - 8, self.rect.h - 8)

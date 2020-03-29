@@ -15,8 +15,9 @@ proc newButton*(label: string, cb: GUICallback): GUIButton =
   # Set to Font Size Metrics
   result.half = textWidth(label)
   result.minimum(result.half, metrics.fontSize + 8)
-  # Button Attributes
+  # Widget Standard Flag
   result.flags = wStandard
+  # Widget Attributes
   result.label = label
   result.cb = cb
 
