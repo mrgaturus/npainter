@@ -429,7 +429,7 @@ proc circle*(ctx: ptr CTXRender, p: CTXPoint, r: float32) =
   unsafeAddr(p.x)[] += r
   unsafeAddr(p.y)[] += r
   let # Angle Constants
-    n = int32 4 * fastSqrt(r)
+    n = int32 5 * fastSqrt(r)
     theta = 2 * PI / float32(n)
   # Circle Triangles and Elements
   ctx.addVerts(n shl 1, n * 9)
