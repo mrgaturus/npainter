@@ -507,5 +507,5 @@ proc tick*(win: var GUIWindow): bool =
   finish() # -- End GUI Rendering
   # Present to X11/EGL Window
   discard eglSwapBuffers(win.eglDsp, win.eglSur)
-  # TODO: FPS Strategy
+  # 60 FPS Limit
   sleep(16)

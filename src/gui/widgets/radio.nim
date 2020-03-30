@@ -1,15 +1,15 @@
 import ../widget, ../render
 from ../event import 
-  GUIState, GUIEvent, GUICallback, pushCallback
+  GUIState, GUIEvent
 from ../config import metrics
 
 type
-  GUICheckBox = ref object of GUIWidget
+  GUIRadio = ref object of GUIWidget
     label: string
     expected: byte
     check: ptr byte
 
-proc newCheckbox*(label: string, expected: byte, check: ptr byte): GUICheckBox =
+proc newRadio*(label: string, expected: byte, check: ptr byte): GUIRadio =
   new result # Initialize Button
   # Set to Font Size Metrics
   result.minimum(0, metrics.fontSize)
@@ -20,32 +20,31 @@ proc newCheckbox*(label: string, expected: byte, check: ptr byte): GUICheckBox =
   result.expected = expected
   result.check = check
 
-method draw(self: GUICheckBox, ctx: ptr CTXRender) =
+method draw(self: GUIRadio, ctx: ptr CTXRender) =
   ctx.color: # Select Color State
     if not self.any(wHoverGrab):
       0xBB000000'u32
     elif self.test(wHoverGrab):
       0x88000000'u32
     else: 0xFF000000'u32
-  # Fill Check Background
-  ctx.fill rect(
-    self.rect.x, self.rect.y,
-    self.rect.h, self.rect.h)
+  # Fill Radio Background
+  ctx.circle point(
+    self.rect.x, self.rect.y),
+    float32(self.rect.h shr 1)
   ctx.color(high uint32)
-  # If Checked Draw Mark
+  # If Checked Draw Circle Mark
   if self.check[] == self.expected:
-    ctx.fill rect(
-      self.rect.x + 4, self.rect.y + 4,
-      self.rect.h - 8, self.rect.h - 8)
-  # Put Centered Text
-  ctx.color(high uint32)
-  ctx.text( # Draw Centered Text
+    ctx.circle point(
+      self.rect.x + 4, self.rect.y + 4),
+      float32(self.rect.h shr 1 - 4)
+  # Draw Text Next To Circle
+  ctx.text( # Centered Vertically
     self.rect.x + self.rect.h + 4, 
     self.rect.y - metrics.descender,
     self.label)
 
-method event*(self: GUICheckBox, state: ptr GUIState) =
+method event*(self: GUIRadio, state: ptr GUIState) =
   if self.test(wEnabled):
     if state.eventType == evMouseRelease and
         self.test(wHover):
-      self.check[] = not self.check[]
+      self.check[] = self.expected

@@ -3,6 +3,7 @@ import libs/ft2
 import gui/[window, widget, render, container, event, timer]
 from gui/widgets/button import newButton
 from gui/widgets/check import newCheckbox
+from gui/widgets/radio import newRadio
 from assets import setIcons
 
 signal Example:
@@ -103,6 +104,7 @@ method handle*(widget: GUIBlank, kind: GUIHandle) =
 when isMainModule:
   var ft: FT2Library
   var bolo, bala: bool
+  var equisde: byte
   # Initialize Freetype2
   if ft2_init(addr ft) != 0:
     echo "ERROR: failed initialize FT2"
@@ -171,12 +173,20 @@ when isMainModule:
     # Add a GUI Button
     let button = newButton("Test Button CB", helloworld)
     button.geometry(20, 200, 200, button.hint.h)
-    var check = newCheckbox("Check B", addr bolo)
-    check.geometry(20, 250, 100, check.hint.h)
-    root.add(check)
-    check = newCheckbox("Check A", addr bala)
-    check.geometry(120, 250, 100, check.hint.h)
-    root.add(check)
+    block: # Add Checkboxes
+      var check = newCheckbox("Check B", addr bolo)
+      check.geometry(20, 250, 100, check.hint.h)
+      root.add(check)
+      check = newCheckbox("Check A", addr bala)
+      check.geometry(120, 250, 100, check.hint.h)
+      root.add(check)
+    block: # Add Radio Buttons
+      var radio = newRadio("Radio B", 1, addr equisde)
+      radio.geometry(20, 300, 100, radio.hint.h)
+      root.add(radio)
+      radio = newRadio("Radio A", 2, addr equisde)
+      radio.geometry(120, 300, 100, radio.hint.h)
+      root.add(radio)
     root.add(button)
     # Creates new Window
     

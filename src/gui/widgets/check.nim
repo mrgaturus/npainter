@@ -1,6 +1,6 @@
 import ../widget, ../render
-from ../event import 
-  GUIState, GUIEvent, GUICallback, pushCallback
+from ../event import
+  GUIState, GUIEvent
 from ../config import metrics
 
 type
@@ -28,9 +28,7 @@ method draw(self: GUICheckBox, ctx: ptr CTXRender) =
   ctx.fill rect(
     self.rect.x, self.rect.y,
     self.rect.h, self.rect.h)
-  ctx.fill rect(
-    self.rect.x, self.rect.y,
-    self.rect.h, self.rect.h)
+  # Set White Color
   ctx.color(high uint32)
   # If Checked, Draw Mark
   if self.check[]:
@@ -38,7 +36,7 @@ method draw(self: GUICheckBox, ctx: ptr CTXRender) =
       self.rect.x + 4, self.rect.y + 4,
       self.rect.h - 8, self.rect.h - 8)
   # Draw Text Next to Checkbox
-  ctx.text( # Draw Centered Text
+  ctx.text( # Centered Vertically
     self.rect.x + self.rect.h + 4, 
     self.rect.y - metrics.descender,
     self.label)
