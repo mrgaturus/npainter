@@ -12,9 +12,8 @@ type
 proc newButton*(label: string, cb: GUICallback): GUIButton =
   new result # Initialize Button
   # Set to Font Size Metrics
-  result.minimum(
-    textWidth(label), 
-    metrics.fontSize + 8)
+  result.minimum(textWidth(label), 
+    metrics.fontSize - metrics.descender)
   # Widget Standard Flag
   result.flags = wStandard
   # Widget Attributes
@@ -34,7 +33,7 @@ method draw(self: GUIButton, ctx: ptr CTXRender) =
   ctx.color(high uint32)
   ctx.text( # Draw Centered Text
     self.rect.x + (self.rect.w - self.hint.w) shr 1, 
-    self.rect.y + 6, self.label)
+    self.rect.y - metrics.descender, self.label)
 
 method event*(self: GUIButton, state: ptr GUIState) =
   if state.eventType == evMouseRelease and 

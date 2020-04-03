@@ -4,6 +4,9 @@ from config import metrics
 import ../libs/gl
 import ../libs/ft2
 import ../assets
+# Import UTF8
+from ../utf8 import
+  rune16, runes16
 
 type # Atlas Objects
   SKYNode = object
@@ -296,7 +299,7 @@ proc newCTXAtlas*(): CTXAtlas =
   renderCharset(result, csLatin)
   # 3 -- Alloc True Atlas Buffer
   var dest: seq[byte]; block:
-    var side = icons.len + result.buffer.len
+    var side = icons.len + len(result.buffer)
     side = side.float32.sqrt().ceil().int.nextPowerOfTwo()
     # Set new Atlas Diemsions
     result.w = cast[int32](side shl 1)
@@ -362,52 +365,6 @@ proc newCTXAtlas*(): CTXAtlas =
   # Unbind New Atlas Texture
   glBindTexture(GL_TEXTURE_2D, 0)
 
-# --------------------------
-# ATLAS RUNE UINT16 ITERATOR
-# --------------------------
-
-# Very fast uint16 Rune Iterator
-iterator runes16*(str: string): uint16 =
-  var # Small Iterator
-    i = 0'i32 # 2gb string?
-    result: uint16 # 2byte
-  while i < len(str):
-    if str[i].uint8 <= 128:
-      result = str[i].uint16
-      inc(i, 1) # Move 1 Byte
-    elif str[i].uint8 shr 5 == 0b110:
-      result = # Use 2 bytes
-        (str[i].uint16 and 0x1f) shl 6 or
-        str[i+1].uint16 and 0x3f
-      inc(i, 2) # Move 2 Bytes
-    elif str[i].uint8 shr 4 == 0b1110:
-      result = # Use 3 bytes
-        (str[i].uint16 and 0xf) shl 12 or
-        (str[i+1].uint16 and 0x3f) shl 6 or
-        str[i+2].uint16 and 0x3f
-      inc(i, 3) # Move 3 bytes
-    else: inc(i, 1); continue
-    # Yield Rune
-    yield result
-
-# ----------------------------------
-# ATLAS GLYPH AND ICONS LOOKUP PROCS
-# ----------------------------------
-
-proc getGlyph*(atlas: CTXAtlas, charcode: uint16): ptr TEXGlyph =
-  # Check if lookup needs expand
-  if int32(charcode) >= len(atlas.lookup):
-    atlas.lookup.setLen(1 + int32 charcode)
-  # Get Glyph Index of the lookup
-  let lookup = atlas.lookup[charcode]
-  case lookup # Check Found Index
-  of 0: renderOnDemand(atlas, charcode)
-  of 0xFFFF: addr atlas.glyphs[0]
-  else: addr atlas.glyphs[lookup]
-
-proc getIcon*(atlas: CTXAtlas, icon: uint16): ptr TEXIcon =
-  result = addr atlas.icons[icon] # Get Icon UV Coords
-
 # ---------------------------
 # ATLAS TEXTURE UPDATING PROC
 # ---------------------------
@@ -441,22 +398,57 @@ proc checkTexture*(atlas: CTXAtlas): bool =
   # Set Status to Normal
   atlas.status = bufNormal
 
+# ----------------------------------
+# ATLAS GLYPH AND ICONS LOOKUP PROCS
+# ----------------------------------
+
+proc getGlyph*(atlas: CTXAtlas, charcode: uint16): ptr TEXGlyph =
+  # Check if lookup needs expand
+  if int32(charcode) >= len(atlas.lookup):
+    atlas.lookup.setLen(1 + int32 charcode)
+  # Get Glyph Index of the lookup
+  let lookup = atlas.lookup[charcode]
+  case lookup # Check Found Index
+  of 0: renderOnDemand(atlas, charcode)
+  of 0xFFFF: addr atlas.glyphs[0]
+  else: addr atlas.glyphs[lookup]
+
+proc getIcon*(atlas: CTXAtlas, icon: uint16): ptr TEXIcon =
+  result = addr atlas.icons[icon] # Get Icon UV Coords
+
 # --------------------------
 # ATLAS GLOBAL METRICS PROCS
 # --------------------------
 
-proc textWidth*(text: string): int32 =
+proc textWidth*(str: string): int32 =
   let atlas = # Get Atlas from Global
     cast[CTXAtlas](metrics.opaque)
-  for rune in runes16(text):
+  for rune in runes16(str):
     result += atlas.getGlyph(rune).advance
 
-proc textIndex*(text: string, w: int32): int32 =
-  var advance: int32 # Current Advance
+proc textWidth*(str: string, s, e: int32): int32 =
   let atlas = # Get Atlas from Global
     cast[CTXAtlas](metrics.opaque)
-  for rune in runes16(text): 
-    advance += atlas.getGlyph(rune).advance
-    # Is Advance greater than w?
-    if advance > w: break
-    else: inc(result)
+  var # Iterator
+    rune: uint16
+  while s < e:
+    rune16(str, unsafeAddr(s)[], rune)
+    result += atlas.getGlyph(rune).advance
+
+proc textIndex*(str: string, w: int32): int32 =
+  let atlas = # Get Atlas from Global
+    cast[CTXAtlas](metrics.opaque)
+  var # Iterator
+    advance: int16
+    rune: uint16
+    i: int32
+  while result < len(str):
+    rune16(str, i, rune) # Decode Rune
+    advance = atlas.getGlyph(rune).advance
+    # Substract expected Width
+    unsafeAddr(w)[] -= advance
+    if w > 0: result = i
+    else: # Check Half Advance
+      if w + (advance shr 1) > 0:
+        result = i
+      break

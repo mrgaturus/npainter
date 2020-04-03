@@ -18,7 +18,7 @@ const
   CtrlMod* = ControlMask
   AltMod* = Mod1Mask
   # UTF8 Status
-  UTF8Keysym* = XLookupKeysym
+  UTF8Keysym* = XLookupKeysymVal
   UTF8Success* = XLookupBoth
   UTF8String* = XLookupChars
   UTF8Nothing* = XLookupNone

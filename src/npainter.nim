@@ -4,6 +4,7 @@ import gui/[window, widget, render, container, event, timer]
 from gui/widgets/button import newButton
 from gui/widgets/check import newCheckbox
 from gui/widgets/radio import newRadio
+from gui/widgets/textbox import newTextBox
 from assets import setIcons
 
 signal Example:
@@ -105,6 +106,7 @@ when isMainModule:
   var ft: FT2Library
   var bolo, bala: bool
   var equisde: byte
+  var coso: string = "RARARA"
   # Initialize Freetype2
   if ft2_init(addr ft) != 0:
     echo "ERROR: failed initialize FT2"
@@ -187,6 +189,10 @@ when isMainModule:
       radio = newRadio("Radio A", 2, addr equisde)
       radio.geometry(120, 300, 100, radio.hint.h)
       root.add(radio)
+    block: # Add TextBox
+      var textbox = newTextBox(coso)
+      textbox.geometry(20, 350, 200, textbox.hint.h)
+      root.add(textbox)
     root.add(button)
     # Creates new Window
     

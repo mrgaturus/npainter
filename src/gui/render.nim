@@ -7,6 +7,7 @@ from ../cmath import
 # Assets and Metrics
 from config import metrics
 from ../assets import newShader
+from ../utf8 import runes16
 # Texture Atlas
 import atlas
 # OpenGL 3.2+
@@ -343,36 +344,36 @@ proc fill*(ctx: ptr CTXRender, r: CTXRect) =
   triangle(0, 0,1,2)
   triangle(3, 1,2,3)
 
-proc rectangle*(ctx: ptr CTXRender, r: CTXRect, s: float32) =
+proc line*(ctx: ptr CTXRender, r: CTXRect, s: float32) =
   ctx.addVerts(12, 24)
-  # Top Left Corner
-  vertex(0, r.x,    r.y+s)
-  vertex(1, r.x,    r.y)
-  vertex(2, r.x+s,  r.y)
-  # Top Right Corner
-  vertex(3, r.xw-s, r.y)
-  vertex(4, r.xw,   r.y)
-  vertex(5, r.xw,   r.y+s)
-  # Bottom Right Corner
-  vertex(6, r.xw,   r.yh-s)
-  vertex(7, r.xw,   r.yh)
-  vertex(8, r.xw-s, r.yh)
-  # Bottom Left Corner
-  vertex(9,  r.x+s,  r.yh)
-  vertex(10, r.x,    r.yh)
-  vertex(11, r.x,    r.yh-s)
-  # Top Rect
-  triangle(0, 0,1,5)
-  triangle(3, 5,4,1)
-  # Right Rect
-  triangle(6, 3,4,7)
-  triangle(9, 7,8,3)
-  # Bottom Rect
-  triangle(12, 7,6,11)
-  triangle(15, 11,10,7)
-  # Left Rect
-  triangle(18, 10,9,1)
-  triangle(21, 1,2,9)
+  # Top Rectangle Vertexs
+  vertex(0, r.x,  r.y)
+  vertex(1, r.xw, r.y)
+  vertex(2, r.x,  r.y + s)
+  vertex(3, r.xw, r.y + s)
+  # Bottom Rectangle Vertexs
+  vertex(4, r.x, r.yh)
+  vertex(5, r.xw, r.yh)
+  vertex(6, r.x,  r.yh - s)
+  vertex(7, r.xw, r.yh - s)
+  # Left Side Rectangle Vertexs
+  vertex(8, r.x + s,  r.y + s)
+  vertex(9, r.xw - s, r.y + s)
+  # Right Side Rectangle Vertexs
+  vertex(10, r.x + s,  r.yh - s)
+  vertex(11, r.xw - s, r.yh - s)
+  # Top Rectangle
+  triangle(0, 0,1,2)
+  triangle(3, 1,2,3)
+  # Bottom Rectangle
+  triangle(6, 4,5,6)
+  triangle(9, 5,6,7)
+  # Left Side Rectangle
+  triangle(12, 2,8,10)
+  triangle(15, 2,6,10)
+  # Right Side Rectangle
+  triangle(18, 3, 7,9)
+  triangle(21, 11,7,9)
 
 proc texture*(ctx: ptr CTXRender, rect: var GUIRect, texID: GLuint) =
   ctx.addCommand() # Create New Command
