@@ -15,7 +15,7 @@ from ../window import
 type
   GUITextBox = ref object of GUIWidget
     text: string
-    i, w: int32
+    i, wi, wo: int32
 
 proc newTextBox*(text: var string): GUITextBox =
   new result # Initialize TextBox
@@ -38,7 +38,7 @@ method draw(self: GUITextBox, ctx: ptr CTXRender) =
       ctx.color(high uint32)
       # Draw Cursor
       ctx.fill rect(
-        self.rect.x + self.w + 4,
+        self.rect.x + self.wi + 4,
         self.rect.y - metrics.descender,
         1, metrics.ascender)
     else: # Hover Outline Color
@@ -48,10 +48,10 @@ method draw(self: GUITextBox, ctx: ptr CTXRender) =
   # Set Color To White
   ctx.color(high uint32)
   # Draw Current Text
-  ctx.text(
-    self.rect.x + 4,
+  ctx.text( # Offset X
+    self.rect.x - self.wo + 4,
     self.rect.y - metrics.descender, 
-    self.text)
+    rect(self.rect), self.text)
 
 method event(self: GUITextBox, state: ptr GUIState) =
   if state.eventType == evKeyDown:
@@ -60,24 +60,40 @@ method event(self: GUITextBox, state: ptr GUIState) =
     of XK_Delete: delete(self.text, self.i)
     of XK_Right: forward(self.text, self.i)
     of XK_Left: reverse(self.text, self.i)
-    of XK_Home: self.i = low(self.text).int32
-    of XK_End: self.i = len(self.text).int32
-    of XK_Return, XK_Escape: self.clear(wFocus)
+    of XK_Home: # Begin of Text
+      self.i = low(self.text).int32
+      self.wi = 0; self.wo = 0
+      return # Don't Recalculate
+    of XK_End: # End of Text
+      self.i = len(self.text).int32
+      self.wi = textWidth(self.text)
+      # Calculate Offset
+      if self.wi > self.rect.w - 8: # Multiple of 24
+        self.wo = (self.wi - self.rect.w + 32) div 24 * 24
+      self.wi -= self.wo
+      return # Don't Recalculate
+    of XK_Return, XK_Escape: 
+      self.clear(wFocus)
     else: # Add UTF8 Char
       case state.utf8state
       of UTF8Nothing, UTF8Keysym: discard
       else: insert(self.text, state.utf8str, self.i)
-    # Recalculate Text Width
-    self.w = textWidth(self.text, 
-      0, self.i) # From 0 to i
   elif state.eventType == evMouseClick:
     # Get Cursor Position
     self.i = textIndex(self.text, 
-      state.mx - self.rect.x - 4)
-    self.w = textWidth(self.text, 
-      0, self.i) # from 0 to i
+      state.mx - self.rect.x + self.wo - 4)
     # Focus Textbox
     self.set(wFocus)
+  # Recalculate Cursor Width and Offset
+  if state.eventType < evMouseRelease:
+    self.wi = textWidth(self.text, self.i)
+    # Forward or Reverse Offset index
+    if self.wi - self.wo > self.rect.w - 8: 
+      self.wo += 24
+    elif self.wi < self.wo: 
+      self.wo -= 24
+    # Calculate Offset Width
+    self.wi -= self.wo
 
 method handle(widget: GUITextBox, kind: GUIHandle) =
   case kind # Un/Focus X11 Input Method

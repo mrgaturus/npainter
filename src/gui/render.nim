@@ -470,7 +470,7 @@ proc text*(ctx: ptr CTXRender, x,y: int32, str: string) =
   for rune in runes16(str):
     let glyph = # Load Glyph
       ctx.atlas.getGlyph(rune)
-    # Reserve Quad Vertex and Elements
+    # Reserve Vertex and Elements
     ctx.addVerts(4, 6); block:
       let # Quad Coordinates
         x = float32 x + glyph.xo
@@ -485,6 +485,53 @@ proc text*(ctx: ptr CTXRender, x,y: int32, str: string) =
     # Quad Elements
     triangle(0, 0,1,2)
     triangle(3, 1,2,3)
+    # To Next Glyph X Position
+    unsafeAddr(x)[] += glyph.advance
+
+proc text*(ctx: ptr CTXRender, x,y: int32, clip: CTXRect, str: string) =
+  # Offset Y to Atlas Font Y Offset Metric
+  unsafeAddr(y)[] += metrics.baseline
+  # Render Text Top to Bottom
+  for rune in runes16(str):
+    let glyph = # Load Glyph
+      ctx.atlas.getGlyph(rune)
+    var # Vertex Information
+      xo = float32 x + glyph.xo
+      xw = xo + float32 glyph.w
+      yo = float32 y - glyph.yo
+      yh = yo + float32 glyph.h
+      # UV Coordinates
+      uo = glyph.x1 # U Coord
+      uw = glyph.x2 # U + W
+      vo = glyph.y1 # V Coord
+      vh = glyph.y2 # V + H
+    # Is Visible on X?
+    if xo > clip.xw: break
+    elif xw > clip.x:
+      # Clip Current Glyph
+      if xo < clip.x:
+        uo += int16(clip.x - xo)
+        xo = clip.x # Left Point
+      if xw > clip.xw:
+        uw -= int16(xw - clip.xw)
+        xw = clip.xw # Right Point
+      # Is Clipped Vertically?
+      if yo < clip.y:
+        vo += int16(clip.y - yo)
+        yo = clip.y # Upper Point
+      if yh > clip.yh:
+        vh -= int16(yh - clip.yh)
+        yh = clip.yh # Botton Point
+      # Reserve Vertex and Elements
+      ctx.addVerts(4, 6)
+      # Quad Vertex
+      vertexUV(0, xo, yo, uo, vo)
+      vertexUV(1, xw, yo, uw, vo)
+      vertexUV(2, xo, yh, uo, vh)
+      vertexUV(3, xw, yh, uw, vh)
+      # Quad Elements
+      triangle(0, 0,1,2)
+      triangle(3, 1,2,3)
     # To Next Glyph X Position
     unsafeAddr(x)[] += glyph.advance
 

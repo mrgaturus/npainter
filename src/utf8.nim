@@ -63,14 +63,14 @@ proc delete*(str: var string, i: var int32) =
     backspace(str, i)
 
 proc insert*(str: var string, cstr: cstring, i: var int32) =
-  let len = len(cstr).int32
+  let l = len(cstr).int32
   # Expand String Capacity
-  str.setLen(str.len + len)
+  str.setLen(str.len + l)
   # Move For Copy String
-  if len(str) - i != len:
-    moveMem(addr str[i + len], 
+  if len(str) - i != l:
+    moveMem(addr str[i + l], 
       addr str[i], len(str) - i)
   # Copy cString to String
-  copyMem(addr str[i], cstr, len)
+  copyMem(addr str[i], cstr, l)
   # Forward Index
-  i += len
+  i += l 

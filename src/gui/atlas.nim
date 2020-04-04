@@ -426,13 +426,14 @@ proc textWidth*(str: string): int32 =
   for rune in runes16(str):
     result += atlas.getGlyph(rune).advance
 
-proc textWidth*(str: string, s, e: int32): int32 =
+proc textWidth*(str: string, e: int32): int32 =
   let atlas = # Get Atlas from Global
     cast[CTXAtlas](metrics.opaque)
   var # Iterator
+    i: int32
     rune: uint16
-  while s < e:
-    rune16(str, unsafeAddr(s)[], rune)
+  while i < e:
+    rune16(str, i, rune) # Decode Rune
     result += atlas.getGlyph(rune).advance
 
 proc textIndex*(str: string, w: int32): int32 =
