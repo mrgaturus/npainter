@@ -6,6 +6,7 @@ from gui/widgets/check import newCheckbox
 from gui/widgets/radio import newRadio
 from gui/widgets/textbox import newTextBox
 from assets import setIcons
+from utf8 import UTF8Input, `text=`
 
 signal Example:
   A
@@ -24,7 +25,9 @@ type
     frame: GUIWidget
     t: GUITimer
 
+var coso: UTF8Input
 proc helloworld*(g, d: pointer) =
+  coso.text = "hello world"
   echo "hello world"
 
 # ------------------
@@ -106,7 +109,7 @@ when isMainModule:
   var ft: FT2Library
   var bolo, bala: bool
   var equisde: byte
-  var coso: string = "RARARA"
+  
   # Initialize Freetype2
   if ft2_init(addr ft) != 0:
     echo "ERROR: failed initialize FT2"
@@ -190,7 +193,7 @@ when isMainModule:
       radio.geometry(120, 300, 100, radio.hint.h)
       root.add(radio)
     block: # Add TextBox
-      var textbox = newTextBox(coso)
+      var textbox = newTextBox(addr coso)
       textbox.geometry(20, 350, 200, textbox.hint.h)
       root.add(textbox)
     root.add(button)

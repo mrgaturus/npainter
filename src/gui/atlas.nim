@@ -440,9 +440,9 @@ proc textIndex*(str: string, w: int32): int32 =
   let atlas = # Get Atlas from Global
     cast[CTXAtlas](metrics.opaque)
   var # Iterator
-    advance: int16
-    rune: uint16
     i: int32
+    rune: uint16
+    advance: int16
   while result < len(str):
     rune16(str, i, rune) # Decode Rune
     advance = atlas.getGlyph(rune).advance

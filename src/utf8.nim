@@ -1,5 +1,11 @@
 # Up to 0xFFFF, No Emojis, Sorry
 
+type
+  UTF8Input* = object
+    str: string
+    cursor*: int32
+    changed*: bool
+
 # -------------------
 # UINT16 RUNE DECODER
 # -------------------
@@ -29,48 +35,64 @@ iterator runes16*(str: string): uint16 =
     rune16(str, i, result)
     yield result # Return Rune
 
-# -------------------
-# UTF8 STRING HELPERS
-# -------------------
+# ------------------------------
+# UTF8 INPUT DIRECT MANIPULATION
+# ------------------------------
 
-proc forward*(str: string, i: var int32) =
-  if i < len(str): # Find Next Codepoint
-    inc(i) # Next String Char
-    while i < len(str) and # Not Chunk
-        (str[i].uint8 and 0xC0) == 0x80:
+proc `text=`*(input: var UTF8Input, str: string) =
+  input.str = str # Set New Str
+  # Reset Cursor and Mark Changed
+  input.cursor = 0; input.changed = true
+
+template `text`*(input: ptr UTF8Input|UTF8Input): string =
+  input.str # Returns Current String
+
+# -----------------------
+# UTF8 INPUT CURSOR PROCS
+# -----------------------
+
+proc forward*(input: ptr UTF8Input) =
+  if input.cursor < len(input.str):
+    var i = input.cursor + 1 # Start At Next
+    while i < len(input.str) and # Not Chunk
+        (input.str[i].uint8 and 0xC0) == 0x80:
       inc(i) # Next String Char
+    input.cursor = i # Set New Position
 
-proc reverse*(str: string, i: var int32) =
-  if i > 0: # Find Next Codepoint
-    dec(i) # Next String Char
+proc reverse*(input: ptr UTF8Input) =
+  if input.cursor > 0:
+    var i = input.cursor - 1 # Start at Prev
     while i > 0 and # Not Chunk
-        (str[i].uint8 and 0xC0) == 0x80:
-      dec(i) # Next String Char
+        (input.str[i].uint8 and 0xC0) == 0x80:
+      dec(i) # Prev String Char
+    input.cursor = i
 
-proc backspace*(str: var string, i: var int32) =
-  var p = i; reverse(str, i)
-  if p != i:
-    if p != len(str):
-      copyMem(addr str[i], 
-        addr str[p], len(str) - p)
+proc backspace*(input: ptr UTF8Input) =
+  var p = input.cursor; input.reverse()
+  if p != input.cursor: # Check if is not 0
+    if p != len(input.str):
+      copyMem(addr `[]`(input.str, input.cursor), 
+        addr input.str[p], len(input.str) - p)
     # Trim String Length
-    str.setLen(str.len - p + i)
+    input.str.setLen(input.str.len - p + input.cursor)
 
-proc delete*(str: var string, i: var int32) =
-  if i < len(str):
+proc delete*(input: ptr UTF8Input) =
+  if input.cursor < len(input.str):
     # Delete Next Char
-    forward(str, i)
-    backspace(str, i)
+    input.forward()
+    input.backspace()
 
-proc insert*(str: var string, cstr: cstring, i: var int32) =
-  let l = len(cstr).int32
+proc insert*(input: ptr UTF8Input, str: cstring) =
+  let # Shortcuts
+    l = len(str).int32
+    i = input.cursor
   # Expand String Capacity
-  str.setLen(str.len + l)
+  input.str.setLen len(input.str) + l
   # Move For Copy String
-  if len(str) - i != l:
-    moveMem(addr str[i + l], 
-      addr str[i], len(str) - i)
+  if len(input.str) - i != l:
+    moveMem(addr input.str[i + l], 
+      addr input.str[i], len(input.str) - i)
   # Copy cString to String
-  copyMem(addr str[i], cstr, l)
+  copyMem(addr input.str[i], str, l)
   # Forward Index
-  i += l 
+  input.cursor += l 

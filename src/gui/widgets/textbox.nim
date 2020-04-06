@@ -14,10 +14,10 @@ from ../window import
 
 type
   GUITextBox = ref object of GUIWidget
-    text: string
-    i, wi, wo: int32
+    input: ptr UTF8Input
+    wi, wo: int32
 
-proc newTextBox*(text: var string): GUITextBox =
+proc newTextBox*(input: ptr UTF8Input): GUITextBox =
   new result # Initialize TextBox
   # Widget Standard Flag
   result.flags = wStandard
@@ -25,9 +25,18 @@ proc newTextBox*(text: var string): GUITextBox =
   result.minimum(0, 
     metrics.fontSize - metrics.descender)
   # Widget Attributes
-  shallowCopy(result.text, text)
+  result.input = input
 
 method draw(self: GUITextBox, ctx: ptr CTXRender) =
+  if self.input.changed: # Recalculate Text Scroll and Cursor
+    self.wi = textWidth(self.input.text, self.input.cursor)
+    if self.wi - self.wo > self.rect.w - 8: # Multiple of 24
+      self.wo = (self.wi - self.rect.w + 32) div 24 * 24
+    elif self.wi < self.wo: # Multiple of 24
+      self.wo = self.wi div 24 * 24
+    self.wi -= self.wo
+    # Unmark Input as Changed
+    self.input.changed = false
   # Fill TextBox Background
   ctx.color(0xFF000000'u32)
   ctx.fill rect(self.rect)
@@ -46,54 +55,40 @@ method draw(self: GUITextBox, ctx: ptr CTXRender) =
     # Draw Outline Status
     ctx.line rect(self.rect), 1
   # Set Color To White
-  ctx.color(high uint32)
+  ctx.color(high uint32) 
   # Draw Current Text
-  ctx.text( # Offset X
+  ctx.text( # Offset X and Clip
     self.rect.x - self.wo + 4,
     self.rect.y - metrics.descender, 
-    rect(self.rect), self.text)
+    rect(self.rect), self.input.text)
 
 method event(self: GUITextBox, state: ptr GUIState) =
   if state.eventType == evKeyDown:
     case state.key
-    of XK_BackSpace: backspace(self.text, self.i)
-    of XK_Delete: delete(self.text, self.i)
-    of XK_Right: forward(self.text, self.i)
-    of XK_Left: reverse(self.text, self.i)
+    of XK_BackSpace: backspace(self.input)
+    of XK_Delete: delete(self.input)
+    of XK_Right: forward(self.input)
+    of XK_Left: reverse(self.input)
     of XK_Home: # Begin of Text
-      self.i = low(self.text).int32
-      self.wi = 0; self.wo = 0
-      return # Don't Recalculate
+      self.input.cursor = 0
     of XK_End: # End of Text
-      self.i = len(self.text).int32
-      self.wi = textWidth(self.text)
-      # Calculate Offset
-      if self.wi > self.rect.w - 8: # Multiple of 24
-        self.wo = (self.wi - self.rect.w + 32) div 24 * 24
-      self.wi -= self.wo
-      return # Don't Recalculate
+      self.input.cursor =
+        len(self.input.text).int32
     of XK_Return, XK_Escape: 
       self.clear(wFocus)
     else: # Add UTF8 Char
       case state.utf8state
       of UTF8Nothing, UTF8Keysym: discard
-      else: insert(self.text, state.utf8str, self.i)
+      else: insert(self.input, state.utf8str)
   elif state.eventType == evMouseClick:
     # Get Cursor Position
-    self.i = textIndex(self.text, 
+    self.input.cursor = textIndex(self.input.text,
       state.mx - self.rect.x + self.wo - 4)
     # Focus Textbox
     self.set(wFocus)
-  # Recalculate Cursor Width and Offset
+  # Mark Text Input as Dirty
   if state.eventType < evMouseRelease:
-    self.wi = textWidth(self.text, self.i)
-    # Forward or Reverse Offset index
-    if self.wi - self.wo > self.rect.w - 8: 
-      self.wo += 24
-    elif self.wi < self.wo: 
-      self.wo -= 24
-    # Calculate Offset Width
-    self.wi -= self.wo
+    self.input.changed = true
 
 method handle(widget: GUITextBox, kind: GUIHandle) =
   case kind # Un/Focus X11 Input Method
