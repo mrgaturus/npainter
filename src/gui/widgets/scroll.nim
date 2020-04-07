@@ -2,7 +2,6 @@ import ../widget, ../render
 from ../../c_math import
   Value, distance, lerp,
   interval, toFloat, toInt
-import ../../c_math
 from ../event import 
   GUIState, GUIEvent
 from ../config import metrics

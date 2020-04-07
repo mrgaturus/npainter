@@ -41,7 +41,7 @@ method draw(self: GUICheckBox, ctx: ptr CTXRender) =
     self.rect.y - metrics.descender,
     self.label)
 
-method event*(self: GUICheckBox, state: ptr GUIState) =
+method event(self: GUICheckBox, state: ptr GUIState) =
   if self.test(wEnabled):
     if state.eventType == evMouseRelease and
         self.test(wHover):

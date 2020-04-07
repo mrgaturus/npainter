@@ -46,7 +46,7 @@ method draw(self: GUISlider, ctx: ptr CTXRender) =
     self.rect.x + self.rect.w - textWidth(text) - 4, 
     self.rect.y - metrics.descender, text)
 
-method event*(self: GUISlider, state: ptr GUIState) =
+method event(self: GUISlider, state: ptr GUIState) =
   if self.test(wGrab):
     self.value[].lerp clamp(
       (state.mx - self.rect.x) / self.rect.w, 

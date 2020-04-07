@@ -43,7 +43,7 @@ method draw(self: GUIRadio, ctx: ptr CTXRender) =
     self.rect.y - metrics.descender,
     self.label)
 
-method event*(self: GUIRadio, state: ptr GUIState) =
+method event(self: GUIRadio, state: ptr GUIState) =
   if self.test(wEnabled):
     if state.eventType == evMouseRelease and
         self.test(wHover):
