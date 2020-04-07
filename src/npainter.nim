@@ -5,6 +5,9 @@ from gui/widgets/button import newButton
 from gui/widgets/check import newCheckbox
 from gui/widgets/radio import newRadio
 from gui/widgets/textbox import newTextBox
+from gui/widgets/slider import newSlider
+from gui/widgets/scroll import newScroll
+from c_math import Value, interval, lerp
 from assets import setIcons
 from utf8 import UTF8Input, `text=`
 
@@ -109,6 +112,11 @@ when isMainModule:
   var ft: FT2Library
   var bolo, bala: bool
   var equisde: byte
+  var val: Value
+  var val2: Value
+  val2.interval(0, 100)
+  val.interval(0, 5)
+  val.lerp(0.5, true)
   
   # Initialize Freetype2
   if ft2_init(addr ft) != 0:
@@ -196,6 +204,14 @@ when isMainModule:
       var textbox = newTextBox(addr coso)
       textbox.geometry(20, 350, 200, textbox.hint.h)
       root.add(textbox)
+    block: # Add Slider
+      var slider = newSlider(addr val)
+      slider.geometry(20, 400, 200, slider.hint.h)
+      root.add(slider)
+    block: # Add Scroll
+      var scroll = newScroll(addr val)
+      scroll.geometry(20, 450, 200, scroll.hint.h)
+      root.add(scroll)
     root.add(button)
     # Creates new Window
     

@@ -40,9 +40,11 @@ iterator runes16*(str: string): uint16 =
 # ------------------------------
 
 proc `text=`*(input: var UTF8Input, str: string) =
-  input.str = str # Set New Str
-  # Reset Cursor and Mark Changed
-  input.cursor = 0; input.changed = true
+  input.str = str
+  # Set Cursor to Len
+  input.cursor = 
+    len(str).int32
+  input.changed = true
 
 template `text`*(input: ptr UTF8Input|UTF8Input): string =
   input.str # Returns Current String

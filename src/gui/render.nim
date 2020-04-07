@@ -1,6 +1,6 @@
 # Math and Fast Math Modules
 from math import sin, cos, PI
-from ../cmath import
+from ../c_math import
   fastSqrt,
   invertedSqrt,
   guiProjection
