@@ -212,6 +212,10 @@ when isMainModule:
       var scroll = newScroll(addr val)
       scroll.geometry(20, 450, 200, scroll.hint.h)
       root.add(scroll)
+    block: # Add Scroll
+      var scroll = newScroll(addr val, true)
+      scroll.geometry(20, 480, scroll.hint.h, 200)
+      root.add(scroll)
     root.add(button)
     # Creates new Window
     
