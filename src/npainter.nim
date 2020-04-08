@@ -7,6 +7,7 @@ from gui/widgets/radio import newRadio
 from gui/widgets/textbox import newTextBox
 from gui/widgets/slider import newSlider
 from gui/widgets/scroll import newScroll
+from gui/widgets/color import newColorBar
 from c_math import Value, interval, lerp
 from assets import setIcons
 from utf8 import UTF8Input, `text=`
@@ -114,6 +115,7 @@ when isMainModule:
   var equisde: byte
   var val: Value
   var val2: Value
+  var col = 0'u32
   val2.interval(0, 100)
   val.interval(0, 5)
   val.lerp(0.5, true)
@@ -216,6 +218,10 @@ when isMainModule:
       var scroll = newScroll(addr val, true)
       scroll.geometry(20, 480, scroll.hint.h, 200)
       root.add(scroll)
+    block: # Add Scroll
+      var color = newColorBar(addr col)
+      color.geometry(50, 500, color.hint.w * 2, color.hint.h * 2)
+      root.add(color)
     root.add(button)
     # Creates new Window
     

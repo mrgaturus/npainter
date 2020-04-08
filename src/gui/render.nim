@@ -293,8 +293,16 @@ template vertexUV(i: int32, a,b: float32, c,d: int16) =
   ctx.pVert[i].v = d # Tex V
   ctx.pVert[i].color = ctx.color # Color RGBA
 
-# Last Vert Index + Offset
-template triangle(o: int32, a,b,c: int32) =
+# X,Y,COLOR | PUBLIC
+template vertexCOL*(i: int32, a,b: float32, c: GUIColor) =
+  ctx.pVert[i].x = a # Position X
+  ctx.pVert[i].y = b # Position Y
+  ctx.pVert[i].u = ctx.atlas.whiteU # White U
+  ctx.pVert[i].v = ctx.atlas.whiteV # White V
+  ctx.pVert[i].color = c # Color RGBA
+
+# Last Vert Index + Offset | PUBLIC
+template triangle*(o: int32, a,b,c: int32) =
   ctx.pElem[o] = ctx.cursor + cast[uint16](a)
   ctx.pElem[o+1] = ctx.cursor + cast[uint16](b)
   ctx.pElem[o+2] = ctx.cursor + cast[uint16](c)
