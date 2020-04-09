@@ -86,7 +86,7 @@ proc delete*(input: ptr UTF8Input) =
 
 proc insert*(input: ptr UTF8Input, str: cstring) =
   let # Shortcuts
-    l = len(str).int32
+    l = cast[int32](str.len)
     i = input.cursor
   # Expand String Capacity
   input.str.setLen len(input.str) + l
