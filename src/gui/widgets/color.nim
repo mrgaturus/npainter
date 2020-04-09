@@ -1,16 +1,22 @@
 import ../widget, ../render
 from ../../c_math import
-  RGBColor, rgb, 
+  RGBColor, rgb, rgb8,
   HSVColor, hsv
 from ../event import 
   GUIState, GUIEvent
 
 type
+  GRABColorBar = enum
+    gNothing, gBar, gSquare
   GUIColorBar = ref object of GUIWidget
     color: ptr RGBColor
     # Cache Colors and Hue
-    pColor, hColor: RGBColor
+    pColor: RGBColor
+    hColor: GUIColor
     pHSV: HSVColor
+    # Mouse Grab Status
+    status: GRABColorBar
+
 const # Not Alpha Colors
   CARET = uint32 0x88FFFFFF
   BLACK = uint32 0xFF000000
@@ -20,35 +26,35 @@ let hueSix = # Hue Six Breakpoints
    0xFF00FF00'u32, 0xFFFFFF00'u32,
    0xFFFF0000'u32, 0xFFFF00FF'u32]
 
-proc newColorBar*(color: ptr GUIColor): GUIColorBar =
+proc newColorBar*(color: ptr RGBColor): GUIColorBar =
   new result # Alloc Color Wheel
   result.flags = wStandard
   # 100x100 minimun size
   result.minimum(100, 100)
   # Widget Attributes
   result.color = color
-  # Always Invalidate
-  if color[] == 0:
-    result.pColor = high uint32
+  # Allways Invalidate Color
+  if color[] == result.pColor:
+    result.pColor.r = 1
 
 method draw(self: GUIColorBar, ctx: ptr CTXRender) =
   var rect = rect(self.rect)
   # 1 -- Check if HSV needs update
   if self.color[] != self.pColor:
     # Change Prev Color
-    self.pColor = # No Alpha
-      self.color[] or BLACK
+    self.pColor = self.color[]
     # Change Prev HSV
-    var nHSV = hsv(self.pColor)
-    if nHSV.h == 0: # Hue
+    var nHSV: HSVColor
+    nHSV.rgb(self.pColor)
+    if nHSV.s == 0: # Hue
       nHSV.h = self.pHSV.h
-    if nHSV.s == 0: # Saturation
-      nHSV.s = self.pHSV.s
     self.pHSV = nHSV
     # Change Hue RGBA
     nHSV.s = 1; nHSV.v = 1
-    self.hColor = # No Alpha
-      nHSV.rgb() or BLACK
+    self.hColor = block:
+      var hRGB: RGBColor
+      hRGB.hsv(nHSV)
+      hRGB.rgb8()
   # 2 -- Draw Saturation / Hue Quad
   ctx.addVerts(8, 12); rect.xw -= 25
   # White/Color Gradient
@@ -89,10 +95,11 @@ method draw(self: GUIColorBar, ctx: ptr CTXRender) =
       rect.yh += h # Next Y
       # Next Hue Quad
       i += 1; j += 2; k += 6
+    rect.yh -= h
   # 4 -- Draw Cursors
   block: # Hue Cursor
-    let y = rect.y + # Y Offset
-      float32(self.rect.h) * self.pHSV.h
+    let y = rect.y + 
+      (rect.yh - rect.y) * self.pHSV.h
     # Clip Cursor Dimensions
     if y - 3 > rect.y: rect.y = y - 3
     if y + 3 < rect.yh: rect.yh = y + 3
@@ -101,11 +108,10 @@ method draw(self: GUIColorBar, ctx: ptr CTXRender) =
     ctx.color(BLACK); ctx.line(rect, 1)
   # Saturation/Value Cursor
   rect = rect(self.rect); block:
+    rect.xw -= 25
     let # X/Y Position
-      x = rect.x + # Saturation
-        float32(self.rect.w - 25) * self.pHSV.s
-      y = rect.yh - # Value
-        float32(self.rect.h) * self.pHSV.v
+      x = rect.x + (rect.xw - rect.x) * self.pHSV.s
+      y = rect.y + (rect.yh - rect.y) * (1 - self.pHSV.v)
     # Clip Cursor Dimensions
     if x - 5 > rect.x: rect.x = x - 5
     if x + 5 < rect.xw: rect.xw = x + 5
@@ -116,4 +122,36 @@ method draw(self: GUIColorBar, ctx: ptr CTXRender) =
     ctx.color(BLACK); ctx.line(rect, 1)
 
 method event(self: GUIColorBar, state: ptr GUIState) =
-  discard
+  if state.eventType == evMouseClick:
+    let delta = state.mx - self.rect.x
+    self.status =
+      if delta < self.rect.w - 25: gSquare
+      elif delta > self.rect.w - 20: gBar
+      else: gNothing # Grab to Dead Zone
+  elif self.test(wGrab):
+    let h = clamp(
+      (state.my - self.rect.y) / 
+      self.rect.h, 0, 1)
+    case self.status:
+    of gSquare:
+      self.pHSV.s = clamp(
+        (state.mx - self.rect.x) / 
+        (self.rect.w - 25), 0, 1)
+      self.pHSV.v = 1 - h
+      # Change Color
+      self.pColor.hsv(self.pHSV)
+      self.color[] = self.pColor
+    of gBar:
+      var nHSV = self.pHSV
+      nHSV.h = h
+      # Change Color
+      self.pHSV = nHSV
+      self.pColor.hsv(self.pHSV)
+      self.color[] = self.pColor
+      # Change Hue Color
+      nHSV.s = 1; nHSV.v = 1
+      self.hColor = block:
+        var hRGB: RGBColor
+        hRGB.hsv(nHSV)
+        hRGB.rgb8()
+    of gNothing: discard

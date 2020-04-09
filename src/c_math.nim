@@ -4,7 +4,8 @@ from math import floor, ceil
 type
   Value* = object
     min, max, pos: float32
-  RGBColor* = uint32
+  RGBColor* = object
+    r*, g*, b*: float32
   HSVColor* = object
     h*, s*, v*: float32
 
@@ -43,65 +44,9 @@ template toFloat*(value: Value): float32 =
 template toInt*(value: Value): int32 =
   int32(value.pos) # Return Current Value to Int32
 
-# -------------------------
-# HSV-RGBA / RGBA-HSV PROCS
-# -------------------------
-
-proc hsv*(rgb: RGBColor): HSVColor =
-  let # Get Colors
-    r = cast[byte](rgb)
-    g = cast[byte](rgb shr 8)
-    b = cast[byte](rgb shr 16)
-  let # Get Min, Max, Delta
-    max = max(max(r, g), b)
-    min = min(min(r, g), b)
-    delta = float32(max - min)
-  if max != 0: # Compute HSV
-    result.v = # Value
-      max.float32 / 255
-    result.s = # Saturation
-      delta / max.float32
-    result.h = # Hue Calculation
-      if r == max: float32(g - b) / delta
-      elif g == max: 2 + float32(b - r) / delta
-      elif b == max: 4 + float32(r - g) / delta
-      else: 0 # Invalid RGBA
-    result.h *= 60;
-    if result.h < 0:
-      result.h += 360
-    result.h /= 360
-
-proc rgb*(hsv: var HSVColor): RGBColor =
-  if hsv.s == 0: # Grayscale
-    let v = byte(hsv.v * 255)
-    result = v or (v shl 8) or (v shl 16)
-  else: # Colored
-    var h = hsv.h
-    # Get Hue Sector
-    if h == 1: h = 0
-    else: h *= 6
-    # Calculate RGBA
-    let # Round Sector
-      i = floor(h)
-      f = h - i
-      # Calculate Compotents
-      vv = uint32 hsv.v * 255
-      aa = uint32 hsv.v * (1 - hsv.s) * 255
-      bb = uint32 hsv.v * (1 - hsv.s * f) * 255
-      cc = uint32 hsv.v * (1 - hsv.s * (1 - f)) * 255
-    result = # Convert to RGB888
-      case byte(i): # Guaranted no oveflow
-      of 0: vv or (cc shl 8) or (aa shl 16)
-      of 1: bb or (vv shl 8) or (aa shl 16)
-      of 2: aa or (vv shl 8) or (cc shl 16)
-      of 3: aa or (bb shl 8) or (vv shl 16)
-      of 4: cc or (aa shl 8) or (vv shl 16)
-      of 5: vv or (aa shl 8) or (bb shl 16)
-      else: 0 # Invalid HSV Color
-
-# ----------------------
-# FAST SQRT AND INV SQRT
-# ----------------------
+# -----------------
+# C-CODE MATH PROCS
+# -----------------
 
 {.emit: """
 // -- nuklear_math.c
@@ -119,6 +64,84 @@ float inv_sqrt(float n) {
 float fast_sqrt(float n) {
   return n * inv_sqrt(n);
 }
+
+// -------------------------
+// HSV to RGB and RGB to HSV
+// -------------------------
+
+// [H, S, V, A]
+void hsv2rgb(float* rgb, float* hsv) {
+  float vv = hsv[2];
+  if (hsv[1] == 0)
+    rgb[0] = rgb[1] = rgb[2] = vv;
+  else {
+    short i;
+    float aa, bb, cc, h, f;
+
+    h = hsv[0];
+    if (h == 1)
+      h = 0;
+    h *= 6;
+
+    i = floorf(h);
+    f = h - i;
+
+    aa = vv * (1 - hsv[1]);
+    bb = vv * (1 - (hsv[1] * f));
+    cc = vv * (1 - (hsv[1] * (1 - f)));
+  
+    switch (i) {
+      case 0: rgb[0] = vv; rgb[1] = cc; rgb[2] = aa; break;
+      case 1: rgb[0] = bb; rgb[1] = vv; rgb[2] = aa; break;
+      case 2: rgb[0] = aa; rgb[1] = vv; rgb[2] = cc; break;
+      case 3: rgb[0] = aa; rgb[1] = bb; rgb[2] = vv; break;
+      case 4: rgb[0] = cc; rgb[1] = aa; rgb[2] = vv; break;
+      case 5: rgb[0] = vv; rgb[1] = aa; rgb[2] = bb; break;
+    }
+  }
+}
+
+void rgb2hsv(float* hsv, float* rgb) {
+  float max, min, delta;
+  // Max Color Channel
+  max = (rgb[0] > rgb[1]) ? rgb[0] : rgb[1];
+  max = (max > rgb[2]) ? max : rgb[2];
+  // Min Color Channel
+  min = (rgb[0] < rgb[1]) ? rgb[0] : rgb[1];
+  min = (min < rgb[2]) ? min : rgb[2];
+  // Delta Max - Min
+  delta = max - min;
+
+  hsv[2] = max;
+  hsv[1] = (max == 0) ? 0 : delta / max;
+  if (hsv[1] == 0)
+    hsv[0] = 0;
+  else {
+    if (rgb[0] == max)
+      hsv[0] = (rgb[1] - rgb[2]) / delta;
+    else if (rgb[1] == max)
+      hsv[0] = 2 + (rgb[2] - rgb[0]) / delta;
+    else if (rgb[2] == max)
+      hsv[0] = 4 + (rgb[0] - rgb[1]) / delta;
+    hsv[0] *= 60;
+    if (hsv[0] < 0)
+      hsv[0] += 360;
+    hsv[0] /= 360;
+  }
+}
+
+unsigned int rgb2bytes(float* rgb) {
+  return 
+    (unsigned int) (rgb[0] * 255) |
+    (unsigned int) (rgb[1] * 255) << 8 |
+    (unsigned int) (rgb[2] * 255) << 16 | 
+    0xFF << 24;
+}
+
+inline char rgb_cmp(float* a, float* b) {
+  return memcmp(a, b, 3) == 0;
+}
+
 // -- Orthogonal Projection for GUI Drawing
 void gui_mat4(float* r, float w, float h) {
   r[0] = 2.0 / w;
@@ -132,5 +155,11 @@ void gui_mat4(float* r, float w, float h) {
 # Fast Math for Simple usages
 proc invertedSqrt*(n: float32): float32 {.importc: "inv_sqrt".} # Fast Inverted Sqrt
 proc fastSqrt*(n: float32): float32 {.importc: "fast_sqrt".}
+# Color Conversion
+proc hsv*(color: var RGBColor, hsv: var HSVColor) {.importc: "hsv2rgb".}
+proc rgb*(color: var HSVColor, rgb: var RGBColor) {.importc: "rgb2hsv".}
+# RGB Comparation and Conversion
+proc rgb8*(color: var RGBColor): uint32 {.importc: "rgb2bytes".}
+proc `==`*(a, b: var RGBColor): bool {.importc: "rgb_cmp".}
 # GUI Projection
 proc guiProjection*(mat: ptr array[16, float32], w,h: float32) {.importc: "gui_mat4".}

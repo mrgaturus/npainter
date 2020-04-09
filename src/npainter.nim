@@ -8,7 +8,7 @@ from gui/widgets/textbox import newTextBox
 from gui/widgets/slider import newSlider
 from gui/widgets/scroll import newScroll
 from gui/widgets/color import newColorBar
-from c_math import Value, interval, lerp
+from c_math import Value, interval, lerp, RGBColor
 from assets import setIcons
 from utf8 import UTF8Input, `text=`
 
@@ -115,7 +115,7 @@ when isMainModule:
   var equisde: byte
   var val: Value
   var val2: Value
-  var col = 0'u32
+  var col = RGBColor(r: 0.5, g: 0.5, b: 0.5)
   val2.interval(0, 100)
   val.interval(0, 5)
   val.lerp(0.5, true)
@@ -222,6 +222,9 @@ when isMainModule:
       var color = newColorBar(addr col)
       color.geometry(50, 500, color.hint.w * 2, color.hint.h * 2)
       root.add(color)
+      color = newColorBar(addr col)
+      color.geometry(300, 500, color.hint.w * 2, color.hint.h * 2)
+      root.add(color)
     root.add(button)
     # Creates new Window
     
@@ -230,7 +233,7 @@ when isMainModule:
 
   while running:
     # Render Main Program
-    glClearColor(0.5, 0.5, 0.5, 1.0)
+    glClearColor(col.r, col.g, col.b, 1.0)
     glClear(GL_COLOR_BUFFER_BIT or GL_DEPTH_BUFFER_BIT)
     # Render GUI
     running = win.tick()

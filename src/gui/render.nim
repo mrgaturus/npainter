@@ -59,8 +59,8 @@ type
     size, cursor: uint16
     # Write Pointers
     pCMD: ptr CTXCommand
-    pVert*: CTXVertexMap
-    pElem*: CTXElementMap
+    pVert: CTXVertexMap
+    pElem: CTXElementMap
     # Allocated Buffer Data
     cmds: seq[CTXCommand]
     elements: seq[uint16]
