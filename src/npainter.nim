@@ -233,7 +233,7 @@ when isMainModule:
 
   while running:
     # Render Main Program
-    glClearColor(col.r, col.g, col.b, 1.0)
+    glClearColor(0.19607843137254902, 0.19607843137254902, 0.19607843137254902, 1.0)
     glClear(GL_COLOR_BUFFER_BIT or GL_DEPTH_BUFFER_BIT)
     # Render GUI
     running = win.tick()

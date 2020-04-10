@@ -33,7 +33,8 @@ method draw(self: GUISlider, ctx: ptr CTXRender) =
     ctx.fill(rect)
     # Fill Slider Bar
     rect.xw = # Get Slider Width
-      rect.x + float32(self.rect.w) * distance(self.value[])
+      rect.x + float32(self.rect.w) * 
+        distance(self.value[])
     ctx.color: # Status Color
       if not self.any(wHoverGrab):
         theme.barScroll
