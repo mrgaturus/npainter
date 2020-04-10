@@ -1,7 +1,7 @@
 import ../widget, ../render
 from ../event import 
   GUIState, GUIEvent, GUICallback, pushCallback
-from ../config import metrics
+from ../config import metrics, theme
 from ../atlas import textWidth
 
 type
@@ -23,14 +23,14 @@ proc newButton*(label: string, cb: GUICallback): GUIButton =
 method draw(self: GUIButton, ctx: ptr CTXRender) =
   ctx.color: # Select Color State
     if not self.any(wHoverGrab):
-      0xBB000000'u32
+      theme.bgButton
     elif self.test(wHoverGrab):
-      0x88000000'u32
-    else: 0xFF000000'u32
+      theme.grabButton
+    else: theme.hoverButton
   # Fill Button Background
   ctx.fill rect(self.rect)
   # Put Centered Text
-  ctx.color(high uint32)
+  ctx.color(theme.text)
   ctx.text( # Draw Centered Text
     self.rect.x + (self.rect.w - self.hint.w) shr 1, 
     self.rect.y - metrics.descender, self.label)

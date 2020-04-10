@@ -1,7 +1,8 @@
 import ../widget, ../render
 from ../event import 
   GUIState, GUIEvent
-from ../config import metrics
+from ../config import 
+  metrics, theme
 
 type
   GUIRadio = ref object of GUIWidget
@@ -23,21 +24,22 @@ proc newRadio*(label: string, expected: byte, check: ptr byte): GUIRadio =
 method draw(self: GUIRadio, ctx: ptr CTXRender) =
   ctx.color: # Select Color State
     if not self.any(wHoverGrab):
-      0xBB000000'u32
+      theme.bgWidget
     elif self.test(wHoverGrab):
-      0x88000000'u32
-    else: 0xFF000000'u32
+      theme.grabWidget
+    else: theme.hoverWidget
   # Fill Radio Background
   ctx.circle point(
     self.rect.x, self.rect.y),
     float32(self.rect.h shr 1)
-  ctx.color(high uint32)
   # If Checked Draw Circle Mark
   if self.check[] == self.expected:
+    ctx.color(theme.mark)
     ctx.circle point(
       self.rect.x + 4, self.rect.y + 4),
       float32(self.rect.h shr 1 - 4)
   # Draw Text Next To Circle
+  ctx.color(theme.text)
   ctx.text( # Centered Vertically
     self.rect.x + self.rect.h + 4, 
     self.rect.y - metrics.descender,

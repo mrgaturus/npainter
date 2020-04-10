@@ -4,7 +4,8 @@ from ../../c_math import
   interval, toFloat, toInt
 from ../event import 
   GUIState, GUIEvent
-from ../config import metrics
+from ../config import 
+  metrics, theme
 
 type
   GUIScroll* = ref object of GUIWidget
@@ -26,7 +27,7 @@ proc newScroll*(value: ptr Value, v = false): GUIScroll =
 method draw(self: GUIScroll, ctx: ptr CTXRender) =
   var rect = rect(self.rect)
   # Fill Background
-  ctx.color(0xFF000000'u32)
+  ctx.color(theme.bgScroll)
   ctx.fill(rect)
   block: # Fill Scroll Bar
     var side, scroll: float32
@@ -42,7 +43,13 @@ method draw(self: GUIScroll, ctx: ptr CTXRender) =
       rect.x += # Move Scroll to distance
         (side - scroll) * distance(self.value[])
       rect.xw = rect.x + scroll
-  ctx.color(0xFF555555'u32)
+  # Draw Scroll Bar
+  ctx.color: # Status Color
+    if not self.any(wHoverGrab):
+      theme.barScroll
+    elif self.test(wGrab):
+      theme.grabScroll
+    else: theme.hoverScroll
   ctx.fill(rect)
 
 method event*(self: GUIScroll, state: ptr GUIState) =

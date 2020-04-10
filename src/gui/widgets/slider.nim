@@ -5,7 +5,8 @@ from ../../c_math import
   Value, distance, lerp,
   toFloat, toInt
 from ../event import GUIState
-from ../config import metrics
+from ../config import 
+  metrics, theme
 from ../atlas import textWidth
 
 type
@@ -28,12 +29,17 @@ method draw(self: GUISlider, ctx: ptr CTXRender) =
   block: # Draw Slider
     var rect = rect(self.rect)
     # Fill Slider Background
-    ctx.color(0xFF000000'u32)
+    ctx.color(theme.bgWidget)
     ctx.fill(rect)
     # Fill Slider Bar
-    ctx.color(0xFF555555'u32)
     rect.xw = # Get Slider Width
       rect.x + float32(self.rect.w) * distance(self.value[])
+    ctx.color: # Status Color
+      if not self.any(wHoverGrab):
+        theme.barScroll
+      elif self.test(wGrab):
+        theme.grabScroll
+      else: theme.hoverScroll
     ctx.fill(rect)
   # Draw Text Information
   let text = 
@@ -41,7 +47,7 @@ method draw(self: GUISlider, ctx: ptr CTXRender) =
       formatFloat(self.value[].toFloat, 
         ffDecimal, self.decimals)
     else: $self.value[].toInt
-  ctx.color(high uint32)
+  ctx.color(theme.text)
   ctx.text( # On The Right Side
     self.rect.x + self.rect.w - textWidth(text) - 4, 
     self.rect.y - metrics.descender, text)

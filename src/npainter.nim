@@ -115,7 +115,7 @@ when isMainModule:
   var equisde: byte
   var val: Value
   var val2: Value
-  var col = RGBColor(r: 0.5, g: 0.5, b: 0.5)
+  var col = RGBColor(r: 50 / 255, g: 50 / 255, b: 50 / 255)
   val2.interval(0, 100)
   val.interval(0, 5)
   val.lerp(0.5, true)

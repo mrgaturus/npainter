@@ -4,7 +4,7 @@ from x11/keysym import
   XK_Delete, XK_Home, XK_End
 # -----------------------
 import ../widget, ../render, ../../utf8
-from ../config import metrics
+from ../config import metrics, theme
 from ../atlas import textWidth, textIndex
 from ../event import 
   GUIState, GUIEvent, pushSignal,
@@ -38,24 +38,24 @@ method draw(self: GUITextBox, ctx: ptr CTXRender) =
     # Unmark Input as Changed
     self.input.changed = false
   # Fill TextBox Background
-  ctx.color(0xFF000000'u32)
+  ctx.color(theme.bgWidget)
   ctx.fill rect(self.rect)
   # Draw Textbox Status
   if self.any(wHover or wFocus):
     if self.test(wFocus):
       # Focused Outline Color
-      ctx.color(high uint32)
+      ctx.color(theme.text)
       # Draw Cursor
       ctx.fill rect(
         self.rect.x + self.wi + 4,
         self.rect.y - metrics.descender,
         1, metrics.ascender)
     else: # Hover Outline Color
-      ctx.color(0xAAFFFFFF'u32)
+      ctx.color(theme.hoverWidget)
     # Draw Outline Status
     ctx.line rect(self.rect), 1
   # Set Color To White
-  ctx.color(high uint32) 
+  ctx.color(theme.text)
   # Draw Current Text
   ctx.text( # Offset X and Clip
     self.rect.x - self.wo + 4,
