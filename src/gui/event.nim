@@ -1,4 +1,3 @@
-import macros
 import x11/xlib, x11/x
 from x11/keysym import 
   XK_Tab, XK_ISO_Left_Tab
@@ -51,12 +50,14 @@ type
     # Signal or Callback
     case kind: SKind
     of sSignal:
-      id*, msg*: uint8
+      id*: pointer
+      msg*: uint8
     of sCallback:
       cb: GUICallback
     # Signal Data
     data*: GUIOpaque
   # Signal Generic Data
+  GUITarget* = distinct pointer
   GUICallback* = proc(g, d: pointer) {.nimcall.}
   GUIOpaque* = object
   # GUI Signal and Queue
@@ -165,7 +166,7 @@ proc callSignal*(signal: GUISignal): bool =
 # SIGNAL PUSHER PROCS
 # -------------------
 
-proc pushSignal(id, msg: uint8, data: pointer, size: Natural) =
+proc pushSignal(id: pointer, msg: uint8, data: pointer, size: Natural) =
   # Allocs new signal
   let nsignal = cast[GUISignal](
     alloc0(sizeof(Signal) + size)
@@ -209,14 +210,14 @@ proc pushCallback(cb: GUICallback, data: pointer, size: Natural) =
 # SIGNAL PUBLIC TEMPLATES
 # -----------------------
 
-template pushSignal*(id: uint8, msg: enum, data: pointer, size: Natural) =
-  pushSignal(id, cast[uint8](msg), data, size)
+template pushSignal*(w: GUITarget, msg: enum, data: pointer, size: Natural) =
+  pushSignal(cast[pointer](w), cast[uint8](msg), data, size)
 
-template pushSignal*(id: uint8, msg: enum, data: typed) =
-  pushSignal(id, cast[uint8](msg), addr data, sizeof(data))
+template pushSignal*(w: GUITarget, msg: enum, data: typed) =
+  pushSignal(cast[pointer](w), cast[uint8](msg), addr data, sizeof(data))
 
-template pushSignal*(id: uint8, msg: enum) =
-  pushSignal(id, cast[uint8](msg), nil, 0)
+template pushSignal*(w: GUITarget, msg: enum) =
+  pushSignal(cast[pointer](w), cast[uint8](msg), nil, 0)
 
 template pushCallback*(cb: proc, data: pointer, size: Natural) =
   pushCallback(cast[GUICallback](cb), data, size)
@@ -229,39 +230,3 @@ template pushCallback*(cb: proc) =
 
 template convert*(data: GUIOpaque, t: type): ptr t =
   cast[ptr t](addr data)
-
-# -----------------------
-# SIGNAL ID BUILDER MACRO
-# -----------------------
-
-var lastID {.compileTime.}: uint8
-macro signal*(name, messages: untyped) =
-  # Expected Parameters
-  name.expectKind(nnkIdent)
-  messages.expectKind(nnkStmtList)
-  # Check signal limit count
-  if lastID > cast[uint8](63):
-    error("exceded max signal count")
-  # Create a new Stmt Tree
-  result = nnkStmtList.newTree().add:
-    newNimNode(nnkConstSection).add:
-      newNimNode(nnkConstDef).add(
-        newNimNode(nnkPostfix).add(
-          newIdentNode("*"), 
-          newIdentNode(name.strVal & "ID")
-        ), newEmptyNode(), newLit(lastID) )
-  # Create Msg Enum if not discarded
-  if messages[0].kind != nnkDiscardStmt:
-    let msgEnum = # Create Enum Fields Node
-      newNimNode(nnkEnumTy).add newEmptyNode()
-    for m in messages:
-      m.expectKind(nnkIdent)
-      msgEnum.add newIdentNode("msg" & m.strVal)
-    result.add newNimNode(nnkTypeSection).add(
-        newNimNode(nnkTypeDef).add(
-          newNimNode(nnkPostfix).add(
-            newIdentNode("*"),
-            newIdentNode(name.strVal & "Msg")
-          ), newEmptyNode(), msgEnum ) )
-  # Increment Last ID
-  inc(lastID)

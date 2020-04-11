@@ -1,6 +1,6 @@
 from event import 
   GUIState, GUISignal, 
-  signal, pushSignal
+  GUITarget, pushSignal
 from render import 
   CTXRender, GUIRect
 
@@ -36,19 +36,17 @@ type
   GUIHandle* = enum
     inFocus, inHover, inHold, inFrame
     outFocus, outHover, outHold, outFrame
+  GUIParent* = distinct pointer
   GUIWidget* {.inheritable.} = ref object
     # Widget Neighbords
+    parent*: GUIParent
     next*, prev*: GUIWidget
     # Widget Flags
     flags*: GUIFlags
     # Widget Rect&Hint
     rect*, hint*: GUIRect
-    # Signal Groups
-    signals*: set[0u8..63u8]
-
-signal Frame:
-  Open # Open Floating
-  Close # Close Floating
+  FrameMSG = enum
+    msgOpen, msgClose
 
 # ----------------
 # WIDGET ITERATORS
@@ -68,9 +66,9 @@ iterator reverse*(last: GUIWidget): GUIWidget =
     yield frame
     frame = frame.prev
 
-# ------------------
-# WIDGET FLAGS PROCS
-# ------------------
+# ---------------------------
+# WIDGET FLAGS & TARGET PROCS
+# ---------------------------
 
 proc set*(self: GUIWidget, mask: GUIFlags) {.inline.} =
   self.flags = self.flags or mask
@@ -84,12 +82,8 @@ proc any*(self: GUIWidget, mask: GUIFlags): bool {.inline.} =
 proc test*(self: GUIWidget, mask: GUIFlags): bool {.inline.} =
   return (self.flags and mask) == mask
 
-# ----------------------
-# WIDGET SIGNAL CHECKING
-# ----------------------
-
-proc `in`*(signal: uint8, self: GUIWidget): bool {.inline.} =
-  return signal in self.signals
+proc target*(self: GUIWidget): GUITarget {.inline.} =
+  return cast[GUITarget](self)
 
 # ------------------------------------
 # WIDGET RECT PROCS layout-mouse event
@@ -128,7 +122,7 @@ proc pointOnArea*(widget: GUIWidget, x, y: int32): bool =
 proc open*(widget: GUIWidget) =
   # Send Widget to Window for open
   pushSignal(
-    FrameID, msgOpen,
+    cast[GUITarget](nil), msgOpen,
     unsafeAddr widget,
     sizeof(GUIWidget)
   )
@@ -136,7 +130,7 @@ proc open*(widget: GUIWidget) =
 proc close*(widget: GUIWidget) =
   # Send Widget to window for close
   pushSignal(
-    FrameID, msgClose,
+    cast[GUITarget](nil), msgClose,
     unsafeAddr widget,
     sizeof(GUIWidget)
   )
@@ -165,7 +159,7 @@ method event*(widget: GUIWidget, state: ptr GUIState) {.base.} = discard
 method step*(widget: GUIWidget, back: bool) {.base.} =
   widget.flags = widget.flags xor wFocus
 # 2 -- Tick Methods
-method trigger*(widget: GUIWidget, signal: GUISignal) {.base.} = discard
+method notify*(widget: GUIWidget, sig: GUISignal) {.base.} = discard
 method update*(widget: GUIWidget) {.base.} = discard
 method layout*(widget: GUIWidget) {.base.} = discard
 # 3 -- Draw Method

@@ -7,6 +7,7 @@ import ../libs/egl
 
 from timer import sleep
 from config import metrics
+from container import reflect
 from ../libs/gl import gladLoadGL
 
 let
@@ -54,11 +55,13 @@ type
     hover: GUIWidget
     # Auxiliar Flags
     aux: GUIFlags
-
-signal Window:
-  Terminate
-  FocusIM
-  UnfocusIM
+  WindowMSG* = enum
+    msgOpen, msgClose
+    msgOpenIM, msgCloseIM
+    msgTerminate
+const 
+  WindowTarget* = 
+    GUITarget(nil)
 
 const LC_ALL = 6 # Hardcopied from gcc header
 proc setlocale(category: cint, locale: cstring): cstring
@@ -168,7 +171,6 @@ proc open*(win: var GUIWindow, root: GUIWidget): bool =
   # Set the new root at first and next
   win.root = root; win.last = root
   # Root has Window and Frame Signals
-  root.signals = {WindowID, FrameID}
   root.flags = wStandard or wOpaque
   # Set to Global Dimensions
   root.rect.w = metrics.width
@@ -448,34 +450,25 @@ proc handleEvents(win: var GUIWindow) =
 proc handleSignals(win: var GUIWindow): bool =
   for signal in pollQueue():
     # is GUI Callback?
-    if callSignal(signal):
-      continue
-    # is GUI Signal?
-    case signal.id:
-    of WindowID: # Window Signal
-      case WindowMsg(signal.msg):
-      of msgTerminate: return false
-      of msgFocusIM: XSetICFocus(win.xic)
-      of msgUnfocusIM: XUnsetICFocus(win.xic)
-    of FrameID: # Frame Signal Operations
-      let frame = convert(signal.data, GUIWidget)[]
-      if not isNil(frame) and frame != win.root:
-        case FrameMsg(signal.msg)
-        of msgClose: # Remove frame from window
-          if test(frame, wFramed):
-            delFrame(win, frame)
-        of msgOpen: # Add frame to window
-          if not test(frame, wFramed):
+    if callSignal(signal): continue
+    elif isNil(signal.id):
+      case WindowMSG(signal.msg):
+      of msgOpen, msgClose:
+        let frame = convert(signal.data, GUIWidget)[]
+        if not isNil(frame) and frame != win.root:
+          if signal.msg == ord(msgOpen) and
+              not test(frame, wFramed):
             addFrame(win, frame)
-    else: # Process signal to widgets
-      for widget in forward(win.root):
-        if signal.id in widget:
-          # Save Prev Flags
-          win.aux = widget.flags
-          # Trigger Signal
-          trigger(widget, signal)
-          # Check if hold or focus is changed
-          checkHandlers(win, widget)
+          elif signal.msg == ord(msgClose) and
+              test(frame, wFramed):
+            delFrame(win, frame)
+      of msgOpenIM: XSetICFocus(win.xic)
+      of msgCloseIM: XUnsetICFocus(win.xic)
+      of msgTerminate: return false
+    else: # Process signal to widget
+      let w = convert(signal.data, GUIWidget)[]
+      win.aux = w.flags; w.notify(signal)
+      checkHandlers(win, w.reflect)
   # Event Loop Still Alive
   return true
 

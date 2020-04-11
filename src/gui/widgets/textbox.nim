@@ -10,7 +10,7 @@ from ../event import
   GUIState, GUIEvent, pushSignal,
   UTF8Nothing, UTF8Keysym
 from ../window import 
-  WindowID, msgFocusIM, msgUnfocusIM
+  WindowTarget, msgOpenIM, msgCloseIM
 
 type
   GUITextBox = ref object of GUIWidget
@@ -92,6 +92,6 @@ method event(self: GUITextBox, state: ptr GUIState) =
 
 method handle(widget: GUITextBox, kind: GUIHandle) =
   case kind # Un/Focus X11 Input Method
-  of inFocus: pushSignal(WindowID, msgFocusIM)
-  of outFocus: pushSignal(WindowID, msgUnfocusIM)
+  of inFocus: pushSignal(WindowTarget, msgOpenIM)
+  of outFocus: pushSignal(WindowTarget, msgCloseIM)
   else: discard

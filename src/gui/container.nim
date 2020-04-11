@@ -19,15 +19,15 @@ type
 # --------------------------
 
 method arrange*(self: GUIContainer) {.base.} = discard
-method provoke*(self: GUIContainer, signal: GUISignal) {.base.} = discard
+# notify(signal) is a reusable method
 
 # -------------------------
 # CONTAINER ADD WIDGET PROC
 # -------------------------
 
 proc add*(self: GUIContainer, widget: GUIWidget) =
-  # Merge Widget Signals to Self
-  incl(self.signals, widget.signals)
+  widget.parent =
+    cast[GUIParent](self)
   # Add Widget to List
   if self.first.isNil:
     self.first = widget
@@ -92,6 +92,19 @@ proc reactive(self: GUIContainer, widget: GUIWidget) =
     self.clear(wFocus)
   elif (check and wFocus) == wFocus and check > wFocus:
     widget.clear(wFocus) # Invalid focus
+
+# ------------------------------
+# CONTAINER SIGNAL REACTIVE PROC
+# ------------------------------
+
+proc reflect*(w: GUIWidget): GUIWidget =
+  var c = cast[GUIContainer](w.parent)
+  while not isNil(c):
+    c.reactive(w) # React to flag changes
+    c = cast[GUIContainer](c.parent)
+  # Return Top Widget
+  if isNil(c): w
+  else: c
 
 # ------------------------
 # CONTAINER WIDGET METHODS
@@ -171,14 +184,6 @@ method event(self: GUIContainer, state: ptr GUIState) =
     found.event(state)
     # React and Check
     self.reactive(found)
-
-method trigger(self: GUIContainer, signal: GUISignal) =
-  for widget in forward(self.first):
-    if signal.id in widget:
-      widget.trigger(signal)
-      self.reactive(widget)
-  # Provoke Changes to Container
-  self.provoke(signal)
 
 method step(self: GUIContainer, back: bool) =
   var focus =

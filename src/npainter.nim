@@ -12,10 +12,6 @@ from c_math import Value, interval, lerp, RGBColor
 from assets import setIcons
 from utf8 import UTF8Input, `text=`
 
-signal Example:
-  A
-  B
-
 setIcons 16:
   iconBrush = "brush.svg"
   iconClear = "clear.svg"
@@ -37,16 +33,6 @@ proc helloworld*(g, d: pointer) =
 # ------------------
 # GUI BLANK METHODS
 # ------------------
-
-proc click*(g: ptr Counter, d: pointer) =
-  inc(g.clicked)
-  pushSignal(ExampleID, msgA, nil, 0)
-  echo "Click Count: ", g.clicked
-
-proc release*(g: ptr Counter, d: pointer) =
-  inc(g.released)
-  pushSignal(ExampleID, msgB, nil, 0)
-  echo "Released Count: ", g.clicked
 
 method draw*(widget: GUIBlank, ctx: ptr CTXRender) =
   if widget.test(wHover):
@@ -91,11 +77,6 @@ method event*(widget: GUIBlank, state: ptr GUIState) =
       widget.clear(wUpdate)
   if widget.test(wGrab) and not isNil(widget.frame):
     move(widget.frame, state.mx + 5, state.my + 5)
-
-method trigger*(widget: GUIWidget, signal: GUISignal) =
-  case ExampleMsg(signal.msg)
-  of msgA: echo "Recived A"
-  of msgB: echo "Recived B"
 
 method update*(widget: GUIBlank) =
   if checkTimer(widget.t):
