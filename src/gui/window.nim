@@ -467,8 +467,8 @@ proc handleSignals(win: var GUIWindow): bool =
       of msgTerminate: return false
     else: # Process signal to widget
       let w = convert(signal.data, GUIWidget)[]
-      win.aux = w.flags; w.notify(signal)
-      checkHandlers(win, w.reflect)
+      w.notify(signal) # Call Signal Method
+      checkHandlers(win, w.reflect win.aux)
   # Event Loop Still Alive
   return true
 

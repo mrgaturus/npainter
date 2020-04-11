@@ -97,14 +97,20 @@ proc reactive(self: GUIContainer, widget: GUIWidget) =
 # CONTAINER SIGNAL REACTIVE PROC
 # ------------------------------
 
-proc reflect*(w: GUIWidget): GUIWidget =
-  var c = cast[GUIContainer](w.parent)
-  while not isNil(c):
-    c.reactive(w) # React to flag changes
-    c = cast[GUIContainer](c.parent)
-  # Return Top Widget
-  if isNil(c): w
-  else: c
+proc reflect*(w: GUIWidget, aux: var uint16): GUIWidget =
+  var # Widget Parent and next parent
+    c = cast[GUIContainer](w.parent)
+    p: GUIContainer # Aux Parent
+  if isNil(c): w else:
+    c.reactive(w) # React to Widget
+    p = cast[GUIContainer](c.parent)
+    # Reflect to Parents
+    while not isNil(p):
+      if isNil(p.parent.pointer):
+        aux = p.flags # Prev Flags
+      p.reactive(c); c = p
+      p = cast[GUIContainer](p.parent)
+    c # Return Top Widget
 
 # ------------------------
 # CONTAINER WIDGET METHODS
