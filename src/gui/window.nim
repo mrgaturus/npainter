@@ -466,7 +466,7 @@ proc handleSignals(win: var GUIWindow): bool =
       of msgCloseIM: XUnsetICFocus(win.xic)
       of msgTerminate: return false
     else: # Process signal to widget
-      let w = convert(signal.data, GUIWidget)[]
+      let w = cast[GUIWidget](signal.id)
       w.notify(signal) # Call Signal Method
       checkHandlers(win, w.reflect win.aux)
   # Event Loop Still Alive

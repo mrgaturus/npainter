@@ -216,17 +216,18 @@ method layout(self: GUIContainer) =
   if dirty: arrange(self)
   for widget in forward(self.first):
     # Mark as dirty if container is dirty
-    widget.set(cast[uint16](dirty) shl 3'u16) 
+    widget.set(cast[uint16](dirty) shl 3'u16)
     # Layout Indicator Check
     if widget.any(0x0C):
-      widget.clear(0x0C)
       if dirty: # Change Absolute Position
         calcAbsolute(widget, self.rect)
       # Do Layoutning if visible
       if widget.test(wVisible):
         widget.layout()
+        widget.clear(0x0C)
         # React To Flag Changes
         self.reactive(widget)
+      else: widget.clear(0x0C)
 
 method handle(self: GUIContainer, kind: GUIHandle) =
   var
