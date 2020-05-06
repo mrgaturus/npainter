@@ -1,3 +1,4 @@
+import times
 import libs/gl
 import libs/ft2
 import gui/[window, widget, render, container, event, timer]
@@ -23,6 +24,7 @@ type
     clicked, released: int
   GUIBlank = ref object of GUIWidget
     frame: GUIWidget
+    texture: GLuint
     t: GUITimer
 
 var coso: UTF8Input
@@ -30,39 +32,31 @@ proc helloworld*(g, d: pointer) =
   coso.text = "hello world"
   echo "hello world"
 
+# ------------------------
+# LOAD TRIANGLE RASTERIZER
+# ------------------------
+
+type
+  CPUVertex {.packed.} = object
+    x, y: int32
+  SSEVertex {.packed.} = object
+    x, y: float32
+  CPUTriangle = array[3, CPUVertex]
+  SSETriangle = array[3, SSEVertex]
+
+
+{.compile: "painter/triangle.c".}
+proc triangle_draw(buffer: pointer, w, h: int32, v: ptr SSETriangle) {.importc: "triangle_draw".}
+proc triangle_naive(buffer: pointer, w, h: int32, v: ptr CPUTriangle) {.importc: "triangle_draw_naive".}
+
 # ------------------
 # GUI BLANK METHODS
 # ------------------
 
 method draw*(widget: GUIBlank, ctx: ptr CTXRender) =
-  if widget.test(wHover):
-    let state = # Test Color
-      if widget.test(wHover): 0xAA252525'u32
-      elif widget.test(wGrab): 0xAAFF00FF'u32
-      elif widget.test(wFocus): 0xAAFFFF00'u32
-      else: 0xAAFFFFFF'u32
-    ctx.color(state)
-    ctx.fill rect(widget.rect)
-    ctx.color(high uint32)
-    #drawAtlas(ctx, widget.rect)
-    ctx.color(0xAACCCCCC'u32)
-    #triangle(ctx, widget.rect, toDown)
-  else:
-    ctx.color(0xFF000000'u32)
-    ctx.fill rect(widget.rect)
-    ctx.color(high uint32)
-    #drawAtlas(ctx, widget.rect)
-    #ctx.texture(widget.rect, 0)
-    ctx.text(widget.rect.x, widget.rect.y, "Hello World")
-    ctx.icon(widget.rect.x + 40, widget.rect.y - 40, iconClear)
-    ctx.icon(widget.rect.x + 60, widget.rect.y - 40, iconClose)
-    ctx.color(0xFFAABBCC'u32)
-    ctx.triangle(
-      point(widget.rect.x, widget.rect.y + widget.rect.h),
-      point(widget.rect.x + widget.rect.w, widget.rect.y + widget.rect.h shr 1),
-      point(widget.rect.x + widget.rect.w shr 2, widget.rect.y))
-    ctx.color(0xFFCCBBAA'u32)
-    ctx.circle(point(widget.rect.x, widget.rect.y), float32 widget.rect.h shr 1)
+  ctx.color 0xFFFFFFFF'u32
+  ctx.texture(widget.rect, widget.texture)
+
 method event*(widget: GUIBlank, state: ptr GUIState) =
   #echo "cursor mx: ", state.mx, " cursor my: ", state.my
   if state.eventType == evMouseClick:
@@ -91,7 +85,14 @@ method handle*(widget: GUIBlank, kind: GUIHandle) =
   if kind == outHold: close(widget.frame)
 
 when isMainModule:
+  var counter = Counter(
+    clicked: 0, 
+    released: 0
+  )
+  var win = newGUIWindow(1024, 600, addr counter)
   var ft: FT2Library
+  var cpu_raster: GLuint
+  var cpu_pixels: seq[byte]
   var bolo, bala: bool
   var equisde: byte
   var val: Value
@@ -101,16 +102,20 @@ when isMainModule:
   val.interval(0, 5)
   val.lerp(0.5, true)
   
+  # Generate CPU Raster
+  cpu_pixels.setLen(512 * 256)
+  glGenTextures(1, addr cpu_raster)
+  glBindTexture(GL_TEXTURE_2D, cpu_raster)
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, cast[GLint](GL_LINEAR))
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, cast[GLint](GL_NEAREST))
+  glTexImage2D(GL_TEXTURE_2D, 0, cast[GLint](GL_R8), 512, 256, 
+    0, GL_RED, GL_UNSIGNED_BYTE, nil)
+  glBindTexture(GL_TEXTURE_2D, 0)
+
   # Initialize Freetype2
   if ft2_init(addr ft) != 0:
     echo "ERROR: failed initialize FT2"
-  # Create Counter
-  var counter = Counter(
-    clicked: 0, 
-    released: 0
-  )
   # Create a new Window
-  var win = newGUIWindow(1024, 600, addr counter)
   let root = new GUIContainer
   block: # Create Widgets
     # Create two blanks
@@ -124,11 +129,13 @@ when isMainModule:
     blank = new GUIBlank
     blank.flags = wStandard
     blank.geometry(300,150,512,256)
+    blank.texture = cpu_raster
     root.add(blank)
     # --- Blank #2 ---
     blank = new GUIBlank
     blank.flags = wStandard
     blank.geometry(20,20,100,100)
+    blank.texture = cpu_raster
     block: # Menu Blank #2
       con = new GUIContainer
       con.color = 0xAA637a90'u32
@@ -208,7 +215,33 @@ when isMainModule:
       root.add(color)
     root.add(button)
     # Creates new Window
-    
+  
+  # Draw a triangle
+  var tri: CPUTriangle
+  var sse: SSETriangle
+  block:
+    var vert: CPUVertex
+    vert.x = 0; vert.y = 0; tri[0] = vert
+    vert.x = 512; vert.y = 0; tri[1] = vert
+    vert.x = 256; vert.y = 256; tri[2] = vert
+  block:
+    var vert: SSEVertex
+    vert.x = 0; vert.y = 0; sse[0] = vert
+    vert.x = 512; vert.y = 0; sse[1] = vert
+    vert.x = 256; vert.y = 256; sse[2] = vert
+  var start, middle, finish: Time
+  start = getTime()
+  triangle_draw(addr cpu_pixels[0], 512, 256, addr sse)
+  middle = getTime()
+  triangle_naive(addr cpu_pixels[0], 512, 256, addr tri)
+  finish = getTime()
+  echo "sse: ", middle - start, "\nnaive: ", finish - middle
+  # Put it to raster
+  glBindTexture(GL_TEXTURE_2D, cpu_raster)
+  glPixelStorei(GL_UNPACK_ALIGNMENT, 1)
+  glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 512, 256, GL_RED, GL_UNSIGNED_BYTE, addr cpu_pixels[0])
+  glPixelStorei(GL_UNPACK_ALIGNMENT, 4)
+  glBindTexture(GL_TEXTURE_2D, 0)
   # MAIN LOOP
   var running = win.open(root)
 
