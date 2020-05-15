@@ -43,25 +43,25 @@ u32 blend_normal(u32 dst, u32 src) {
     alpha = 255;
   alpha <<= 24;
   // Unpack Colors
-  __m128i xmm1 = // SRC
+  __m128i xmm0 = // SRC
     _mm_cvtepu8_epi16(
       _mm_cvtsi32_si128(src));
-  __m128i xmm2 = // DST
+  __m128i xmm1 = // DST
     _mm_cvtepu8_epi16(
       _mm_cvtsi32_si128(dst));
-  __m128i xmm3, xmm4;
+  __m128i xmm2, xmm3;
   // Multiply src channels by src alpha
-  xmm3 = _mm_shufflelo_epi16(xmm1, 0xFF);
-  xmm4 = _mm_mullo_epi16(xmm1, xmm3);
-  xmm4 = _mm_div_255(xmm4);
-  // Multiply dst channels by 255-src alpha
-  xmm3 = _mm_sub_epi16(mask_255, xmm3);
-  xmm3 = _mm_mullo_epi16(xmm3, xmm2);
+  xmm2 = _mm_shufflelo_epi16(xmm0, 0xFF);
+  xmm3 = _mm_mullo_epi16(xmm2, xmm0);
   xmm3 = _mm_div_255(xmm3);
+  // Multiply dst channels by 255-src alpha
+  xmm2 = _mm_sub_epi16(mask_255, xmm2);
+  xmm2 = _mm_mullo_epi16(xmm2, xmm1);
+  xmm2 = _mm_div_255(xmm2);
   // Sum Both Multiplications
-  xmm3 = _mm_add_epi16(xmm3, xmm4);
+  xmm2 = _mm_add_epi16(xmm2, xmm3);
   // Return New Blended Color
-  xmm3 = _mm_packus_epi16(xmm3, xmm3);
-  return _mm_cvtsi128_si32(xmm3)
+  xmm2 = _mm_packus_epi16(xmm2, xmm2);
+  return _mm_cvtsi128_si32(xmm2)
     & 0x00FFFFFF | alpha;
 }

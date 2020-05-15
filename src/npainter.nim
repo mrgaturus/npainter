@@ -46,6 +46,8 @@ type
 
 
 {.compile: "painter/triangle.c".}
+{.compile: "painter/blend.c".}
+{.passC: "-msse4.1".}
 proc triangle_draw(buffer: pointer, w, h: int32, v: ptr SSETriangle) {.importc: "triangle_draw".}
 proc triangle_naive(buffer: pointer, w, h: int32, v: ptr CPUTriangle) {.importc: "triangle_draw_naive".}
 
@@ -84,6 +86,19 @@ method handle*(widget: GUIBlank, kind: GUIHandle) =
   #echo "by: ", cast[uint](widget)
   if kind == outHold: close(widget.frame)
 
+
+proc blend*(dst, src: uint32): uint32{.importc: "blend_normal".}
+proc fill*(buffer: var seq[uint32], x, y, w, h: int32, color: uint32) =
+  var i, xi, yi: int32
+  yi = y
+  while i < h:
+    xi = x
+    while xi < w:
+      let col = buffer[yi * w + xi]
+      buffer[yi * w + xi] = blend(col, color)
+      inc(xi)
+    inc(i); inc(yi)
+
 when isMainModule:
   var counter = Counter(
     clicked: 0, 
@@ -92,7 +107,7 @@ when isMainModule:
   var win = newGUIWindow(1024, 600, addr counter)
   var ft: FT2Library
   var cpu_raster: GLuint
-  var cpu_pixels: seq[byte]
+  var cpu_pixels: seq[uint32]
   var bolo, bala: bool
   var equisde: byte
   var val: Value
@@ -108,8 +123,8 @@ when isMainModule:
   glBindTexture(GL_TEXTURE_2D, cpu_raster)
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, cast[GLint](GL_LINEAR))
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, cast[GLint](GL_NEAREST))
-  glTexImage2D(GL_TEXTURE_2D, 0, cast[GLint](GL_R8), 512, 256, 
-    0, GL_RED, GL_UNSIGNED_BYTE, nil)
+  glTexImage2D(GL_TEXTURE_2D, 0, cast[GLint](GL_RGBA8), 512, 256, 
+    0, GL_RGBA, GL_UNSIGNED_BYTE, nil)
   glBindTexture(GL_TEXTURE_2D, 0)
 
   # Initialize Freetype2
@@ -236,10 +251,12 @@ when isMainModule:
   triangle_naive(addr cpu_pixels[0], 512, 256, addr tri)
   finish = getTime()
   echo "sse: ", middle - start, "\nnaive: ", finish - middle
+  fill(cpu_pixels, 0, 0, 512, 256, 0x1100FF00'u32)
   # Put it to raster
   glBindTexture(GL_TEXTURE_2D, cpu_raster)
   glPixelStorei(GL_UNPACK_ALIGNMENT, 1)
-  glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 512, 256, GL_RED, GL_UNSIGNED_BYTE, addr cpu_pixels[0])
+  glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 512, 256, 
+    GL_RGBA, GL_UNSIGNED_BYTE, addr cpu_pixels[0])
   glPixelStorei(GL_UNPACK_ALIGNMENT, 4)
   glBindTexture(GL_TEXTURE_2D, 0)
   # MAIN LOOP
