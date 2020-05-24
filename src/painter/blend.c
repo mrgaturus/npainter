@@ -36,7 +36,8 @@ static inline __m128i _mm_div_255(__m128i xmm0) {
 // --------------
 
 u32 blend_normal(u32 dst, u32 src) {
-  u32 alpha = // DA + SA
+  // DA + SA
+  u32 alpha =
     (src >> 24) +
     (dst >> 24);
   if (alpha > 255)
