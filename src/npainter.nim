@@ -1,270 +1,114 @@
-import times
 import libs/gl
-import libs/ft2
-import gui/[window, widget, render, container, event, timer]
-from gui/widgets/button import newButton
-from gui/widgets/check import newCheckbox
-from gui/widgets/radio import newRadio
-from gui/widgets/textbox import newTextBox
-from gui/widgets/slider import newSlider
-from gui/widgets/scroll import newScroll
-from gui/widgets/color import newColorBar
-from c_math import Value, interval, lerp, RGBColor
-from assets import setIcons
-from utf8 import UTF8Input, `text=`
+#import libs/ft2
+import gui/[
+  window, 
+  widget, 
+  render, 
+  #container, 
+  event
+  #timer
+  ]
+import painter/[
+  canvas
+]
 
-setIcons 16:
-  iconBrush = "brush.svg"
-  iconClear = "clear.svg"
-  iconClose = "close.svg"
-  iconReset = "reset.svg"
-
-type
-  Counter = object
-    clicked, released: int
-  GUIBlank = ref object of GUIWidget
-    frame: GUIWidget
-    texture: GLuint
-    t: GUITimer
-
-var coso: UTF8Input
-proc helloworld*(g, d: pointer) =
-  coso.text = "hello world"
-  echo "hello world"
-
-# ------------------------
-# LOAD TRIANGLE RASTERIZER
-# ------------------------
-
-type
-  CPUVertex {.packed.} = object
-    x, y: int32
-  SSEVertex {.packed.} = object
-    x, y: float32
-  CPUTriangle = array[3, CPUVertex]
-  SSETriangle = array[3, SSEVertex]
-
-
-{.compile: "painter/triangle.c".}
-{.compile: "painter/blend.c".}
+# LOAD SSE4.1
 {.passC: "-msse4.1".}
-proc triangle_draw(buffer: pointer, w, h: int32, v: ptr SSETriangle) {.importc: "triangle_draw".}
-proc triangle_naive(buffer: pointer, w, h: int32, v: ptr CPUTriangle) {.importc: "triangle_draw_naive".}
 
-# ------------------
-# GUI BLANK METHODS
-# ------------------
+type # Test Image Tile
+  TTileImage = ref object of GUIWidget
+    mx, my: int32
+    canvas: NCanvas
+    tex: GLuint
 
-method draw*(widget: GUIBlank, ctx: ptr CTXRender) =
-  ctx.color 0xFFFFFFFF'u32
-  ctx.texture(widget.rect, widget.texture)
+method draw(self: TTileImage, ctx: ptr CTXRender) =
+  ctx.color(high uint32)
+  var r = GUIRect(x: self.rect.x, y: self.rect.y, 
+    w: self.canvas.w + self.canvas.rw, 
+    h: self.canvas.h + self.canvas.rh)
+  ctx.fill rect(r)
+  ctx.texture(r, self.tex)
+  # Division Lines
+  ctx.color(0xFF000000'u32)
+  let
+    tw = self.canvas.tw - 1
+    th = self.canvas.th - 1
+  var s: int16
+  # Horizontal
+  for x in 0..tw:
+    s = cast[int16](x) shl 8
+    ctx.fill rect(r.x + s, r.y, 1, r.h)
+    #ctx.fill rect(r)
+  # Vertical
+  for x in 0..th:
+    s = cast[int16](x) shl 8
+    ctx.fill rect(r.x, r.y + s, r.w, 1)
+    #ctx.fill rect(r)
 
-method event*(widget: GUIBlank, state: ptr GUIState) =
-  #echo "cursor mx: ", state.mx, " cursor my: ", state.my
+
+
+proc newTTileImage(w, h: int16): TTileImage =
+  new result # Alloc Widget
+  result.canvas = newCanvas(w, h)
+  glGenTextures(1, addr result.tex)
+  glBindTexture(GL_TEXTURE_2D, result.tex)
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, cast[GLint](GL_NEAREST))
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, cast[GLint](GL_NEAREST))
+  glTexImage2D(GL_TEXTURE_2D, 0, cast[GLint](GL_RGBA8), 
+    result.canvas.tw shl 8, result.canvas.th shl 8, 0, GL_RGBA, 
+    GL_UNSIGNED_BYTE, nil)
+  glBindTexture(GL_TEXTURE_2D, 0)
+
+proc refresh(self: TTileImage) =
+  glBindTexture(GL_TEXTURE_2D, self.tex)
+  #echo "tw: ", self.canvas.tw, " th: ", self.canvas.th
+  var x, y: int32
+  for tile in self.canvas.tiles:
+    #echo "x: ", x, " y: ", y
+    glTexSubImage2D(GL_TEXTURE_2D, 0, x shl 8, y shl 8, 
+      256, 256, GL_RGBA, GL_UNSIGNED_BYTE, addr tile[0])
+    if x + 1 < self.canvas.tw: inc(x)
+    else: inc(y); x = 0
+  glBindTexture(GL_TEXTURE_2D, 0)
+
+method event(self: TTileImage, state: ptr GUIState) =
   if state.eventType == evMouseClick:
-    if not isNil(widget.frame) and test(widget.frame, wVisible):
-      echo "true"
-      widget.clear(wHold)
-    else:
-      widget.t = newTimer(250)
-      widget.set(wFocus or wUpdate)
-  elif state.eventType == evMouseRelease:
-    if not checkTimer(widget.t):
-      widget.clear(wUpdate)
-  if widget.test(wGrab) and not isNil(widget.frame):
-    move(widget.frame, state.mx + 5, state.my + 5)
+    self.mx = state.mx; self.my = state.my
+  elif self.test(wGrab):
+    self.canvas[0].ox += cast[int16](state.mx - self.mx)
+    self.canvas[0].oy += cast[int16](state.my - self.my)
+    self.canvas.clear()
+    self.canvas.composite()
+    self.refresh()
+    self.mx = state.mx; self.my = state.my
 
-method update*(widget: GUIBlank) =
-  if checkTimer(widget.t):
-    if widget.frame != nil:
-      open(widget.frame)
-      widget.set(wHold)
-    widget.clear(wUpdate)
-
-method handle*(widget: GUIBlank, kind: GUIHandle) =
-  #echo "handle done: ", kind.repr
-  #echo "by: ", cast[uint](widget)
-  if kind == outHold: close(widget.frame)
-
-
-proc blend*(dst, src: uint32): uint32{.importc: "blend_normal".}
-proc fill*(buffer: var seq[uint32], x, y, w, h: int32, color: uint32) =
-  var i, xi, yi: int32
-  yi = y
-  while i < h:
-    xi = x
-    while xi < w:
-      let col = buffer[yi * w + xi]
-      buffer[yi * w + xi] = blend(col, color)
-      inc(xi)
-    inc(i); inc(yi)
+proc clear(tile: NTile, col: NPixel) =
+  var i: int32
+  while i < 65536:
+    tile[i] = col; inc(i)
 
 when isMainModule:
-  var counter = Counter(
-    clicked: 0, 
-    released: 0
-  )
-  var win = newGUIWindow(1024, 600, addr counter)
-  var ft: FT2Library
-  var cpu_raster: GLuint
-  var cpu_pixels: seq[uint32]
-  var bolo, bala: bool
-  var equisde: byte
-  var val: Value
-  var val2: Value
-  var col = RGBColor(r: 50 / 255, g: 50 / 255, b: 50 / 255)
-  val2.interval(0, 100)
-  val.interval(0, 5)
-  val.lerp(0.5, true)
-  
-  # Generate CPU Raster
-  cpu_pixels.setLen(512 * 256)
-  glGenTextures(1, addr cpu_raster)
-  glBindTexture(GL_TEXTURE_2D, cpu_raster)
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, cast[GLint](GL_LINEAR))
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, cast[GLint](GL_NEAREST))
-  glTexImage2D(GL_TEXTURE_2D, 0, cast[GLint](GL_RGBA8), 512, 256, 
-    0, GL_RGBA, GL_UNSIGNED_BYTE, nil)
-  glBindTexture(GL_TEXTURE_2D, 0)
-
-  # Initialize Freetype2
-  if ft2_init(addr ft) != 0:
-    echo "ERROR: failed initialize FT2"
-  # Create a new Window
-  let root = new GUIContainer
-  block: # Create Widgets
-    # Create two blanks
-    var
-      sub, blank: GUIBlank
-      con: GUIContainer
-    # Initialize Root
-    root.color = 0xFF000000'u32
-    root.flags = wStandard or wOpaque
-    # --- Blank #1 ---
-    blank = new GUIBlank
-    blank.flags = wStandard
-    blank.geometry(300,150,512,256)
-    blank.texture = cpu_raster
-    root.add(blank)
-    # --- Blank #2 ---
-    blank = new GUIBlank
-    blank.flags = wStandard
-    blank.geometry(20,20,100,100)
-    blank.texture = cpu_raster
-    block: # Menu Blank #2
-      con = new GUIContainer
-      con.color = 0xAA637a90'u32
-      con.flags = wPopup
-      con.rect.w = 200
-      con.rect.h = 100
-      # Sub-Blank #1
-      sub = new GUIBlank
-      sub.flags = wStandard
-      sub.geometry(10,10,20,20)
-      con.add(sub)
-      # Sub-Blank #2
-      sub = new GUIBlank
-      sub.flags = wStandard
-      sub.geometry(40,10,20,20)
-      block: # Sub Menu #1
-        let subcon = new GUIContainer
-        subcon.color = 0xFFbdb88f'u32
-        subcon.flags = wEnabled
-        subcon.rect.w = 200
-        subcon.rect.h = 80
-        # Sub-sub blank 1#
-        var subsub = new GUIBlank
-        subsub.flags = wStandard
-        subsub.geometry(10,10,180,20)
-        subcon.add(subsub)
-        # Sub-sub blank 2#
-        subsub = new GUIBlank
-        subsub.flags = wStandard
-        subsub.geometry(10,40,180,20)
-        subcon.add(subsub)
-        # Add to Sub
-        sub.frame = subcon
-      con.add(sub)
-      # Add Blank 2
-      blank.frame = con
-    root.add(blank)
-    # Add a GUI Button
-    let button = newButton("Test Button CB", helloworld)
-    button.geometry(20, 200, 200, button.hint.h)
-    block: # Add Checkboxes
-      var check = newCheckbox("Check B", addr bolo)
-      check.geometry(20, 250, 100, check.hint.h)
-      root.add(check)
-      check = newCheckbox("Check A", addr bala)
-      check.geometry(120, 250, 100, check.hint.h)
-      root.add(check)
-    block: # Add Radio Buttons
-      var radio = newRadio("Radio B", 1, addr equisde)
-      radio.geometry(20, 300, 100, radio.hint.h)
-      root.add(radio)
-      radio = newRadio("Radio A", 2, addr equisde)
-      radio.geometry(120, 300, 100, radio.hint.h)
-      root.add(radio)
-    block: # Add TextBox
-      var textbox = newTextBox(addr coso)
-      textbox.geometry(20, 350, 200, textbox.hint.h)
-      root.add(textbox)
-    block: # Add Slider
-      var slider = newSlider(addr val)
-      slider.geometry(20, 400, 200, slider.hint.h)
-      root.add(slider)
-    block: # Add Scroll
-      var scroll = newScroll(addr val)
-      scroll.geometry(20, 450, 200, scroll.hint.h)
-      root.add(scroll)
-    block: # Add Scroll
-      var scroll = newScroll(addr val, true)
-      scroll.geometry(20, 480, scroll.hint.h, 200)
-      root.add(scroll)
-    block: # Add Scroll
-      var color = newColorBar(addr col)
-      color.geometry(50, 500, color.hint.w * 2, color.hint.h * 2)
-      root.add(color)
-      color = newColorBar(addr col)
-      color.geometry(300, 500, color.hint.w * 2, color.hint.h * 2)
-      root.add(color)
-    root.add(button)
-    # Creates new Window
-  
-  # Draw a triangle
-  var tri: CPUTriangle
-  var sse: SSETriangle
-  block:
-    var vert: CPUVertex
-    vert.x = 0; vert.y = 0; tri[0] = vert
-    vert.x = 512; vert.y = 0; tri[1] = vert
-    vert.x = 256; vert.y = 256; tri[2] = vert
-  block:
-    var vert: SSEVertex
-    vert.x = 0; vert.y = 0; sse[0] = vert
-    vert.x = 512; vert.y = 0; sse[1] = vert
-    vert.x = 256; vert.y = 256; sse[2] = vert
-  var start, middle, finish: Time
-  start = getTime()
-  triangle_draw(addr cpu_pixels[0], 512, 256, addr sse)
-  middle = getTime()
-  triangle_naive(addr cpu_pixels[0], 512, 256, addr tri)
-  finish = getTime()
-  echo "sse: ", middle - start, "\nnaive: ", finish - middle
-  fill(cpu_pixels, 0, 0, 512, 256, 0x1100FF00'u32)
-  # Put it to raster
-  glBindTexture(GL_TEXTURE_2D, cpu_raster)
-  glPixelStorei(GL_UNPACK_ALIGNMENT, 1)
-  glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 512, 256, 
-    GL_RGBA, GL_UNSIGNED_BYTE, addr cpu_pixels[0])
-  glPixelStorei(GL_UNPACK_ALIGNMENT, 4)
-  glBindTexture(GL_TEXTURE_2D, 0)
-  # MAIN LOOP
-  var running = win.open(root)
-
+  var # Create Window and GUI
+    win = newGUIWindow(1024, 600, nil)
+    root = newTTileImage(768, 768)
+  # Reload Canvas Texture
+  #root.clear(0xFF0000FF'u32)
+  root.canvas.add()
+  let layer = root.canvas[0]
+  layer[].add(1, 1)
+  layer[].add(0, 0)
+  layer[].add(2, 2)
+  clear(layer.tiles[0].buffer, 0xBB00FF00'u32)
+  clear(layer.tiles[1].buffer, 0xBBFFFF00'u32)
+  clear(layer.tiles[2].buffer, 0xBB00FFFF'u32)
+  root.canvas.composite()
+  root.refresh()
+  # Run GUI Program
+  var running = 
+    win.open(root)
   while running:
     # Render Main Program
-    glClearColor(0.19607843137254902, 0.19607843137254902, 0.19607843137254902, 1.0)
+    glClearColor(0.6, 0.6, 0.6, 1.0)
     glClear(GL_COLOR_BUFFER_BIT or GL_DEPTH_BUFFER_BIT)
     # Render GUI
     running = win.tick()
