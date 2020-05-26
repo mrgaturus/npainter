@@ -11,6 +11,7 @@ import gui/[
 import painter/[
   canvas
 ]
+import times
 
 # LOAD SSE4.1
 {.passC: "-msse4.1".}
@@ -18,8 +19,12 @@ import painter/[
 type # Test Image Tile
   TTileImage = ref object of GUIWidget
     mx, my: int32
+    ox, oy: int32
     canvas: NCanvas
     tex: GLuint
+    work: bool
+  TEnum = enum 
+    eNothing
 
 method draw(self: TTileImage, ctx: ptr CTXRender) =
   ctx.color(high uint32)
@@ -29,6 +34,7 @@ method draw(self: TTileImage, ctx: ptr CTXRender) =
   ctx.fill rect(r)
   ctx.texture(r, self.tex)
   # Division Lines
+  discard """
   ctx.color(0xFF000000'u32)
   let
     tw = self.canvas.tw - 1
@@ -44,6 +50,7 @@ method draw(self: TTileImage, ctx: ptr CTXRender) =
     s = cast[int16](x) shl 8
     ctx.fill rect(r.x, r.y + s, r.w, 1)
     #ctx.fill rect(r)
+  """
 
 
 
@@ -74,33 +81,74 @@ proc refresh(self: TTileImage) =
 method event(self: TTileImage, state: ptr GUIState) =
   if state.eventType == evMouseClick:
     self.mx = state.mx; self.my = state.my
+    self.ox = self.canvas[0].ox
+    self.oy = self.canvas[0].oy
   elif self.test(wGrab):
-    self.canvas[0].ox += cast[int16](state.mx - self.mx)
-    self.canvas[0].oy += cast[int16](state.my - self.my)
-    self.canvas.clear()
-    self.canvas.composite()
-    self.refresh()
-    self.mx = state.mx; self.my = state.my
+    if not self.work:
+      var b: uint32
+      b = cast[uint32](self.ox + state.mx - self.mx) or 
+        (cast[uint32](self.oy + state.my - self.my) shl 16)
+      pushSignal(cast[GUITarget](self), eNothing, b)
+      self.work = true
+
+method notify*(self: TTileImage, sig: GUISignal) =
+  let m: uint32 = convert(sig.data, uint32)[]
+  var a, b, c: float32
+  self.canvas[0].ox = cast[int16](m)
+  self.canvas[0].oy = cast[int16](m shr 16'u32)
+  a = cpuTime()
+  self.canvas.clear()
+  self.canvas.composite()
+  b = cpuTime()
+  self.refresh()
+  c = cpuTime()
+  echo "composite: ", b - a, "  upload: ", c - b
+  self.work = false
 
 proc clear(tile: NTile, col: NPixel) =
   var i: int32
   while i < 65536:
     tile[i] = col; inc(i)
 
+proc fill(canvas: var NCanvas, idx: int32, color: uint32) =
+  let layer = canvas[idx]
+  var i: int32
+  for y in 0..<canvas.th:
+    for x in 0..<canvas.tw:
+      layer[].add(x.int16, y.int16)
+      clear(layer.tiles[i].buffer, color)
+      inc(i) # Next Tile
+
 when isMainModule:
   var # Create Window and GUI
     win = newGUIWindow(1024, 600, nil)
-    root = newTTileImage(768, 768)
+    root = newTTileImage(4096, 4096)
   # Reload Canvas Texture
   #root.clear(0xFF0000FF'u32)
   root.canvas.add()
-  let layer = root.canvas[0]
-  layer[].add(1, 1)
-  layer[].add(0, 0)
-  layer[].add(2, 2)
-  clear(layer.tiles[0].buffer, 0xBB00FF00'u32)
-  clear(layer.tiles[1].buffer, 0xBBFFFF00'u32)
-  clear(layer.tiles[2].buffer, 0xBB00FFFF'u32)
+  root.canvas.add()
+  root.canvas.add()
+  root.canvas.add()
+  root.canvas.add()
+  #let layer = root.canvas[0]
+  #layer[].add(1, 1)
+  #layer[].add(0, 0)
+  #layer[].add(2, 2)
+  #layer[].add(3, 3)
+  #layer[].add(3, 1)
+  #clear(layer.tiles[0].buffer, 0xBB00FF00'u32)
+  #clear(layer.tiles[1].buffer, 0xBBFFFF00'u32)
+  #clear(layer.tiles[2].buffer, 0xBB00FFFF'u32)
+  #clear(layer.tiles[3].buffer, 0xBB0000FF'u32)
+  #clear(layer.tiles[4].buffer, 0xBBFF00FF'u32)
+  root.canvas.fill(0, 0xBB00FF00'u32)
+  let layer = root.canvas[1]
+  layer.ox = 127
+  layer.oy = 127
+  root.canvas.fill(1, 0xBB0000FF'u32)
+  root.canvas.fill(2, 0xBB00FFFF'u32)
+  root.canvas.fill(3, 0xBB0FF0FF'u32)
+  root.canvas.fill(4, 0x55FF00FF'u32)
   root.canvas.composite()
   root.refresh()
   # Run GUI Program

@@ -35,11 +35,11 @@ static inline __m128i _mm_div_255(__m128i xmm0) {
 // Blending Funcs
 // --------------
 
-u32 blend_normal(u32 dst, u32 src) {
+void blend_normal(u32* dst, u32 src) {
   // DA + SA
   u32 alpha =
     (src >> 24) +
-    (dst >> 24);
+    (*dst >> 24);
   if (alpha > 255)
     alpha = 255;
   alpha <<= 24;
@@ -49,7 +49,7 @@ u32 blend_normal(u32 dst, u32 src) {
       _mm_cvtsi32_si128(src));
   __m128i xmm1 = // DST
     _mm_cvtepu8_epi16(
-      _mm_cvtsi32_si128(dst));
+      _mm_cvtsi32_si128(*dst));
   __m128i xmm2, xmm3;
   // Multiply src channels by src alpha
   xmm2 = _mm_shufflelo_epi16(xmm0, 0xFF);
@@ -63,6 +63,6 @@ u32 blend_normal(u32 dst, u32 src) {
   xmm2 = _mm_add_epi16(xmm2, xmm3);
   // Return New Blended Color
   xmm2 = _mm_packus_epi16(xmm2, xmm2);
-  return _mm_cvtsi128_si32(xmm2)
+  *dst = _mm_cvtsi128_si32(xmm2)
     & 0x00FFFFFF | alpha;
 }

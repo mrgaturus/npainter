@@ -4,7 +4,7 @@
 type
   NMask* = uint8 # 8bit Mask
   NPixel* = uint32 # RGBA8 Pixel
-  NTile* = ref array[65536, NPixel]
+  NTile* = ref array[65536, NPixel] 
   # Layer Objects
   NLayerBlend = enum
     lbNormal
@@ -31,7 +31,7 @@ type
   # Layer Composition
   NBlendBounds = enum # Tile Sub-Grid Bounds
     boundLeft, boundRight, boundTop, boundDown
-  NBlendFunc = proc (dst, src: NPixel): NPixel
+  NBlendFunc = proc (dst: var NPixel, src: NPixel)
 
 # -------------------------------
 # CANVAS BASIC MANIPULATION PROCS
@@ -93,7 +93,7 @@ template `[]`*(canvas: var NCanvas, idx: int32):
 # TILE-CANVAS COMPOSITION PROCS
 # -----------------------------
 {.compile: "blend.c".} # Compile SSE4.1 Blend Modes
-proc blend_normal(dst, src: NPixel): NPixel {.importc.}
+proc blend_normal(dst: var NPixel, src: NPixel) {.importc.}
 
 # TODO: Can be parallelize easily, do a threadpool
 proc composite(dst: var NCanvas, src: var NLayer) =
@@ -101,11 +101,11 @@ proc composite(dst: var NCanvas, src: var NLayer) =
     # Tile X Offsets
     tox = src.ox shr 8
     pox = cast[uint16](src.ox) mod 256
-    rox = cast[uint16](255 - pox) # Residual
+    rox = cast[uint16](256 - pox) # Residual
     # Tile Y Offsets
     toy = src.oy shr 8
     poy = cast[uint16](src.oy) mod 256
-    roy = cast[uint16](255 - poy) # Residual
+    roy = cast[uint16](256 - poy) # Residual
     # Blending Function (There Will more blend modes)
     blend: NBlendFunc = blend_normal
   var # Iterator Variables
@@ -131,54 +131,50 @@ proc composite(dst: var NCanvas, src: var NLayer) =
     if bounds == {}: continue
     # -----------------------
     # Composite Left-Top Tile
-    ts = ty * dst.th + tx # Tile at
+    ts = ty * dst.tw + tx # Tile at
     if {boundLeft, boundTop} <= bounds:
-      pdst = dst.tiles[ts]; j = 0
+      pdst = dst.tiles[ts]; j = pox
       di = poy shl 8 + pox; si = 0
       while di < 65536:
-        if j > rox: # Next Stride
-          di += pox; si += pox; j = 0
-        pdst[di] = # Blend Pixel
-          blend(pdst[di], psrc[si])
+        blend(pdst[di], psrc[si])
         inc(di); inc(si); inc(j)
+        if j == 256: # Next Stride
+          di += pox; si += pox; j = pox
     # ------------------------
     # Composite Right-Top Tile
     ts += 1 # Next Tile at X
     if {boundRight, boundTop} <= bounds:
       pdst = dst.tiles[ts]
-      di = poy shl 8; si = pox
-      ei = 65535 - rox; j = 0
+      di = poy shl 8; si = rox
+      ei = 65535 - rox; j = rox
       while di <= ei:
-        if j > pox: # Next Stride
-          di += rox; si += rox; j = 0
-        pdst[di] = # Blend Pixel
-          blend(pdst[di], psrc[si])
+        blend(pdst[di], psrc[si])
         inc(di); inc(si); inc(j)
+        if j == 256: # Next Stride
+          di += rox; si += rox; j = rox
     # -------------------------
     # Composite Right-Down Tile
     ts += dst.tw # Next Tile at Y
     if {boundRight, boundDown} <= bounds:
-      pdst = dst.tiles[ts]; j = 0
+      pdst = dst.tiles[ts]; j = rox
       di = 0; si = roy shl 8 + rox
       while si < 65536:
-        if j > pox: # Next Stride
-          di += rox; si += rox; j = 0
-        pdst[di] = # Blend Pixel
-          blend(pdst[di], psrc[si])
+        blend(pdst[di], psrc[si])
         inc(di); inc(si); inc(j)
+        if j == 256: # Next Stride
+          di += rox; si += rox; j = rox
     # ------------------------
     # Composite Left-Down Tile
     ts -= 1 # Prev Tile at X
     if {boundLeft, boundDown} <= bounds:
       pdst = dst.tiles[ts]
       di = pox; si = roy shl 8
-      ei = 65535 - pox; j = 0
+      ei = 65535 - pox; j = pox
       while si <= ei:
-        if j > rox: # Next Stride
-          di += pox; si += pox; j = 0
-        pdst[di] = # Blend Pixel
-          blend(pdst[di], psrc[si])
+        blend(pdst[di], psrc[si])
         inc(di); inc(si); inc(j)
+        if j == 256: # Next Stride
+          di += pox; si += pox; j = pox
     # Clear Checks
     bounds = {}
 
