@@ -7,14 +7,14 @@ typedef unsigned int u32;
 typedef short s16;
 
 // Mask Constants
-__m128i mask_257 = (__m128i) {
-  0x0101010101010101, // Usable
-  0x0000000000000000  // Unused
+const __m128i mask_257 = {
+  0x0101010101010101,
+  0x0101010101010101
 };
 
-__m128i mask_255 = (__m128i) {
-  0x00FF00FF00FF00FF, // Usable
-  0x0000000000000000  // Unused
+const __m128i mask_255 = {
+  0x00FF00FF00FF00FF,
+  0x00FF00FF00FF00FF
 };
 
 // -----------------
@@ -31,38 +31,77 @@ static inline __m128i _mm_div_255(__m128i xmm0) {
   return xmm1; // Return 255 Div
 }
 
-// --------------
-// Blending Funcs
-// --------------
+__m128i blend_normal(__m128i dst, __m128i src) {
+  __m128i src_lo, src_hi;
+  __m128i dst_lo, dst_hi;
+  __m128i xmm0, xmm1;
+  // Reserve a zeros register
+  xmm0 = _mm_setzero_si128();
+  // Unpack Source Pixels
+  src_lo = _mm_unpacklo_epi8(src, xmm0);
+  src_hi = _mm_unpackhi_epi8(src, xmm0);
+  // Unpack Destination Pixels
+  dst_lo = _mm_unpacklo_epi8(dst, xmm0);
+  dst_hi = _mm_unpackhi_epi8(dst, xmm0);
+  // Shuffle Low Source Alphas: Sa, Sa, Sa, Sa
+  xmm0 = _mm_shufflelo_epi16(src_lo, 0xFF);
+  xmm0 = _mm_shufflehi_epi16(xmm0, 0xFF);
+  // Shuffle High Source Alphas: Sa, Sa, Sa, Sa
+  xmm1 = _mm_shufflelo_epi16(src_hi, 0xFF);
+  xmm1 = _mm_shufflehi_epi16(xmm1, 0xFF);
+  
+  // Substract Alphas with 255
+  xmm0 = _mm_sub_epi16(mask_255, xmm0);
+  xmm1 = _mm_sub_epi16(mask_255, xmm1);
+  // Multiply Destination by: 255 - Sa
+  dst_lo = _mm_mullo_epi16(dst_lo, xmm0);
+  dst_hi = _mm_mullo_epi16(dst_hi, xmm1);
+  // Divide Destination by 255
+  dst_lo = _mm_div_255(dst_lo);
+  dst_hi = _mm_div_255(dst_hi);
+  // Sum Destination with Source
+  dst_lo = _mm_adds_epi16(dst_lo, src_lo);
+  dst_hi = _mm_adds_epi16(dst_hi, src_hi);
+  // Return Four Packed Pixels
+  return _mm_packus_epi16(dst_lo, dst_hi);
+}
 
-void blend_normal(u32* dst, u32 src) {
-  // DA + SA
-  u32 alpha =
-    (src >> 24) +
-    (*dst >> 24);
-  if (alpha > 255)
-    alpha = 255;
-  alpha <<= 24;
-  // Unpack Colors
-  __m128i xmm0 = // SRC
-    _mm_cvtepu8_epi16(
-      _mm_cvtsi32_si128(src));
-  __m128i xmm1 = // DST
-    _mm_cvtepu8_epi16(
-      _mm_cvtsi32_si128(*dst));
-  __m128i xmm2, xmm3;
-  // Multiply src channels by src alpha
-  xmm2 = _mm_shufflelo_epi16(xmm0, 0xFF);
-  xmm3 = _mm_mullo_epi16(xmm2, xmm0);
-  xmm3 = _mm_div_255(xmm3);
-  // Multiply dst channels by 255-src alpha
-  xmm2 = _mm_sub_epi16(mask_255, xmm2);
-  xmm2 = _mm_mullo_epi16(xmm2, xmm1);
-  xmm2 = _mm_div_255(xmm2);
-  // Sum Both Multiplications
-  xmm2 = _mm_add_epi16(xmm2, xmm3);
-  // Return New Blended Color
-  xmm2 = _mm_packus_epi16(xmm2, xmm2);
-  *dst = _mm_cvtsi128_si32(xmm2)
-    & 0x00FFFFFF | alpha;
+// SKIA SIMD WAY
+void blend(u32* dst, u32* src, u32 n) {
+  __m128i xmm0;
+  while (n > 0) {
+    // Four Pixels
+    if (n >= 4) {
+      // Blend SRC with DST
+      xmm0 = blend_normal(
+        _mm_loadu_si128(dst),
+        _mm_loadu_si128(src));
+      // Replace Blended Pixels
+      _mm_storeu_si128(dst, xmm0);
+      dst += 4; src += 4; n -= 4;
+      // Next Pixels
+      continue; 
+    }
+    // Two Pixels
+    if (n >= 2) {
+      // Blend SRC with DST
+      xmm0 = blend_normal(
+        _mm_loadl_epi64(dst),
+        _mm_loadl_epi64(src));
+      // Replace Blended Pixels
+      _mm_storel_epi64(dst, xmm0);
+      dst += 2; src += 2; n -= 2;
+    }
+    // One Pixel
+    if (n >= 1) {
+      // Blend SRC with DST
+      xmm0 = blend_normal(
+        _mm_cvtsi32_si128(*dst),
+        _mm_cvtsi32_si128(*src));
+      // Replace Blended Pixels
+      *dst = _mm_cvtsi128_si32(xmm0);
+    }
+    // Blended
+    break;
+  }
 }
