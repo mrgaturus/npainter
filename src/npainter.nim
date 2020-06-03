@@ -17,11 +17,14 @@ import times
 {.passC: "-msse4.1".}
 
 type # Test Image Tile
+  TTCursor = object
+    x, y: int32
   TTileImage = ref object of GUIWidget
     mx, my: int32
     ox, oy: int32
     canvas: NCanvas
     tex: GLuint
+    cur: TTCursor
     work: bool
   TEnum = enum 
     eNothing
@@ -52,8 +55,6 @@ method draw(self: TTileImage, ctx: ptr CTXRender) =
     #ctx.fill rect(r)
   """
 
-
-
 proc newTTileImage(w, h: int16): TTileImage =
   new result # Alloc Widget
   result.canvas = newCanvas(w, h)
@@ -62,40 +63,35 @@ proc newTTileImage(w, h: int16): TTileImage =
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, cast[GLint](GL_NEAREST))
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, cast[GLint](GL_NEAREST))
   glTexImage2D(GL_TEXTURE_2D, 0, cast[GLint](GL_RGBA8), 
-    result.canvas.tw shl 8, result.canvas.th shl 8, 0, GL_RGBA, 
+    result.canvas.sw, result.canvas.sh, 0, GL_RGBA, 
     GL_UNSIGNED_BYTE, nil)
   glBindTexture(GL_TEXTURE_2D, 0)
 
 proc refresh(self: TTileImage) =
   glBindTexture(GL_TEXTURE_2D, self.tex)
-  #echo "tw: ", self.canvas.tw, " th: ", self.canvas.th
-  var x, y: int32
-  for tile in self.canvas.tiles:
-    #echo "x: ", x, " y: ", y
-    glTexSubImage2D(GL_TEXTURE_2D, 0, x shl 8, y shl 8, 
-      256, 256, GL_RGBA, GL_UNSIGNED_BYTE, addr tile[0])
-    if x + 1 < self.canvas.tw: inc(x)
-    else: inc(y); x = 0
+  glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 
+    self.canvas.sw, self.canvas.sh, GL_RGBA, 
+    GL_UNSIGNED_BYTE, addr self.canvas.buffer[0])
   glBindTexture(GL_TEXTURE_2D, 0)
 
 method event(self: TTileImage, state: ptr GUIState) =
   if state.eventType == evMouseClick:
     self.mx = state.mx; self.my = state.my
-    self.ox = self.canvas[0].ox
-    self.oy = self.canvas[0].oy
+    self.ox = self.canvas[4].x
+    self.oy = self.canvas[4].y
   elif self.test(wGrab):
     if not self.work:
-      var b: uint32
-      b = cast[uint32](self.ox + state.mx - self.mx) or 
-        (cast[uint32](self.oy + state.my - self.my) shl 16)
-      pushSignal(cast[GUITarget](self), eNothing, b)
+      var t = TTCursor(
+        x: self.ox + state.mx - self.mx,
+        y: self.oy + state.my - self.my)
+      pushSignal(cast[GUITarget](self), eNothing, t)
       self.work = true
 
 method notify*(self: TTileImage, sig: GUISignal) =
-  let m: uint32 = convert(sig.data, uint32)[]
+  let m = convert(sig.data, TTCursor)[]
   var a, b, c, d: float32
-  self.canvas[4].ox = cast[int16](m)
-  self.canvas[4].oy = cast[int16](m shr 16'u32)
+  self.canvas[4].x = m.x
+  self.canvas[4].y = m.y
   a = cpuTime()
   self.canvas.clear()
   b = cpuTime()
@@ -114,8 +110,8 @@ proc clear(tile: NTile, col: NPixel) =
 proc fill(canvas: var NCanvas, idx: int32, color: uint32) =
   let layer = canvas[idx]
   var i: int32
-  for y in 0..<canvas.th:
-    for x in 0..<canvas.tw:
+  for y in 0..<canvas.sh shr 8:
+    for x in 0..<canvas.sw shr 8:
       layer[].add(x.int16, y.int16)
       clear(layer.tiles[i].buffer, color)
       inc(i) # Next Tile
@@ -123,7 +119,7 @@ proc fill(canvas: var NCanvas, idx: int32, color: uint32) =
 when isMainModule:
   var # Create Window and GUI
     win = newGUIWindow(1024, 600, nil)
-    root = newTTileImage(1920, 1080)
+    root = newTTileImage(4096, 4096)
   # Reload Canvas Texture
   #root.clear(0xFF0000FF'u32)
   root.canvas.add()
@@ -144,14 +140,18 @@ when isMainModule:
   #clear(layer.tiles[4].buffer, 0xBBFF00FF'u32)
   root.canvas.fill(0, 0xFF00FF00'u32)
   let layer = root.canvas[1]
-  layer.ox = 127
-  layer.oy = 127
+  layer.x = 64
+  layer.y = 64
   root.canvas.fill(1, 0xFF0000FF'u32)
   root.canvas.fill(2, 0xFF00FFFF'u32)
-  root.canvas.fill(3, 0xFF0FF0FF'u32)
-  #root.canvas[3].ox = 512
-  #root.canvas[3].oy = 512
-  root.canvas.fill(4, 0x77770077'u32)
+  root.canvas.fill(3, 0xFFFFF0FF'u32)
+  root.canvas[3].x = 128
+  root.canvas[3].y = 128
+  root.canvas.fill(4, 0xBB000000'u32)
+  #root.canvas[0][].add(0, 0)
+  #root.canvas[0][].add(1, 1)
+  #clear(root.canvas[0].tiles[0].buffer, 0xBB000000'u32)
+  #clear(root.canvas[0].tiles[1].buffer, 0xBB000000'u32)
   root.canvas.composite()
   root.refresh()
   # Run GUI Program

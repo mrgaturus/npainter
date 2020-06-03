@@ -14,23 +14,24 @@ type
     lfClipAlpha, # TODO
     lfClipGroup # TODO
   NLayerTile = object
-    x, y: int16
+    x*, y*: int32
     buffer*: NTile
   NLayer = object
-    ox*, oy*: int16
-    blend: NLayerBlend
-    flags: set[NLayerFlags]
+    x*, y*: int32
+    blend*: NLayerBlend
+    flags*: set[NLayerFlags]
     tiles*: seq[NLayerTile]
   # Canvas Object
   NCanvas* = object
-    w*, rw*, tw*: int16
-    h*, rh*, th*: int16
+    w*, rw*, sw*: int32
+    h*, rh*, sh*: int32
     layers: seq[NLayer]
     # Canvas Cache
-    tiles*: seq[NTile]
-  # Layer Composition
-  NBlendBounds = enum # Tile Sub-Grid Bounds
-    boundLeft, boundRight, boundTop, boundDown
+    buffer*: seq[NPixel]
+  # Layer-Layer Composition
+  #NBlendBounds = enum
+  #  boundLeft, boundRight
+  #  boundTop, boundDown
 
 # -------------------------------
 # CANVAS BASIC MANIPULATION PROCS
@@ -40,14 +41,13 @@ proc newCanvas*(w, h: int16): NCanvas =
   # Set Dimensions
   result.w = w; result.h = h
   # Set Residual Dimensions
-  result.rw = w mod 256; result.rh = h mod 256
-  # Set Tiled Dimensions, Residual is an extra tile
-  result.tw = (w + result.rw) shr 8 + (result.rw > 0).int16
-  result.th = (h + result.rh) shr 8 + (result.rh > 0).int16
-  # Alloc Tile Indexes Tiled-W * Tiled-H
-  result.tiles.setLen(result.tw * result.th)
-  for tile in mitems(result.tiles):
-    tile = new NTile
+  result.rw = 256 - (w mod 256)
+  result.rh = 256 - (h mod 256)
+  # Set Canvas Amortized Dimensions
+  result.sw = result.w + result.rw
+  result.sh = result.h + result.rh
+  # Alloc Canvas Pixel Buffer with Amortized
+  setLen(result.buffer, result.sw * result.sh)
 
 # -- Clearing --
 proc clear*(tile: NTile) =
@@ -55,12 +55,15 @@ proc clear*(tile: NTile) =
     65536 * NPixel.sizeof)
 
 proc clear*(layer: var NLayer) =
-  layer.ox = 0; layer.oy = 0
+  layer.x = 0; layer.y = 0
   layer.tiles.setLen(0)
 
+# Todo: Clear Parallel
 proc clear*(canvas: var NCanvas) =
-  for tile in mitems(canvas.tiles):
-    tile.clear() # Clear Tiles
+  zeroMem(addr canvas.buffer[0], 
+    cast[uint32](canvas.sw) * 
+    cast[uint32](canvas.sh) * 
+    cast[uint32](sizeof NPixel))
 
 # -- Add / Delete Layer Tiles --
 proc add*(layer: var NLayer, x, y: int16) =
@@ -88,13 +91,74 @@ proc del*(canvas: var NCanvas, idx: int32) =
 template `[]`*(canvas: var NCanvas, idx: int32): 
   ptr NLayer = addr canvas.layers[idx]
 
-# -----------------------------
-# TILE-CANVAS COMPOSITION PROCS
-# -----------------------------
-{.compile: "blend.c".} # Compile SSE4.1 Blend Modes
-proc blend(dst: var NPixel, src: var NPixel, n: uint32) {.importc.}
+# ------------------------------
+# LAYER-CANVAS COMPOSITION PROCS
+# ------------------------------
 
-proc composite(dst: var NCanvas, src: var NLayer) =
+{.compile: "blend.c".} # Compile SSE4.1 Blend Modes
+proc blend(dst, src: pointer, n: int32) {.importc.}
+
+# Temporal Pointer Aritmetic
+template `+=`(p: pointer, s: int32) =
+  {.emit: [p, " += ", s, ";"].}
+
+# a: Coordinate, b: Dimension
+template clip(a, b: int32) =
+  if a < 0:
+    b = a + 256
+    if b <= 0:
+      continue
+    else: a = 0
+  elif b > 256:
+    b = 256
+  elif b <= 0:
+    continue
+
+proc composite*(canvas: var NCanvas, layer: var NLayer) =
+  var # Positions and Strides
+    ss, so: int32
+    x, y, w, h: int32
+    dst, src: ptr NPixel
+  let # Shorcut for Width
+    ds = canvas.sw
+  for tile in mitems(layer.tiles):
+    # Tile Canvas Coordinates
+    x = (tile.x shl 8) + layer.x
+    y = (tile.y shl 8) + layer.y
+    # Clip X Bound
+    w = canvas.sw - x; clip(x, w)
+    h = canvas.sh - y; clip(y, h)
+    # Set X Stride
+    ss = 256 - w
+    # Prepare Source Cursor
+    if x == 0: so += ss
+    if y == 0: so += (256 - h) shl 8
+    # Set Source and Destination Pointers
+    src = addr tile.buffer[so]
+    dst = addr canvas.buffer[
+      y * ds + x]
+    # Blend Pixels
+    while h > 0:
+      blend(dst, src, w)
+      dst += ds; src += ss
+      # Next Row
+      dec(h)
+    # Reset Cursor
+    so = 0
+
+proc composite*(canvas: var NCanvas) =
+  # Composite All Layers
+  for layer in mitems(canvas.layers):
+    if lfHidden in layer.flags:
+      continue # Check if not Hidden
+    canvas.composite(layer)
+
+# ---------------------------------
+# LAYER-LAYER MERGERING COMPOSITION
+# ---------------------------------
+
+discard """
+proc merge(dst, src: var NLayer) =
   let # Constants
     # Tile X Offsets
     tox = src.ox shr 8
@@ -168,10 +232,4 @@ proc composite(dst: var NCanvas, src: var NLayer) =
         di += 256; dec(de)
     # -- Clear Checks --
     bounds = {}
-
-proc composite*(canvas: var NCanvas) =
-  # Composite All Layers
-  for layer in mitems(canvas.layers):
-    if lfHidden in layer.flags:
-      continue # Check if not Hidden
-    canvas.composite(layer)
+"""

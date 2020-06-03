@@ -60,8 +60,8 @@ __m128i blend_normal(__m128i dst, __m128i src) {
   dst_lo = _mm_div_255(dst_lo);
   dst_hi = _mm_div_255(dst_hi);
   // Sum Destination with Source
-  dst_lo = _mm_adds_epi16(dst_lo, src_lo);
-  dst_hi = _mm_adds_epi16(dst_hi, src_hi);
+  dst_lo = _mm_add_epi16(dst_lo, src_lo);
+  dst_hi = _mm_add_epi16(dst_hi, src_hi);
   // Return Four Packed Pixels
   return _mm_packus_epi16(dst_lo, dst_hi);
 }
