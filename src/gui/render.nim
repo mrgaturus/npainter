@@ -1,8 +1,7 @@
 # Math and Fast Math Modules
 from math import sin, cos, PI
-from ../c_math import
-  fastSqrt,
-  invertedSqrt,
+from ../omath import
+  fastSqrt, invSqrt,
   guiProjection
 # Assets and Metrics
 from config import metrics
@@ -95,7 +94,7 @@ proc point*(x, y: int32): CTXPoint {.inline.} =
 proc normal*(a, b: CTXPoint): CTXPoint =
   result.x = a.y - b.y
   result.y = b.x - a.x
-  let norm = invertedSqrt(
+  let norm = invSqrt(
     result.x*result.x + 
     result.y*result.y)
   # Normalize Point
@@ -422,7 +421,7 @@ proc triangle*(ctx: ptr CTXRender, a,b,c: CTXPoint) =
     x = ctx.pVert[i].y - ctx.pVert[j].y
     y = ctx.pVert[j].x - ctx.pVert[i].x
     # Normalize Position Vector
-    norm = invertedSqrt(x*x + y*y)
+    norm = invSqrt(x*x + y*y)
     x *= norm; y *= norm
     # Add Antialiased Vertexs to Triangle Sides
     vertexAA(k, ctx.pVert[i].x + x, ctx.pVert[i].y + y)

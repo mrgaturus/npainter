@@ -1,5 +1,7 @@
+# TODO: Replace by a color wheel
+
 import ../widget, ../render
-from ../../c_math import
+from ../../omath import
   RGBColor, rgb, rgb8,
   HSVColor, hsv
 from ../event import 

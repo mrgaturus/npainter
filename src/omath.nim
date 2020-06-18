@@ -1,4 +1,4 @@
-# Math only for this software
+# Optimized Math for this Software
 from math import floor, ceil
 
 type
@@ -152,8 +152,12 @@ void gui_mat4(float* r, float w, float h) {
 }
 """.}
 
+# ----------------------------
+# Optimized Math C Code to Nim
+# ----------------------------
+
 # Fast Math for Simple usages
-proc invertedSqrt*(n: float32): float32 {.importc: "inv_sqrt".} # Fast Inverted Sqrt
+proc invSqrt*(n: float32): float32 {.importc: "inv_sqrt".} # Fast Inverted Sqrt
 proc fastSqrt*(n: float32): float32 {.importc: "fast_sqrt".}
 # Color Conversion
 proc hsv*(color: var RGBColor, hsv: var HSVColor) {.importc: "hsv2rgb".}
