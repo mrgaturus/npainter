@@ -1,10 +1,11 @@
 # RGBA8 Pixel Format
-# 256x256-Tiled Canvas
+# 256x256 Tiled Canvas
+# 64x64   Tiled Layers
 
 type
   NMask* = uint8 # 8bit Mask
   NPixel* = uint32 # RGBA8 Pixel
-  NTile* = ref array[65536, NPixel] 
+  NTile* = ref array[4096, NPixel]
   # Layer Objects
   NLayerBlend = enum
     lbNormal
@@ -23,36 +24,36 @@ type
     tiles*: seq[NLayerTile]
   # Canvas Object
   NCanvas* = object
-    w*, rw*, sw*: int32
-    h*, rh*, sh*: int32
+    w*, rw*, cw*: int32
+    h*, rh*, ch*: int32
     layers: seq[NLayer]
     # Canvas Cache
     buffer*: seq[NPixel]
-  # Layer-Layer Composition
-  #NBlendBounds = enum
-  #  boundLeft, boundRight
-  #  boundTop, boundDown
+  # Clip Composition
+  NBlendClip = enum
+    cTop, cDown
+    cLeft, cRight
 
 # -------------------------------
 # CANVAS BASIC MANIPULATION PROCS
 # -------------------------------
 
 proc newCanvas*(w, h: int16): NCanvas =
-  # Set Dimensions
+  # Set New Dimensions
   result.w = w; result.h = h
   # Set Residual Dimensions
   result.rw = 256 - (w mod 256)
   result.rh = 256 - (h mod 256)
   # Set Canvas Amortized Dimensions
-  result.sw = result.w + result.rw
-  result.sh = result.h + result.rh
+  result.cw = result.w + result.rw
+  result.ch = result.h + result.rh
   # Alloc Canvas Pixel Buffer with Amortized
-  setLen(result.buffer, result.sw * result.sh)
+  setLen(result.buffer, result.cw * result.ch)
 
 # -- Clearing --
 proc clear*(tile: NTile) =
   zeroMem(cast[pointer](tile), 
-    65536 * NPixel.sizeof)
+    4096 * NPixel.sizeof)
 
 proc clear*(layer: var NLayer) =
   layer.x = 0; layer.y = 0
@@ -61,9 +62,7 @@ proc clear*(layer: var NLayer) =
 # Todo: Clear Parallel
 proc clear*(canvas: var NCanvas) =
   zeroMem(addr canvas.buffer[0], 
-    cast[uint32](canvas.sw) * 
-    cast[uint32](canvas.sh) * 
-    cast[uint32](sizeof NPixel))
+    sizeof(NPixel) * canvas.cw * canvas.ch)
 
 # -- Add / Delete Layer Tiles --
 proc add*(layer: var NLayer, x, y: int16) =
@@ -98,53 +97,79 @@ template `[]`*(canvas: var NCanvas, idx: int32):
 {.compile: "blend.c".} # Compile SSE4.1 Blend Modes
 proc blend(dst, src: pointer, n: int32) {.importc.}
 
-# Temporal Pointer Aritmetic
+# Pointer Aritmetic for Optimization
 template `+=`(p: pointer, s: int32) =
   {.emit: [p, " += ", s, ";"].}
 
-# a: Coordinate, b: Dimension
-template clip(a, b: int32) =
-  if a < 0:
-    b = a + 256
-    if b <= 0:
-      continue
-    else: a = 0
-  elif b > 256:
-    b = 256
-  elif b <= 0:
-    continue
-
 proc composite*(canvas: var NCanvas, layer: var NLayer) =
-  var # Positions and Strides
-    ss, so: int32
-    x, y, w, h: int32
+  let # Constants
+    # Canvas Dimensions
+    cw = canvas.cw
+    ch = canvas.ch
+    # Tile X Constants
+    pox = layer.x
+    dox = pox and 0x3f
+    rox = 64 - dox
+    # Tile Y Constants
+    poy = layer.y
+    doy = poy and 0x3f
+    roy = 64 - doy
+  var # Pointer Cursors
     dst, src: ptr NPixel
-  let # Shorcut for Width
-    ds = canvas.sw
+    clip: set[NBlendClip]
+    sx, sy, sc, si, sw: int32
+  # -- Clip Check Template
+  template scissor() =
+    # Check Left-Right Boundaries
+    if sx >= 0 and sx < cw: clip.incl cLeft
+    if dox > 0 and sx + rox >= 0 and sx + rox < cw:
+      clip.incl cRight # With X Offset
+    # Check Laterals Visibility
+    if clip == {}: continue
+    # Check Top-Down Boundaries
+    if sy >= 0 and sy < ch: clip.incl cTop
+    if doy > 0 and sy + roy >= 0 and sy + roy < ch:
+      clip.incl cDown # With Y Offset
+  # -- Blend Template
+  template blend() =
+    # - Calculate Stride Width
+    if {cLeft, cRight} < clip:
+      sw = 64
+    elif cLeft in clip:
+      sw = rox
+    elif cRight in clip:
+      sw = dox
+      sc += rox
+      src += rox
+    # - Set Source Cursor
+    dst = addr canvas.buffer[sc]
+    # - Blend Strides
+    while si > 0:
+      blend(dst, src, sw)
+      dst += cw; src += 64
+      dec(si) # Next Row
+  # -- Composite Each Tile
   for tile in mitems(layer.tiles):
-    # Tile Canvas Coordinates
-    x = (tile.x shl 8) + layer.x
-    y = (tile.y shl 8) + layer.y
-    # Clip X Bound
-    w = canvas.sw - x; clip(x, w)
-    h = canvas.sh - y; clip(y, h)
-    # Set X Stride
-    ss = 256 - w
-    # Prepare Source Cursor
-    if x == 0: so += ss
-    if y == 0: so += (256 - h) shl 8
-    # Set Source and Destination Pointers
-    src = addr tile.buffer[so]
-    dst = addr canvas.buffer[
-      y * ds + x]
-    # Blend Pixels
-    while h > 0:
-      blend(dst, src, w)
-      dst += ds; src += ss
-      # Next Row
-      dec(h)
-    # Reset Cursor
-    so = 0
+    sx = (tile.x shl 6) + pox
+    sy = (tile.y shl 6) + poy
+    # - Do Clipping
+    scissor()
+    # - Blend Top Tiles
+    if cTop in clip:
+      # Set Pointer Cursors
+      sc = cw * sy + sx
+      src = addr tile.buffer[0]
+      # Blend Pixels
+      si = roy; blend()
+    # - Blend Down Tiles
+    if cDown in clip:
+      # Set Pointer Cursors
+      sc = cw * (sy + roy) + sx
+      src = addr tile.buffer[roy shl 6]
+      # Blend Pixels
+      si = doy; blend()
+    # - Clear Clip
+    clip = {}
 
 proc composite*(canvas: var NCanvas) =
   # Composite All Layers
@@ -152,84 +177,3 @@ proc composite*(canvas: var NCanvas) =
     if lfHidden in layer.flags:
       continue # Check if not Hidden
     canvas.composite(layer)
-
-# ---------------------------------
-# LAYER-LAYER MERGERING COMPOSITION
-# ---------------------------------
-
-discard """
-proc merge(dst, src: var NLayer) =
-  let # Constants
-    # Tile X Offsets
-    tox = src.ox shr 8
-    pox = cast[uint16](src.ox) mod 256
-    rox = cast[uint16](256 - pox) # Residual
-    # Tile Y Offsets
-    toy = src.oy shr 8
-    poy = cast[uint16](src.oy) mod 256
-    roy = cast[uint16](256 - poy) # Residual
-    # Blending Function (There Will more blend modes)
-    #blend: NBlendFunc = blend_normal
-  var # Iterator Variables
-    bounds: set[NBlendBounds]
-    pdst, psrc: NTile
-    tx, ty, ts: int16
-    di, de: uint32
-  for tile in mitems(src.tiles):
-    psrc = tile.buffer
-    # Get Current Tile
-    tx = tile.x + tox
-    ty = tile.y + toy
-    # Check Left-Right Boundaries
-    if tx >= 0 and tx < dst.tw: bounds.incl boundLeft
-    if pox > 0 and tx + 1 >= 0 and tx + 1 < dst.tw:
-      bounds.incl boundRight
-    # Check Top-Down Boundaries
-    if ty >= 0 and ty < dst.th: bounds.incl boundTop
-    if poy > 0 and ty + 1 >= 0 and ty + 1 < dst.th:
-      bounds.incl boundDown
-    # Is Visible at any Bound?
-    if bounds == {}: continue
-    # -----------------------
-    # Composite Left-Top Tile
-    ts = ty * dst.tw + tx # Tile at
-    if {boundLeft, boundTop} <= bounds:
-      pdst = dst.tiles[ts] # Lookup Tile
-      di = poy shl 8 + pox; de = roy
-      while de > 0:
-        blend(pdst[di], 
-          psrc[di], rox)
-        di += 256; dec(de)
-    # ------------------------
-    # Composite Right-Top Tile
-    ts += 1 # Next Tile at X
-    if {boundRight, boundTop} <= bounds:
-      pdst = dst.tiles[ts] # Lookup Tile
-      di = poy shl 8; de = roy
-      while de > 0:
-        blend(pdst[di], 
-          psrc[di], pox)
-        di += 256; dec(de)
-    # -------------------------
-    # Composite Right-Down Tile
-    ts += dst.tw # Next Tile at Y
-    if {boundRight, boundDown} <= bounds:
-      pdst = dst.tiles[ts] # Lookup Tile
-      di = 0; de = poy
-      while de > 0:
-        blend(pdst[di], 
-          psrc[di], pox)
-        di += 256; dec(de)
-    # ------------------------
-    # Composite Left-Down Tile
-    ts -= 1 # Prev Tile at X
-    if {boundLeft, boundDown} <= bounds:
-      pdst = dst.tiles[ts] # Lookup Tile
-      di = pox; de = poy
-      while de > 0:
-        blend(pdst[di], 
-          psrc[di], rox)
-        di += 256; dec(de)
-    # -- Clear Checks --
-    bounds = {}
-"""

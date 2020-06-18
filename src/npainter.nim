@@ -63,14 +63,14 @@ proc newTTileImage(w, h: int16): TTileImage =
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, cast[GLint](GL_NEAREST))
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, cast[GLint](GL_NEAREST))
   glTexImage2D(GL_TEXTURE_2D, 0, cast[GLint](GL_RGBA8), 
-    result.canvas.sw, result.canvas.sh, 0, GL_RGBA, 
+    result.canvas.cw, result.canvas.ch, 0, GL_RGBA, 
     GL_UNSIGNED_BYTE, nil)
   glBindTexture(GL_TEXTURE_2D, 0)
 
 proc refresh(self: TTileImage) =
   glBindTexture(GL_TEXTURE_2D, self.tex)
   glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 
-    self.canvas.sw, self.canvas.sh, GL_RGBA, 
+    self.canvas.cw, self.canvas.ch, GL_RGBA, 
     GL_UNSIGNED_BYTE, addr self.canvas.buffer[0])
   glBindTexture(GL_TEXTURE_2D, 0)
 
@@ -104,22 +104,31 @@ method notify*(self: TTileImage, sig: GUISignal) =
 
 proc clear(tile: NTile, col: NPixel) =
   var i: int32
-  while i < 65536:
+  while i < 4096:
     tile[i] = col; inc(i)
 
 proc fill(canvas: var NCanvas, idx: int32, color: uint32) =
   let layer = canvas[idx]
   var i: int32
-  for y in 0..<canvas.sh shr 8:
-    for x in 0..<canvas.sw shr 8:
+  for y in 0..<canvas.ch shr 6:
+    for x in 0..<canvas.cw shr 6:
       layer[].add(x.int16, y.int16)
       clear(layer.tiles[i].buffer, color)
       inc(i) # Next Tile
 
+proc fill(canvas: var NCanvas, idx, w, h: int32, color: uint32) =
+  let layer = canvas[idx]
+  var i: int32
+  #for y in 0..<w:
+  #  for x in 0..<h:
+  layer[].add(w.int16, h.int16)
+  clear(layer.tiles[i].buffer, color)
+  inc(i) # Next Tile
+
 when isMainModule:
   var # Create Window and GUI
     win = newGUIWindow(1024, 600, nil)
-    root = newTTileImage(4096, 4096)
+    root = newTTileImage(1024, 600)
   # Reload Canvas Texture
   #root.clear(0xFF0000FF'u32)
   root.canvas.add()
