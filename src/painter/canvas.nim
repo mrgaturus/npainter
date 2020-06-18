@@ -27,8 +27,11 @@ type
     w*, rw*, cw*: int32
     h*, rh*, ch*: int32
     layers: seq[NLayer]
-    # Canvas Cache
+    # Canvas Buffer & Mask
     buffer*: seq[NPixel]
+    mask*: seq[NPixel]
+    # Canvas Tile Stencil
+    stencil*: seq[bool]
   # Clip Composition
   NBlendClip = enum
     cTopLeft, cTopRight
@@ -47,10 +50,31 @@ proc newCanvas*(w, h: int16): NCanvas =
   # Set Canvas Amortized Dimensions
   result.cw = result.w + result.rw
   result.ch = result.h + result.rh
-  # Alloc Canvas Pixel Buffer with Amortized
-  setLen(result.buffer, result.cw * result.ch)
+  # Alloc Canvas Pixel Buffer
+  setLen(result.buffer,
+    result.cw * result.ch)
+  # Alloc Canvas Pixel Mask
+  setLen(result.mask,
+    result.buffer.len)
+  # Alloc Canvas Stencil
+  setLen(result.stencil,
+    result.buffer.len shr 12)
 
-# -- Clearing --
+# -- Clearing Canvas Buffers --
+proc clearPixels*(canvas: var NCanvas) =
+  # TODO: Clear only stenciled
+  zeroMem(addr canvas.buffer[0],
+    len(canvas.buffer) * NPixel.sizeof)
+
+proc clearMask*(canvas: var NCanvas) =
+  zeroMem(addr canvas.mask[0],
+    len(canvas.mask) * NPixel.sizeof)
+
+proc clearStencil*(canvas: var NCanvas) =
+  zeroMem(addr canvas.stencil[0],
+    len(canvas.stencil) * bool.sizeof)
+
+# -- Clearing Tile/Layers --
 proc clear*(tile: NTile) =
   zeroMem(cast[pointer](tile), 
     4096 * NPixel.sizeof)
@@ -58,11 +82,6 @@ proc clear*(tile: NTile) =
 proc clear*(layer: var NLayer) =
   layer.x = 0; layer.y = 0
   layer.tiles.setLen(0)
-
-# Todo: Clear Parallel
-proc clear*(canvas: var NCanvas) =
-  zeroMem(addr canvas.buffer[0],
-    canvas.cw * canvas.ch * NPixel.sizeof)
 
 # -- Add / Delete Layer Tiles --
 proc add*(layer: var NLayer, x, y: int16) =
@@ -132,6 +151,9 @@ proc composite*(canvas: var NCanvas, layer: var NLayer) =
       clip = clip - {cDownLeft, cDownRight}
     # Check Tile Visibility
     if clip == {}: continue
+  # -- Stencil Template
+  template stencil() =
+    discard
   # -- Blend Template
   template blend(left, right: NBlendClip) =
     # - Calculate Stride Width
@@ -154,8 +176,8 @@ proc composite*(canvas: var NCanvas, layer: var NLayer) =
   for tile in mitems(layer.tiles):
     sx = (tile.x shl 6) + pox
     sy = (tile.y shl 6) + poy
-    # - Do Clipping
-    scissor()
+    # - Do Clipping Tests
+    scissor(); stencil()
     # - Blend Top Tiles
     if clip * {cTopLeft, cTopRight} != {}:
       # Set Strides and Cursors
@@ -177,5 +199,5 @@ proc composite*(canvas: var NCanvas) =
   # Composite All Layers
   for layer in mitems(canvas.layers):
     if lfHidden in layer.flags:
-      continue # Check if not Hidden
+      continue # Skip Hidden
     canvas.composite(layer)

@@ -31,6 +31,10 @@ static inline __m128i _mm_div_255(__m128i xmm0) {
   return xmm1; // Return 255 Div
 }
 
+// --------------------------------
+// Blending Modes, 4 pixels at once
+// --------------------------------
+
 __m128i blend_normal(__m128i dst, __m128i src) {
   __m128i src_lo, src_hi;
   __m128i dst_lo, dst_hi;
@@ -66,7 +70,10 @@ __m128i blend_normal(__m128i dst, __m128i src) {
   return _mm_packus_epi16(dst_lo, dst_hi);
 }
 
-// SKIA SIMD WAY
+// ---------------------
+// Stride Color Blending
+// ---------------------
+
 void blend(u32* dst, u32* src, u32 n) {
   __m128i xmm0;
   while (n > 0) {
@@ -82,6 +89,7 @@ void blend(u32* dst, u32* src, u32 n) {
       // Next Pixels
       continue; 
     }
+
     // Two Pixels
     if (n >= 2) {
       // Blend SRC with DST
@@ -92,6 +100,7 @@ void blend(u32* dst, u32* src, u32 n) {
       _mm_storel_epi64(dst, xmm0);
       dst += 2; src += 2; n -= 2;
     }
+
     // One Pixel
     if (n >= 1) {
       // Blend SRC with DST
@@ -101,6 +110,7 @@ void blend(u32* dst, u32* src, u32 n) {
       // Replace Blended Pixels
       *dst = _mm_cvtsi128_si32(xmm0);
     }
+    
     // Blended
     break;
   }

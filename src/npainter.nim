@@ -93,7 +93,7 @@ method notify*(self: TTileImage, sig: GUISignal) =
   self.canvas[4].x = m.x
   self.canvas[4].y = m.y
   a = cpuTime()
-  self.canvas.clear()
+  self.canvas.clearPixels()
   b = cpuTime()
   self.canvas.composite()
   c = cpuTime()
@@ -128,7 +128,7 @@ proc fill(canvas: var NCanvas, idx, w, h: int32, color: uint32) =
 when isMainModule:
   var # Create Window and GUI
     win = newGUIWindow(1024, 600, nil)
-    root = newTTileImage(1024, 600)
+    root = newTTileImage(1024, 1024)
   # Reload Canvas Texture
   #root.clear(0xFF0000FF'u32)
   root.canvas.add()
