@@ -31,8 +31,8 @@ type
     buffer*: seq[NPixel]
   # Clip Composition
   NBlendClip = enum
-    cTop, cDown
-    cLeft, cRight
+    cTopLeft, cTopRight
+    cDownLeft, cDownRight
 
 # -------------------------------
 # CANVAS BASIC MANIPULATION PROCS
@@ -61,8 +61,8 @@ proc clear*(layer: var NLayer) =
 
 # Todo: Clear Parallel
 proc clear*(canvas: var NCanvas) =
-  zeroMem(addr canvas.buffer[0], 
-    sizeof(NPixel) * canvas.cw * canvas.ch)
+  zeroMem(addr canvas.buffer[0],
+    canvas.cw * canvas.ch * NPixel.sizeof)
 
 # -- Add / Delete Layer Tiles --
 proc add*(layer: var NLayer, x, y: int16) =
@@ -118,30 +118,32 @@ proc composite*(canvas: var NCanvas, layer: var NLayer) =
     dst, src: ptr NPixel
     clip: set[NBlendClip]
     sx, sy, sc, si, sw: int32
-  # -- Clip Check Template
+  # -- Scissor Template
   template scissor() =
     # Check Left-Right Boundaries
-    if sx >= 0 and sx < cw: clip.incl cLeft
+    if sx >= 0 and sx < cw:
+      clip = clip + {cTopLeft, cDownLeft}
     if dox > 0 and sx + rox >= 0 and sx + rox < cw:
-      clip.incl cRight # With X Offset
-    # Check Laterals Visibility
-    if clip == {}: continue
+      clip = clip + {cTopRight, cDownRight}
     # Check Top-Down Boundaries
-    if sy >= 0 and sy < ch: clip.incl cTop
-    if doy > 0 and sy + roy >= 0 and sy + roy < ch:
-      clip.incl cDown # With Y Offset
+    if sy < 0 or sy >= ch:
+      clip = clip - {cTopLeft, cTopRight}
+    if doy == 0 or sy + roy < 0 or sy + roy >= ch:
+      clip = clip - {cDownLeft, cDownRight}
+    # Check Tile Visibility
+    if clip == {}: continue
   # -- Blend Template
-  template blend() =
+  template blend(left, right: NBlendClip) =
     # - Calculate Stride Width
-    if {cLeft, cRight} < clip:
+    if {left, right} <= clip:
       sw = 64
-    elif cLeft in clip:
+    elif left in clip:
       sw = rox
-    elif cRight in clip:
+    elif right in clip:
       sw = dox
       sc += rox
       src += rox
-    # - Set Source Cursor
+    # - Set Destination Cursor
     dst = addr canvas.buffer[sc]
     # - Blend Strides
     while si > 0:
@@ -155,19 +157,19 @@ proc composite*(canvas: var NCanvas, layer: var NLayer) =
     # - Do Clipping
     scissor()
     # - Blend Top Tiles
-    if cTop in clip:
-      # Set Pointer Cursors
-      sc = cw * sy + sx
+    if clip * {cTopLeft, cTopRight} != {}:
+      # Set Strides and Cursors
+      sc = cw * sy + sx; si = roy
       src = addr tile.buffer[0]
-      # Blend Pixels
-      si = roy; blend()
+      # Blend Pixel Strides
+      blend(cTopLeft, cTopRight)
     # - Blend Down Tiles
-    if cDown in clip:
-      # Set Pointer Cursors
-      sc = cw * (sy + roy) + sx
+    if clip * {cDownLeft, cDownRight} != {}:
+      # Set Strides and Cursors
+      sc = cw * (sy + roy) + sx; si = doy
       src = addr tile.buffer[roy shl 6]
-      # Blend Pixels
-      si = doy; blend()
+      # Blend Pixel Strides
+      blend(cDownLeft, cDownRight)
     # - Clear Clip
     clip = {}
 
