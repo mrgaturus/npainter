@@ -89,17 +89,16 @@ method event(self: TTileImage, state: ptr GUIState) =
 
 method notify*(self: TTileImage, sig: GUISignal) =
   let m = convert(sig.data, TTCursor)[]
-  var a, b, c, d: float32
+  var b, c, d: float32
   self.canvas[4].x = m.x
   self.canvas[4].y = m.y
-  a = cpuTime()
-  self.canvas.clearPixels()
+  self.canvas.stencil(self.canvas[4][])
   b = cpuTime()
   self.canvas.composite()
   c = cpuTime()
   self.refresh()
   d = cpuTime()
-  echo "clear: ", b - a, ", composite: ", c - b, "  upload: ", d - c
+  echo "composite: ", c - b, "  upload: ", d - c
   self.work = false
 
 proc clear(tile: NTile, col: NPixel) =
@@ -116,6 +115,7 @@ proc fill(canvas: var NCanvas, idx: int32, color: uint32) =
       clear(layer.tiles[i].buffer, color)
       inc(i) # Next Tile
 
+#[
 proc fill(canvas: var NCanvas, idx, w, h: int32, color: uint32) =
   let layer = canvas[idx]
   var i: int32
@@ -124,11 +124,12 @@ proc fill(canvas: var NCanvas, idx, w, h: int32, color: uint32) =
   layer[].add(w.int16, h.int16)
   clear(layer.tiles[i].buffer, color)
   inc(i) # Next Tile
+]#
 
 when isMainModule:
   var # Create Window and GUI
     win = newGUIWindow(1024, 600, nil)
-    root = newTTileImage(1024, 1024)
+    root = newTTileImage(1024, 600)
   # Reload Canvas Texture
   #root.clear(0xFF0000FF'u32)
   root.canvas.add()

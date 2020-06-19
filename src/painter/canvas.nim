@@ -3,10 +3,9 @@
 # 64x64   Tiled Layers
 
 type
-  NMask* = uint8 # 8bit Mask
   NPixel* = uint32 # RGBA8 Pixel
   NTile* = ref array[4096, NPixel]
-  # Layer Objects
+  # -- Layer Objects
   NLayerBlend = enum
     lbNormal
   NLayerFlags = enum
@@ -22,7 +21,7 @@ type
     blend*: NLayerBlend
     flags*: set[NLayerFlags]
     tiles*: seq[NLayerTile]
-  # Canvas Object
+  # -- Canvas Object
   NCanvas* = object
     w*, rw*, cw*: int32
     h*, rh*, ch*: int32
@@ -31,8 +30,8 @@ type
     buffer*: seq[NPixel]
     mask*: seq[NPixel]
     # Canvas Tile Stencil
-    stencil*: seq[bool]
-  # Clip Composition
+    stencil: seq[bool]
+  # -- Clip Composition
   NBlendClip = enum
     cTopLeft, cTopRight
     cDownLeft, cDownRight
@@ -110,6 +109,39 @@ template `[]`*(canvas: var NCanvas, idx: int32):
   ptr NLayer = addr canvas.layers[idx]
 
 # ------------------------------
+# LAYER-STENCIL COMPOSITION PROC
+# ------------------------------
+
+proc stencil*(canvas: var NCanvas, layer: var NLayer) =
+  let # Tiled Dimensions
+    cw = canvas.cw shr 6
+    ch = canvas.ch shr 6
+    # Tiled Layer Offsets
+    tox = layer.x shr 6
+    toy = layer.y shr 6
+    # Check Layer Offsets
+    box = (layer.x and 0x3f) > 0
+    boy = (layer.y and 0x3f) > 0
+  # Tile X, Y and Cursor
+  var sx, sy, sc: int32
+  # -- Mark Template
+  template mark() =
+    if sy >= 0 and sy < ch:
+      if sx >= 0 and sx < cw:
+        canvas.stencil[sc] = true
+      if box and sx + 1 >= 0 and sx + 1 < cw:
+        canvas.stencil[sc + 1] = true
+  # -- Mark Tiles to Stencil
+  for tile in mitems(layer.tiles):
+    # Tile Positions
+    sx = tile.x + tox
+    sy = tile.y + toy
+    # Mark Top Left-Right
+    sc = sy * cw + sx; mark()
+    if boy: # Down Left-Right
+      sc += cw; inc(sy); mark()
+
+# ------------------------------
 # LAYER-CANVAS COMPOSITION PROCS
 # ------------------------------
 
@@ -120,7 +152,7 @@ proc blend(dst, src: pointer, n: int32) {.importc.}
 template `+=`(p: pointer, s: int32) =
   {.emit: [p, " += ", s, ";"].}
 
-proc composite*(canvas: var NCanvas, layer: var NLayer) =
+proc composite(canvas: var NCanvas, layer: var NLayer) =
   let # Constants
     # Canvas Dimensions
     cw = canvas.cw
@@ -153,7 +185,27 @@ proc composite*(canvas: var NCanvas, layer: var NLayer) =
     if clip == {}: continue
   # -- Stencil Template
   template stencil() =
-    discard
+    # Set Stencil Cursor
+    sc = (cw shr 6) * 
+      (sy shr 6) + (sx shr 6)
+    # Test Top Left Tile
+    if cTopLeft in clip and 
+    not canvas.stencil[sc]:
+      clip.excl cTopLeft
+    # Test Top Right Tile
+    if cTopRight in clip and 
+    not canvas.stencil[sc + 1]:
+      clip.excl cTopRight
+    # Set to Down Tiles
+    sc += cw shr 6
+    # Test Down Left Tile
+    if cDownLeft in clip and 
+    not canvas.stencil[sc]:
+      clip.excl cDownLeft
+    # Test Down Right Tile
+    if cDownRight in clip and 
+    not canvas.stencil[sc + 1]:
+      clip.excl cDownRight
   # -- Blend Template
   template blend(left, right: NBlendClip) =
     # - Calculate Stride Width
@@ -196,8 +248,12 @@ proc composite*(canvas: var NCanvas, layer: var NLayer) =
     clip = {}
 
 proc composite*(canvas: var NCanvas) =
+  # Clear Pixel Buffer
+  canvas.clearPixels()
   # Composite All Layers
   for layer in mitems(canvas.layers):
     if lfHidden in layer.flags:
       continue # Skip Hidden
     canvas.composite(layer)
+  # Clear Tile Stencil
+  canvas.clearStencil()
