@@ -43,12 +43,12 @@ type
 proc newCanvas*(w, h: int16): NCanvas =
   # Set New Dimensions
   result.w = w; result.h = h
-  # Set Residual Dimensions
-  result.rw = 256 - (w mod 256)
-  result.rh = 256 - (h mod 256)
   # Set Canvas Amortized Dimensions
-  result.cw = result.w + result.rw
-  result.ch = result.h + result.rh
+  result.cw = (w + 63) and not 0x3f
+  result.ch = (h + 63) and not 0x3f
+  # Set Residual Dimensions
+  result.rw = w and 0x3f
+  result.rh = h and 0x3f
   # Alloc Canvas Pixel Buffer
   setLen(result.buffer,
     result.cw * result.ch)
