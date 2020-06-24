@@ -148,7 +148,7 @@ proc newCTXRender*(): CTXRender =
 # --------------------------
 
 proc begin*(ctx: var CTXRender) =
-  # Use GUI program
+  # Use GUI Program
   glUseProgram(ctx.program)
   # Disable 3D OpenGL Flags
   glDisable(GL_CULL_FACE)
@@ -166,13 +166,21 @@ proc begin*(ctx: var CTXRender) =
   # Modify Only Texture 0
   glActiveTexture(GL_TEXTURE0)
   glBindTexture(GL_TEXTURE_2D, ctx.atlas.texID)
-  # Set Viewport to Window
-  glViewport(0, 0, ctx.vWidth, ctx.vHeight)
-  glUniformMatrix4fv(ctx.uPro, 1, false,
-    cast[ptr float32](addr ctx.vCache))
 
 proc viewport*(ctx: var CTXRender, w, h: int32) =
-  guiProjection(addr ctx.vCache, float32 w, float32 h)
+  # Set Viewport to New Size
+  glViewport(0, 0, w, h)
+  # Use GUI Program
+  glUseProgram(ctx.program)
+  # Change GUI Projection Matrix
+  guiProjection(addr ctx.vCache, 
+    float32 w, float32 h)
+  # Upload GUI Projection Matrix
+  glUniformMatrix4fv(ctx.uPro, 1, false,
+    cast[ptr float32](addr ctx.vCache))
+  # Unuse GUI Program
+  glUseProgram(0)
+  # Save New Viewport Sizes
   ctx.vWidth = w; ctx.vHeight = h
 
 proc clear(ctx: var CTXRender) =

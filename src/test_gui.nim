@@ -9,7 +9,7 @@ from gui/widgets/textbox import newTextBox
 from gui/widgets/slider import newSlider
 from gui/widgets/scroll import newScroll
 from gui/widgets/color import newColorBar
-from c_math import Value, interval, lerp, RGBColor
+from omath import Value, interval, lerp, RGBColor
 from assets import setIcons
 from utf8 import UTF8Input, `text=`
 

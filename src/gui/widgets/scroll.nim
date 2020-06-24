@@ -1,5 +1,5 @@
 import ../widget, ../render
-from ../../c_math import
+from ../../omath import
   Value, distance, lerp,
   interval, toFloat, toInt
 from ../event import 

@@ -1,7 +1,7 @@
 import ../widget, ../render
 from strutils import 
   formatFloat, ffDecimal
-from ../../c_math import
+from ../../omath import
   Value, distance, lerp,
   toFloat, toInt
 from ../event import GUIState
