@@ -3,8 +3,13 @@
 # 64x64   Tiled Layers
 
 type
+  # -- Primitive Types
   NPixel* = uint32 # RGBA8 Pixel
   NTile* = ref array[4096, NPixel]
+  # -- Rendering & Brush
+  NVertex* = object
+    x*, y*: float32
+    u*, v*: uint16
   # -- Layer Objects
   NLayerBlend = enum
     lbNormal

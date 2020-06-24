@@ -2,8 +2,10 @@
 from math import floor, ceil
 
 type
+  # Range Value
   Value* = object
     min, max, pos: float32
+  # Color Models
   RGBColor* = object
     r*, g*, b*: float32
   HSVColor* = object
@@ -44,30 +46,11 @@ template toFloat*(value: Value): float32 =
 template toInt*(value: Value): int32 =
   int32(value.pos) # Return Current Value to Int32
 
-# -----------------
-# C-CODE MATH PROCS
-# -----------------
+# -------------------------
+# HSV to RGB and RGB to HSV
+# -------------------------
 
 {.emit: """
-// -- nuklear_math.c
-float inv_sqrt(float n) {
-  float x2;
-  const float threehalfs = 1.5f;
-  union {unsigned int i; float f;} conv = {0};
-  conv.f = n;
-  x2 = n * 0.5f;
-  conv.i = 0x5f375A84 - (conv.i >> 1);
-  conv.f = conv.f * (threehalfs - (x2 * conv.f * conv.f));
-  return conv.f;
-}
-
-float fast_sqrt(float n) {
-  return n * inv_sqrt(n);
-}
-
-// -------------------------
-// HSV to RGB and RGB to HSV
-// -------------------------
 
 // [H, S, V, A]
 void hsv2rgb(float* rgb, float* hsv) {
@@ -142,6 +125,37 @@ inline char rgb_cmp(float* a, float* b) {
   return memcmp(a, b, 3) == 0;
 }
 
+""".}
+
+# Color Conversion
+proc hsv*(color: var RGBColor, hsv: var HSVColor) {.importc: "hsv2rgb".}
+proc rgb*(color: var HSVColor, rgb: var RGBColor) {.importc: "rgb2hsv".}
+# RGB Comparation and Conversion
+proc rgb8*(color: var RGBColor): uint32 {.importc: "rgb2bytes".}
+proc `==`*(a, b: var RGBColor): bool {.importc: "rgb_cmp".}
+
+# ---------------------
+# FAST MATH C-FUNCTIONS
+# ---------------------
+
+{.emit: """
+
+// -- nuklear_math.c
+float inv_sqrt(float n) {
+  float x2;
+  const float threehalfs = 1.5f;
+  union {unsigned int i; float f;} conv = {0};
+  conv.f = n;
+  x2 = n * 0.5f;
+  conv.i = 0x5f375A84 - (conv.i >> 1);
+  conv.f = conv.f * (threehalfs - (x2 * conv.f * conv.f));
+  return conv.f;
+}
+
+float fast_sqrt(float n) {
+  return n * inv_sqrt(n);
+}
+
 // -- Orthogonal Projection for GUI Drawing
 void gui_mat4(float* r, float w, float h) {
   r[0] = 2.0 / w;
@@ -150,20 +164,10 @@ void gui_mat4(float* r, float w, float h) {
 
   r[10] = r[13] = r[15] = 1.0;
 }
+
 """.}
 
-# ----------------------------
-# Optimized Math C Code to Nim
-# ----------------------------
-
-# Fast Math for Simple usages
-proc invSqrt*(n: float32): float32 {.importc: "inv_sqrt".} # Fast Inverted Sqrt
+# C to Nim Wrappers to Fast Math C-Functions
+proc invSqrt*(n: float32): float32 {.importc: "inv_sqrt".}
 proc fastSqrt*(n: float32): float32 {.importc: "fast_sqrt".}
-# Color Conversion
-proc hsv*(color: var RGBColor, hsv: var HSVColor) {.importc: "hsv2rgb".}
-proc rgb*(color: var HSVColor, rgb: var RGBColor) {.importc: "rgb2hsv".}
-# RGB Comparation and Conversion
-proc rgb8*(color: var RGBColor): uint32 {.importc: "rgb2bytes".}
-proc `==`*(a, b: var RGBColor): bool {.importc: "rgb_cmp".}
-# GUI Projection
 proc guiProjection*(mat: ptr array[16, float32], w,h: float32) {.importc: "gui_mat4".}

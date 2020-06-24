@@ -129,7 +129,7 @@ proc fill(canvas: var NCanvas, idx, w, h: int32, color: uint32) =
 when isMainModule:
   var # Create Window and GUI
     win = newGUIWindow(1024, 600, nil)
-    root = newTTileImage(1024, 600)
+    root = newTTileImage(1023, 1023)
   # Reload Canvas Texture
   #root.clear(0xFF0000FF'u32)
   root.canvas.add()
