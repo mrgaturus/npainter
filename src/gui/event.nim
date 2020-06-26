@@ -40,8 +40,8 @@ type
     utf8state*: int32
     utf8cap, utf8size*: int32
     utf8str*: cstring
-    # Modifiers for Both
-    mods*: uint16
+    # Key Modifiers
+    mods*: uint32
   # GUI Signal Private
   SKind = enum
     sSignal, sCallback
@@ -83,6 +83,8 @@ proc translateXEvent*(state: var GUIState, display: PDisplay, event: PXEvent,
     state.mx = event.xbutton.x
     state.my = event.xbutton.y
     state.key = event.xbutton.button
+    # Update Keyboard Modifiers
+    state.mods = event.xbutton.state
   of MotionNotify:
     state.mx = event.xmotion.x
     state.my = event.xmotion.y
@@ -98,8 +100,8 @@ proc translateXEvent*(state: var GUIState, display: PDisplay, event: PXEvent,
       state.utf8size =
         Xutf8LookupString(xic, cast[PXKeyPressedEvent](event), state.utf8str,
             state.utf8cap, state.key.addr, state.utf8state.addr)
-    # Update Modifers
-    state.mods = cast[uint16](event.xkey.state and 0x0D)
+    # Update Keyboard Modifers
+    state.mods = event.xkey.state
   of KeyRelease:
     # Handle key-repeat properly
     if XEventsQueued(display, QueuedAfterReading) != 0:
@@ -109,12 +111,13 @@ proc translateXEvent*(state: var GUIState, display: PDisplay, event: PXEvent,
           nEvent.xkey.time == event.xkey.time and
           nEvent.xkey.keycode == event.xkey.keycode:
         return false
-    let mods: cint = cast[cint](event.xkey.state)
-    # Ignoring UTF8Chars when key releasing
-    state.key =
-      XLookupKeysym(cast[PXKeyEvent](event), (mods and ShiftMask) or (mods and LockMask))
+    let mods = cast[cint](event.xkey.state)
+    state.key = # Ignoring UTF8Chars when key releasing
+      XLookupKeysym(cast[PXKeyEvent](event), 
+        (mods and ShiftMask) or (mods and LockMask))
     state.utf8state = UTF8Nothing
-    state.mods = cast[uint16](mods and 0x0D)
+    # Update Keyboard Modifers
+    state.mods = cast[uint32](mods)
   else: return false
   # Event is valid
   return true
