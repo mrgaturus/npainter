@@ -1,37 +1,46 @@
 # Render 256x256 Tiles, One Draw Call Per Tile
 # If you know a better way for OGL3.3, tell me
 import ../libs/gl
-# --------------
 import ../assets
 import ../omath
-# -----------
+# Extend Canvas
 import canvas
 
-const
-  STRIDE_SIZE = # Casting
-    sizeof(NVertex).int32
 type
-  # Canvas View Corner
-  NCanvasCorner* = object
-    x*, y*: int32
-  # Tiled Canvas View
+  # -- Primitives
+  NVertex = object
+    x, y: int32
+    u, v: uint16
+  NCorner = object
+    x, y: float32
+  # -- Tiled Canvas View
   NCanvasScanline = enum
     scNone, scLeftSide
     scInside, scRightSide
   NCanvasView = object
     # Shader Objects
     program: GLuint
-    uView, uModel: GLint
+    uview, umodel: GLint
     # OpenGL Objects
     vao, vbo, pbo: GLuint
     ping, pong: GLuint
+    # Canvas Target Addr
+    target: ptr NCanvas
+    # Viewport Uniforms
+    width, height: int32
+    mview: array[16, float32]
+    mmodel: array[9, float32]
+    # Tile Grid 16384x16384
+    grid: array[4096, bool]
     # Textures and Vertexs
     verts: seq[NVertex]
     texts: seq[GLuint]
-    # Tile Count
+    # Current Status
     len: int32
-    # Screen Size
-    w, h: int32
+    dirty: bool
+const # Vertex Layout Stride
+  STRIDE_SIZE = # Casting
+    sizeof(NVertex).int32
 
 # -------------------------
 # CANVAS VIEW CREATION PROC
@@ -43,8 +52,8 @@ proc newCanvasView*(): NCanvasView =
   # -- Use Program for Define Uniforms
   glUseProgram(result.program)
   # Define Projection and Texture Uniforms
-  result.uView = glGetUniformLocation(result.program, "uView")
-  result.uModel = glGetUniformLocation(result.program, "uModel")
+  result.uview = glGetUniformLocation(result.program, "uView")
+  result.umodel = glGetUniformLocation(result.program, "uModel")
   # Set Default Uniform Value: Tile Texture
   glUniform1i glGetUniformLocation(result.program, "uTile"), 0
   # Unuse Program
@@ -78,16 +87,29 @@ proc newCanvasView*(): NCanvasView =
   glBindBuffer(GL_ARRAY_BUFFER, 0)
   glBindVertexArray(0)
 
-# --------------------------
-# CANVAS VIEW, VIEWPORT PROC
-# --------------------------
+# ------------------------------------
+# CANVAS VIEW BASIC MANIPULATION PROCS
+# ------------------------------------
 
+# Same as GUI, but is for other shader program
 proc viewport*(view: var NCanvasView, w, h: int32) =
-  # Change Screen Size
-  view.w = w; view.h = h
   # Use Canvas Program
   glUseProgram(view.program)
-  # Change Screen Uniform
-
+  # Change View Projection Matrix
+  guiProjection(addr view.mview, 
+    float32 w, float32 h)
+  # Upload View Projection Matrix
+  glUniformMatrix4fv(view.uview, 1, false,
+    cast[ptr float32](addr view.mview))
   # Unuse Canvas Program
   glUseProgram(0)
+  # Save New Viewport Size
+  view.width = w; view.height = h
+  # Invalidate View Tiles
+  view.dirty = true
+
+proc target*(view: var NCanvasView, canvas: ptr NCanvas) =
+  # Set New Canvas Target
+  view.target = canvas
+  # Invalidate View Tiles
+  view.dirty = true

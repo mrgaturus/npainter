@@ -16,7 +16,12 @@ import times
 # LOAD SSE4.1
 {.passC: "-msse4.1".}
 
-type # Test Image Tile
+type
+  # Voxel Transversal 32x32
+  VoxelT = ref object of GUIWidget
+    x1, y1, x2, y2: float32
+    grid: array[1024, bool]
+  # Test Image Tile
   TTCursor = object
     x, y: int32
   TTileImage = ref object of GUIWidget
@@ -26,8 +31,105 @@ type # Test Image Tile
     tex: GLuint
     cur: TTCursor
     work: bool
-  TEnum = enum 
+    # Voxel Test
+    voxel: VoxelT
+  TEnum = enum
     eNothing
+
+# ------------------------
+# A Fast Voxel Transversal
+# ------------------------
+
+method draw(self: VoxelT, ctx: ptr CTXRender) =
+  ctx.color(0x2F2F2F2F.uint32)
+  var # Each Tile
+    r: GUIRect
+    cursor: int16
+  # Define Rect
+  r.x = self.rect.x
+  r.y = self.rect.y
+  r.w = 16; r.h = 16
+  # Draw Each Tile
+  for y in 0..<32:
+    for x in 0..<32:
+      ctx.color if self.grid[cursor]:
+        0xFF2f2f7f.uint32
+      else: 0xFF2F2F2F.uint32
+      # Fill Tile
+      ctx.fill(r.rect)
+      # Next Grid Pos
+      inc(cursor); r.x += 16
+    r.x = self.rect.x
+    r.y += 16 # Next Row
+
+template sign(a: float32): float32 =
+  float32(a > 0) - float32(0 > a)
+
+from math import floor
+
+proc transversal(self: VoxelT) =
+  let # Point Distances
+    dx = abs(self.x2 - self.x1)
+    dy = abs(self.y2 - self.y1)
+  var # Initial Voxel Position
+    x = floor(self.x1).int32
+    y = floor(self.y1).int32
+    # Voxel Steps
+    stx, sty: int8
+    error: float32
+    # Voxel Number
+    n: int32 = 1
+  # X Incremental
+  if dx == 0:
+    stx = 0 # No X Step
+    error = high(float32)
+  elif self.x2 > self.x1:
+    stx = 1; n += floor(self.x2).int32 - x
+    error = (floor(self.x1) + 1 - self.x1) * dy
+  else: # Negative X Direction
+    stx = -1; n += x - floor(self.x2).int32
+    error = (self.x1 - floor(self.x1)) * dy
+  # Y Incremental
+  if dy == 0:
+    sty = 0 # No Y Step
+    error -= high(float32)
+  elif self.y2 > self.y1:
+    sty = 1; n += floor(self.y2).int32 - y
+    error -= (floor(self.y1) + 1 - self.y1) * dx
+  else: # Negative Y Direction
+    sty = -1; n += y - floor(self.y2).int32
+    error -= (self.y1 - floor(self.y1)) * dx
+  # Iterate Each Voxel
+  while n > 0:
+    self.grid[y shl 5 + x] = true
+    if error > 0:
+      y += sty
+      error -= dx
+    else:
+      x += stx
+      error += dy
+    dec(n) # Next Voxel
+
+method event(self: VoxelT, state: ptr GUIState) =
+  state.mx -= self.rect.x
+  state.my -= self.rect.y
+  if state.eventType == evMouseClick:
+    self.x1 = float32(state.mx) / 16
+    self.y1 = float32(state.my) / 16
+  elif self.test(wGrab):
+    self.x2 = float32(state.mx) / 16
+    self.y2 = float32(state.my) / 16
+    zeroMem(addr self.grid[0], 1024)
+    self.transversal()
+
+proc newVoxelT(): VoxelT =
+  new result # Alloc
+  result.flags = wStandard
+  result.minimum(256, 256)
+
+# -----------------
+# TEST TILED CANVAS
+# -----------------
 
 method draw(self: TTileImage, ctx: ptr CTXRender) =
   ctx.color(high uint32)
@@ -66,6 +168,9 @@ proc newTTileImage(w, h: int16): TTileImage =
     result.canvas.cw, result.canvas.ch, 0, GL_RGBA, 
     GL_UNSIGNED_BYTE, nil)
   glBindTexture(GL_TEXTURE_2D, 0)
+  # Create new voxel
+  result.voxel = newVoxelT()
+  result.voxel.geometry(0, 0, 512, 512)
 
 proc refresh(self: TTileImage) =
   glBindTexture(GL_TEXTURE_2D, self.tex)
@@ -76,9 +181,15 @@ proc refresh(self: TTileImage) =
 
 method event(self: TTileImage, state: ptr GUIState) =
   if state.eventType == evMouseClick:
-    self.mx = state.mx; self.my = state.my
-    self.ox = self.canvas[4].x
-    self.oy = self.canvas[4].y
+    if (state.mods and ShiftMod) == 0:
+      self.mx = state.mx; self.my = state.my
+      self.ox = self.canvas[4].x
+      self.oy = self.canvas[4].y
+    elif self.voxel.test(wFramed):
+      self.voxel.close()
+    else: # Open On Cursor Position
+      self.voxel.move(state.mx, state.my)
+      self.voxel.open()
   elif self.test(wGrab):
     if not self.work:
       var t = TTCursor(
