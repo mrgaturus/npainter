@@ -61,9 +61,16 @@ method draw(self: VoxelT, ctx: ptr CTXRender) =
       inc(cursor); r.x += 16
     r.x = self.rect.x
     r.y += 16 # Next Row
-
-template sign(a: float32): float32 =
-  float32(a > 0) - float32(0 > a)
+  # Draw Line - Dirty
+  ctx.color(uint32.high)
+  let # Shortcut Convert
+    rx = float32(self.rect.x)
+    ry = float32(self.rect.y)
+  ctx.triangle(
+    point(rx + self.x1 * 16, ry + self.y1 * 16),
+    point(rx + self.x1 * 16, ry + self.y1 * 16),
+    point(rx + self.x2 * 16, ry + self.y2 * 16)
+  )
 
 from math import floor
 
@@ -71,42 +78,52 @@ proc transversal(self: VoxelT) =
   let # Point Distances
     dx = abs(self.x2 - self.x1)
     dy = abs(self.y2 - self.y1)
-  var # Initial Voxel Position
-    x = floor(self.x1).int32
-    y = floor(self.y1).int32
-    # Voxel Steps
+    # Floor X Coordinates
+    x1 = floor(self.x1)
+    y1 = floor(self.y1)
+    # Floor Y Coordinates
+    x2 = floor(self.x2)
+    y2 = floor(self.y2)
+  var # Voxel Steps
     stx, sty: int8
     error: float32
     # Voxel Number
     n: int32 = 1
+    # Grid Index
+    i: int32
   # X Incremental
   if dx == 0:
     stx = 0 # No X Step
     error = high(float32)
   elif self.x2 > self.x1:
-    stx = 1; n += floor(self.x2).int32 - x
-    error = (floor(self.x1) + 1 - self.x1) * dy
+    n += int32(x2 - x1); stx = 1
+    error = (x1 - self.x1 + 1) * dy
   else: # Negative X Direction
-    stx = -1; n += x - floor(self.x2).int32
-    error = (self.x1 - floor(self.x1)) * dy
+    n += int32(x1 - x2); stx = -1
+    error = (self.x1 - x1) * dy
   # Y Incremental
   if dy == 0:
     sty = 0 # No Y Step
     error -= high(float32)
   elif self.y2 > self.y1:
-    sty = 1; n += floor(self.y2).int32 - y
-    error -= (floor(self.y1) + 1 - self.y1) * dx
+    n += int32(y2 - y1); sty = 1
+    error -= (y1 - self.y1 + 1) * dx
   else: # Negative Y Direction
-    sty = -1; n += y - floor(self.y2).int32
-    error -= (self.y1 - floor(self.y1)) * dx
+    n += int32(y1 - y2); sty = -1
+    error -= (self.y1 - y1) * dx
+  # Set Voxel Grid Index
+  i = int32(y1 * 32 + x1)
+  sty *= 32 # Stride
   # Iterate Each Voxel
   while n > 0:
-    self.grid[y shl 5 + x] = true
+    # Put Current Voxel
+    self.grid[i] = true
+    # DDA Step
     if error > 0:
-      y += sty
+      i += sty
       error -= dx
     else:
-      x += stx
+      i += stx
       error += dy
     dec(n) # Next Voxel
 

@@ -11,12 +11,11 @@ type
   NVertex = object
     x, y: int32
     u, v: uint16
-  NCorner = object
+  NCorner* = object
     x, y: float32
   # -- Tiled Canvas View
-  NCanvasScanline = enum
-    scNone, scLeftSide
-    scInside, scRightSide
+  NScanline* = enum
+    scNone, scLeft, scRight
   NCanvasView = object
     # Shader Objects
     program: GLuint
