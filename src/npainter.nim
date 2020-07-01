@@ -41,7 +41,6 @@ type
 # ------------------------
 
 method draw(self: VoxelT, ctx: ptr CTXRender) =
-  ctx.color(0x2F2F2F2F.uint32)
   var # Each Tile
     r: GUIRect
     cursor: int16
@@ -61,13 +60,12 @@ method draw(self: VoxelT, ctx: ptr CTXRender) =
       inc(cursor); r.x += 16
     r.x = self.rect.x
     r.y += 16 # Next Row
-  # Draw Line - Dirty
+  # Draw Line
   ctx.color(uint32.high)
   let # Shortcut Convert
     rx = float32(self.rect.x)
     ry = float32(self.rect.y)
-  ctx.triangle(
-    point(rx + self.x1 * 16, ry + self.y1 * 16),
+  ctx.line(
     point(rx + self.x1 * 16, ry + self.y1 * 16),
     point(rx + self.x2 * 16, ry + self.y2 * 16)
   )
@@ -150,10 +148,11 @@ proc newVoxelT(): VoxelT =
 
 method draw(self: TTileImage, ctx: ptr CTXRender) =
   ctx.color(high uint32)
-  var r = GUIRect(x: self.rect.x, y: self.rect.y, 
-    w: self.canvas.w + self.canvas.rw, 
-    h: self.canvas.h + self.canvas.rh)
-  ctx.fill rect(r)
+  var r = rect(self.rect.x, self.rect.y, 
+    self.canvas.w + self.canvas.rw, 
+    self.canvas.h + self.canvas.rh)
+  # Draw Rect
+  ctx.fill(r)
   ctx.texture(r, self.tex)
   # Division Lines
   discard """

@@ -390,21 +390,24 @@ proc line*(ctx: ptr CTXRender, r: CTXRect, s: float32) =
   triangle(18, 3, 7,9)
   triangle(21, 11,7,9)
 
-proc texture*(ctx: ptr CTXRender, rect: var GUIRect, texID: GLuint) =
-  ctx.addCommand() # Create New Command
-  ctx.pCMD.texID = texID # Set Texture
-  # Add 4 Vertexes for a Quad
-  ctx.verts.setLen(ctx.verts.len + 4)
-  ctx.pVert = cast[CTXVertexMap](addr ctx.verts[^4])
-  let # Define The Quad
-    x = float32 rect.x
-    y = float32 rect.y
-    xw = x + float32 rect.w
-    yh = y + float32 rect.h
-  vertexUV(0, x, y, 0, 0)
-  vertexUV(1, xw, y, 1, 0)
-  vertexUV(2, x, yh, 0, 1)
-  vertexUV(3, xw, yh, 1, 1)
+# --------------------------------
+# CUSTOM TEXTURE ID RENDERING PROC
+# --------------------------------
+
+proc texture*(ctx: ptr CTXRender, r: CTXRect, texID: GLuint) =
+  # Replace Current Command
+  ctx.addCommand()
+  # Alloc Texture Quad
+  setLen(ctx.verts, ctx.verts.len + 4)
+  ctx.pVert = # Set Pointer Cursor
+    cast[CTXVertexMap](addr ctx.verts[^4])
+  # Define Texture Quad Vertexs
+  vertexUV(0, r.x, r.y, 0, 0)
+  vertexUV(1, r.xw, r.y, 1, 0)
+  vertexUV(2, r.x, r.yh, 0, 1)
+  vertexUV(3, r.xw, r.yh, 1, 1)
+  # Set Texture ID
+  ctx.pCMD.texID = texID
   # Invalidate CMD
   ctx.pCMD = nil
 
@@ -439,6 +442,31 @@ proc triangle*(ctx: ptr CTXRender, a,b,c: CTXPoint) =
     triangle(l+3, j, k, k+1)
     # Next Triangle Size
     i += 1; k += 2; l += 6
+
+proc line*(ctx: ptr CTXRender, a,b: CTXPoint) =
+  ctx.addVerts(6, 12)
+  # Line Description
+  vertex(0, a.x, a.y)
+  vertex(1, b.x, b.y)
+  var # Distances
+    dx = a.y - b.y
+    dy = b.x - a.x
+  let # Calculate Lenght
+    norm = invSqrt(dx*dx + dy*dy)
+  # Normalize Distances
+  dx *= norm; dy *= norm
+  # Antialias Description Top
+  vertexAA(2, a.x + dx, a.y + dy)
+  vertexAA(3, b.x + dx, b.y + dy)
+  # Antialias Description Bottom
+  vertexAA(4, a.x - dx, a.y - dy)
+  vertexAA(5, b.x - dx, b.y - dy)
+  # Top Elements
+  triangle(0, 0,1,2)
+  triangle(3, 1,2,3)
+  # Bottom Elements
+  triangle(6, 0,1,5)
+  triangle(9, 0,4,5)
 
 proc circle*(ctx: ptr CTXRender, p: CTXPoint, r: float32) =
   # Move X & Y to Center
@@ -552,17 +580,18 @@ proc text*(ctx: ptr CTXRender, x,y: int32, clip: CTXRect, str: string) =
 
 proc icon*(ctx: ptr CTXRender, x,y: int32, icon: uint16) =
   ctx.addVerts(4, 6)
-  let icon = ctx.atlas.getIcon(icon)
-  block: # Rect Triangles
-    let
-      x = float32 x
-      y = float32 y
-      xw = x + float32 metrics.iconSize
-      yh = y + float32 metrics.iconSize
-    vertexUV(0, x, y, icon.x1, icon.y1)
-    vertexUV(1, xw, y, icon.x2, icon.y1)
-    vertexUV(2, x, yh, icon.x1, icon.y2)
-    vertexUV(3, xw, yh, icon.x2, icon.y2)
+  let # Icon Rect
+    x = float32 x
+    y = float32 y
+    xw = x + float32 metrics.iconSize
+    yh = y + float32 metrics.iconSize
+    # Lookup Icon from Atlas
+    icon = ctx.atlas.getIcon(icon)
+  # Icon Vertex Definition
+  vertexUV(0, x, y, icon.x1, icon.y1)
+  vertexUV(1, xw, y, icon.x2, icon.y1)
+  vertexUV(2, x, yh, icon.x1, icon.y2)
+  vertexUV(3, xw, yh, icon.x2, icon.y2)
   # Elements Definition
   triangle(0, 0,1,2)
   triangle(3, 1,2,3)
