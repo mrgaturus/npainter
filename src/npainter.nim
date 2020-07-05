@@ -165,7 +165,7 @@ proc clip(self: VoxelT): bool =
     else: c = c1
     # Calculate Slope
     x = self.x1; y = self.y1 # Cache
-    m = (self.y2 - x) / (self.x2 - y)
+    m = (self.y2 - y) / (self.x2 - x)
     # Clip Superiors
     if csTop in c: 
       x += (TEST_SIDE - y) / m
