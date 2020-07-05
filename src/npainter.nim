@@ -36,10 +36,6 @@ type
   TEnum = enum
     eNothing
 
-# ------------------------
-# A Fast Voxel Transversal
-# ------------------------
-
 method draw(self: VoxelT, ctx: ptr CTXRender) =
   var # Each Tile
     r: GUIRect
@@ -70,9 +66,13 @@ method draw(self: VoxelT, ctx: ptr CTXRender) =
     point(rx + self.x2 * 16, ry + self.y2 * 16)
   )
 
+# ------------------------
+# A Fast Voxel Transversal
+# ------------------------
+
 from math import floor
 
-proc transversal(self: VoxelT) =
+proc traversal(self: VoxelT) =
   let # Point Distances
     dx = abs(self.x2 - self.x1)
     dy = abs(self.y2 - self.y1)
@@ -109,9 +109,8 @@ proc transversal(self: VoxelT) =
   else: # Negative Y Direction
     n += int32(y1 - y2); sty = -1
     error -= (self.y1 - y1) * dx
-  # Set Voxel Grid Index
-  i = int32(y1 * 32 + x1)
-  sty *= 32 # Stride
+  # Set Voxel Grid Index and Stride
+  i = int32(y1 * 32 + x1); sty *= 32
   # Iterate Each Voxel
   while n > 0:
     # Put Current Voxel
@@ -125,6 +124,76 @@ proc transversal(self: VoxelT) =
       error += dy
     dec(n) # Next Voxel
 
+# ------------------------------
+# Cohen Sutherland Line Clipping
+# ------------------------------
+
+type
+  ClipSides = enum
+    csInside #0000
+    csLeft, csRight
+    csBottom, csTop
+  ClipFlags = set[ClipSides]
+const TEST_SIDE = float32(32)
+
+proc flags(x, y: float32): ClipFlags =
+  # Test Laterals
+  if x < 0:
+    result.incl csLeft
+  elif x > TEST_SIDE:
+    result.incl csRight
+  # Test Superiors
+  if y < 0:
+    result.incl csBottom
+  elif y > TEST_SIDE:
+    result.incl csTop
+
+proc clip(self: VoxelT): bool =
+  var # Variables
+    x, y, m: float32
+    c1, c2, c: ClipFlags
+  # Clip Side Flags
+  c1 = flags(self.x1, self.y1)
+  c2 = flags(self.x2, self.y2)
+  # Clip Loop
+  while true:
+    # Test Inside or Outside
+    if (c1 + c2) == {}: return true
+    elif (c1 * c2) != {}: return false
+    # Who is Outside?
+    elif c1 == {}: c = c2
+    else: c = c1
+    # Calculate Slope
+    x = self.x1; y = self.y1 # Cache
+    m = (self.y2 - x) / (self.x2 - y)
+    # Clip Superiors
+    if csTop in c: 
+      x += (TEST_SIDE - y) / m
+      y = TEST_SIDE # Top
+    elif csBottom in c: 
+      x += (0 - y) / m
+      y = 0 # Bottom
+    # Clip Laterals
+    elif csRight in c:
+      y += (TEST_SIDE - x) * m
+      x = TEST_SIDE # Right
+    elif csLeft in c:
+      y += (0 - x) * m
+      x = 0 # Left
+    # Replace Point
+    if c == c1:
+      self.x1 = x
+      self.y1 = y
+      c1 = flags(x, y)
+    else: # C2
+      self.x2 = x
+      self.y2 = y
+      c2 = flags(x, y)
+
+# ------------------
+# VOXEL TEST METHODS
+# ------------------
+
 method event(self: VoxelT, state: ptr GUIState) =
   state.mx -= self.rect.x
   state.my -= self.rect.y
@@ -135,7 +204,8 @@ method event(self: VoxelT, state: ptr GUIState) =
     self.x2 = float32(state.mx) / 16
     self.y2 = float32(state.my) / 16
     zeroMem(addr self.grid[0], 1024)
-    self.transversal()
+    if self.clip():
+      self.traversal()
 
 proc newVoxelT(): VoxelT =
   new result # Alloc
@@ -256,7 +326,7 @@ proc fill(canvas: var NCanvas, idx, w, h: int32, color: uint32) =
 when isMainModule:
   var # Create Window and GUI
     win = newGUIWindow(1024, 600, nil)
-    root = newTTileImage(1023, 1023)
+    root = newTTileImage(1024, 1024)
   # Reload Canvas Texture
   #root.clear(0xFF0000FF'u32)
   root.canvas.add()
