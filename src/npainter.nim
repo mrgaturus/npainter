@@ -16,11 +16,37 @@ import times
 # LOAD SSE4.1
 {.passC: "-msse4.1".}
 
+# Scanline Array
+type
+  NScanline = array[32, int8]
+# Line Clipping
+type
+  ClipSides = enum
+    csInside #0000
+    csLeft, csRight
+    csBottom, csTop
+  ClipFlags = set[ClipSides]
+const TEST_SIDE = float32(32)
+# AABB / Sorting
+type
+  NBBox = object
+    xmin, xmax: float32
+    ymin, ymax: float32
+  NPoint = object
+    x, y: float32
+  NLine = object
+    a, b: NPoint
+  NRect = array[4, NPoint]
+
 type
   # Voxel Transversal 32x32
   VoxelT = ref object of GUIWidget
-    x1, y1, x2, y2: float32
+    quad: NRect
+    box: NBBox
+    # Test Grid
     grid: array[1024, bool]
+    # Scanline Buffers
+    sl, sr: array[32, int8]
   # Test Image Tile
   TTCursor = object
     x, y: int32
@@ -56,105 +82,129 @@ method draw(self: VoxelT, ctx: ptr CTXRender) =
       inc(cursor); r.x += 16
     r.x = self.rect.x
     r.y += 16 # Next Row
-  # Draw Line
-  ctx.color(uint32.high)
-  let # Shortcut Convert
-    rx = float32(self.rect.x)
-    ry = float32(self.rect.y)
+  # Draw Scanline
+  let
+    ymin = int32 self.box.ymin
+    ymax = int32 self.box.ymax
+    px = self.rect.x
+    py = self.rect.y
+  # Left
+  ctx.color(0xFF2f7f2f.uint32)
+  for y in ymin..ymax:
+    r.y = py + (y.int32 shl 4)
+    r.x = px + (self.sl[y].int16 shl 4)
+    # Fill Rect
+    ctx.fill(r.rect)
+  # Right
+  ctx.color(0xFF7f7f2f.uint32)
+  for y in ymin..ymax:
+    r.y = py + (y.int32 shl 4)
+    r.x = px + (self.sr[y].int16 shl 4)
+    # Fill Rect
+    ctx.fill(r.rect)
+  # Draw Lines
+  let p = point(self.rect.x, self.rect.y)
+  ctx.color(high uint32)
   ctx.line(
-    point(rx + self.x1 * 16, ry + self.y1 * 16),
-    point(rx + self.x2 * 16, ry + self.y2 * 16)
+    point(p.x + self.quad[0].x * 16, p.y + self.quad[0].y * 16),
+    point(p.x + self.quad[1].x * 16, p.y + self.quad[1].y * 16)
+  )
+  ctx.line(
+    point(p.x + self.quad[1].x * 16, p.y + self.quad[1].y * 16),
+    point(p.x + self.quad[2].x * 16, p.y + self.quad[2].y * 16)
+  )
+  ctx.line(
+    point(p.x + self.quad[2].x * 16, p.y + self.quad[2].y * 16),
+    point(p.x + self.quad[3].x * 16, p.y + self.quad[3].y * 16)
+  )
+  ctx.line(
+    point(p.x + self.quad[3].x * 16, p.y + self.quad[3].y * 16),
+    point(p.x + self.quad[0].x * 16, p.y + self.quad[0].y * 16)
   )
 
 # ------------------------
-# A Fast Voxel Transversal
+# !!!!! A Fast Voxel Transversal
 # ------------------------
 
 from math import floor
 
-proc traversal(self: VoxelT) =
+proc voxel(a, b: NPoint, s: var NScanline) =
   let # Point Distances
-    dx = abs(self.x2 - self.x1)
-    dy = abs(self.y2 - self.y1)
+    dx = abs(b.x - a.x)
+    dy = abs(b.y - a.y)
     # Floor X Coordinates
-    x1 = floor(self.x1)
-    y1 = floor(self.y1)
+    x1 = floor(a.x)
+    y1 = floor(a.y)
     # Floor Y Coordinates
-    x2 = floor(self.x2)
-    y2 = floor(self.y2)
+    x2 = floor(b.x)
+    y2 = floor(b.y)
   var # Voxel Steps
     stx, sty: int8
     error: float32
     # Voxel Number
     n: int32 = 1
-    # Grid Index
-    i: int32
+    # Position
+    x, y: int8
   # X Incremental
   if dx == 0:
     stx = 0 # No X Step
     error = high(float32)
-  elif self.x2 > self.x1:
+  elif b.x > a.x:
     n += int32(x2 - x1); stx = 1
-    error = (x1 - self.x1 + 1) * dy
+    error = (x1 - a.x + 1) * dy
   else: # Negative X Direction
     n += int32(x1 - x2); stx = -1
-    error = (self.x1 - x1) * dy
+    error = (a.x - x1) * dy
   # Y Incremental
   if dy == 0:
     sty = 0 # No Y Step
     error -= high(float32)
-  elif self.y2 > self.y1:
+  elif b.y > a.y:
     n += int32(y2 - y1); sty = 1
-    error -= (y1 - self.y1 + 1) * dx
+    error -= (y1 - a.y + 1) * dx
   else: # Negative Y Direction
     n += int32(y1 - y2); sty = -1
-    error -= (self.y1 - y1) * dx
-  # Set Voxel Grid Index and Stride
-  i = int32(y1 * 32 + x1); sty *= 32
-  # Iterate Each Voxel
+    error -= (a.y - y1) * dx
+  # Set Start Position
+  x = int8(x1); y = int8(y1)
+  # Voxel Iterator
   while n > 0:
-    # Put Current Voxel
-    self.grid[i] = true
+    if x < 32 and y < 32:
+      s[y] = x # Replace
     # DDA Step
     if error > 0:
-      i += sty
+      # Next Y
+      y += sty
       error -= dx
     else:
-      i += stx
+      # Next X
+      x += stx
       error += dy
     dec(n) # Next Voxel
 
 # ------------------------------
-# Cohen Sutherland Line Clipping
+# !!!! Cohen Sutherland Line Clipping
 # ------------------------------
 
-type
-  ClipSides = enum
-    csInside #0000
-    csLeft, csRight
-    csBottom, csTop
-  ClipFlags = set[ClipSides]
-const TEST_SIDE = float32(32)
-
-proc flags(x, y: float32): ClipFlags =
+proc flags(p: NPoint): ClipFlags =
   # Test Laterals
-  if x < 0:
+  if p.x < 0:
     result.incl csLeft
-  elif x > TEST_SIDE:
+  elif p.x > TEST_SIDE:
     result.incl csRight
   # Test Superiors
-  if y < 0:
+  if p.y < 0:
     result.incl csBottom
-  elif y > TEST_SIDE:
+  elif p.y > TEST_SIDE:
     result.incl csTop
 
-proc clip(self: VoxelT): bool =
+proc clip(line: var NLine, a, b: NPoint): bool =
   var # Variables
     x, y, m: float32
     c1, c2, c: ClipFlags
-  # Clip Side Flags
-  c1 = flags(self.x1, self.y1)
-  c2 = flags(self.x2, self.y2)
+  # Clip Flags
+  c1 = flags(a)
+  c2 = flags(b)
   # Clip Loop
   while true:
     # Test Inside or Outside
@@ -164,8 +214,8 @@ proc clip(self: VoxelT): bool =
     elif c1 == {}: c = c2
     else: c = c1
     # Calculate Slope
-    x = self.x1; y = self.y1 # Cache
-    m = (self.y2 - y) / (self.x2 - x)
+    x = a.x; y = a.y # Cache
+    m = (b.y - y) / (b.x - x)
     # Clip Superiors
     if csTop in c: 
       x += (TEST_SIDE - y) / m
@@ -182,18 +232,88 @@ proc clip(self: VoxelT): bool =
       x = 0 # Left
     # Replace Point
     if c == c1:
-      self.x1 = x
-      self.y1 = y
-      c1 = flags(x, y)
+      line.a.x = x
+      line.a.y = y
+      # Check Clip State
+      c1 = flags(line.a)
     else: # C2
-      self.x2 = x
-      self.y2 = y
-      c2 = flags(x, y)
+      line.b.x = x
+      line.b.y = y
+      # Check Clip State
+      c2 = flags(line.b)
+
+# ----------------------
+# !!! AABB RECTANGLE SORTING
+# ----------------------
+
+proc aabb(rect: NRect): NBBox =
+  var # Iterator
+    p = rect[0]
+    i: int32 = 1
+  # Set XMax/XMin
+  result.xmin = p.x
+  result.xmax = p.x
+  # Set YMax/YMin
+  result.ymin = p.y
+  result.ymax = p.y
+  while i < 4:
+    p = rect[i]
+    # Check XMin/XMax
+    if p.x < result.xmin:
+      result.xmin = p.x
+    elif p.x > result.xmax:
+      result.xmax = p.x
+    # Check YMin/YMax
+    if p.y < result.ymin:
+      result.ymin = p.y
+    elif p.y > result.ymax:
+      result.ymax = p.y
+    # Next Point
+    inc(i)
+
+proc sort(rect: NRect, box: NBBox): NRect =
+  for p in rect:
+    if p.y == box.ymax:
+      result[0] = p
+    elif p.x == box.xmin:
+      result[1] = p
+    elif p.y == box.ymin:
+      result[2] = p
+    elif p.x == box.xmax:
+      result[3] = p
+
+# --------------
+# SCANLINE TEST PROCS
+# --------------
+
+proc scanline(self: VoxelT) =
+  var i = 0
+  for t in self.sl:
+    if t != 0:
+      echo "min y: ", i
+      echo "it's x: ", t
+      break
+    inc i
+  let # Maximun Vertical
+    h = min(int32 self.box.ymax, 32)
+  var # Minimun Vertical
+    y = max(int32 self.box.ymin, 0)
+    x, w: int32 # Horizontal
+  # Do Scanline
+  while y <= h:
+    x = self.sl[y]
+    w = self.sr[y]
+    while x <= w:
+      # Put Voxel on Test Grid
+      self.grid[y shl 5 + x] = true
+      inc(x) # Next Voxel
+    inc(y) # Next Row
 
 # ------------------
 # VOXEL TEST METHODS
 # ------------------
 
+#[
 method event(self: VoxelT, state: ptr GUIState) =
   state.mx -= self.rect.x
   state.my -= self.rect.y
@@ -204,13 +324,51 @@ method event(self: VoxelT, state: ptr GUIState) =
     self.x2 = float32(state.mx) / 16
     self.y2 = float32(state.my) / 16
     zeroMem(addr self.grid[0], 1024)
-    if self.clip():
-      self.traversal()
+]#
 
 proc newVoxelT(): VoxelT =
   new result # Alloc
   result.flags = wStandard
   result.minimum(256, 256)
+  # Left Side
+  result.quad[0].x = 10
+  result.quad[0].y = 15
+  # Top Side
+  result.quad[1].x = 20
+  result.quad[1].y = 10
+  # Right Side
+  result.quad[2].x = 30
+  result.quad[2].y = 20
+  # Bottom Side
+  result.quad[3].x = 15
+  result.quad[3].y = 30
+  # 1 - Calculate AABB
+  result.box = aabb(result.quad)
+  # 2 - Sort Points
+  result.quad = sort(result.quad, result.box)
+  echo result.quad
+  # 3 - Clip and Define Scanlines
+  var line: NLine
+  # Scanline Left Side
+  line.a = result.quad[0]; line.b = result.quad[1]
+  if line.clip(result.quad[0], result.quad[1]):
+    voxel(line.a, line.b, result.sl)
+
+  line.a = result.quad[2]; line.b = result.quad[1]
+  if line.clip(result.quad[2], result.quad[1]):
+    voxel(line.a, line.b, result.sl)
+  # Scanline Right Side
+  line.a = result.quad[2]; line.b = result.quad[3]
+  if line.clip(result.quad[2], result.quad[3]):
+    voxel(line.a, line.b, result.sr)
+
+  line.a = result.quad[0]; line.b = result.quad[3]
+  if line.clip(result.quad[0], result.quad[3]):
+    voxel(line.a, line.b, result.sr)
+  echo result.sl
+  echo result.sr
+  # Fill Scanline
+  result.scanline()
 
 # -----------------
 # TEST TILED CANVAS
