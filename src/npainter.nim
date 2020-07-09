@@ -239,9 +239,12 @@ proc scanline(self: VoxelT) =
     mleft, mright = true
     # Iterator Variables
     x, w, y, h: int16
-  # Define Y and Height
+  # Define Starting Y
   y = floor(quad[2].y).int16
+  # Define Ending Y
   h = floor(quad[0].y).int16
+  if h > 32: # Clamp
+    h = 32 - 1
   # Define Traversal Lines
   line(left, quad[2], quad[1])
   line(right, quad[2], quad[3])
@@ -305,22 +308,19 @@ proc newVoxelT(): VoxelT =
   result.flags = wStandard
   result.minimum(256, 256)
   # Left Side
-  result.quad[0].x = -20
-  result.quad[0].y = 10
+  result.quad[0].x = 10
+  result.quad[0].y = 20
   # Top Side
   result.quad[1].x = 20
-  result.quad[1].y = 10
+  result.quad[1].y = 30
   # Right Side
-  result.quad[2].x = 30
-  result.quad[2].y = 20
+  result.quad[2].x = 40
+  result.quad[2].y = 10
   # Bottom Side
-  result.quad[3].x = 15
-  result.quad[3].y = 30
+  result.quad[3].x = 50
+  result.quad[3].y = 20
   # 1 - Calculate AABB
   sort(result.quad, result.quad.aabb)
-  # ????????????
-  result.quad[2].x = -15
-  result.quad[2].y = 8
   # 3 - Do Scanline
   result.scanline()
 
