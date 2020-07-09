@@ -243,7 +243,7 @@ proc scanline(self: VoxelT) =
   y = floor(quad[2].y).int16
   # Define Ending Y
   h = floor(quad[0].y).int16
-  if h > 32: # Clamp
+  if h >= 32: # Clamp
     h = 32 - 1
   # Define Traversal Lines
   line(left, quad[2], quad[1])
@@ -312,7 +312,7 @@ proc newVoxelT(): VoxelT =
   result.quad[0].y = 20
   # Top Side
   result.quad[1].x = 20
-  result.quad[1].y = 30
+  result.quad[1].y = 40
   # Right Side
   result.quad[2].x = 40
   result.quad[2].y = 10
