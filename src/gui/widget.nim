@@ -1,8 +1,8 @@
 from event import 
-  GUIState, GUISignal, 
-  GUITarget, pushSignal
+  GUIState, GUISignal, GUITarget,
+  WidgetSignal, pushSignal
 from render import 
-  CTXRender, GUIRect
+  CTXRender, GUIRect, push, pop
 
 const # For now is better use traditional flags
   # Rendering on Screen
@@ -25,44 +25,46 @@ const # For now is better use traditional flags
   wHidden* = uint16(1 shl 13)
   # ---------------------
   # Default Flags - Widget Constructor
-  wStandard* = 0x30'u16 # Visible-Enabled
-  wPopup* = 0x60'u16 # Enabled-Stacked
+  wStandard* = wVisible or wEnabled # Visible-Enabled
+  wPopup* = wEnabled or wStacked # Enabled-Stacked
   # Multi-Checking Flags
-  wFocusCheck* = 0xb0'u16
-  wHoverGrab* = 0x300'u16
+  wFocusHold = wFocus or wHold
+  wComplex = wFocus or wHold or wDirty
+  # Public Multi-Checking Flags
+  wHoverGrab* = wHover or wGrab
+  wFocusCheck* = wFocus or wVisible or wEnabled
 
 type
   GUIFlags* = uint16
   GUIHandle* = enum
     inFocus, inHover, inHold, inFrame
     outFocus, outHover, outHold, outFrame
-  GUIParent* = distinct pointer
   GUIWidget* {.inheritable.} = ref object
-    # Widget Neighbords
-    parent*: GUIParent
+    # Widget Parent
+    parent*: GUIWidget
+    # Widget Node Tree
     next*, prev*: GUIWidget
+    first*, last*: GUIWidget
     # Widget Flags
     flags*: GUIFlags
     # Widget Rect&Hint
     rect*, hint*: GUIRect
-  FrameMSG = enum
-    msgOpen, msgClose
 
-# ----------------
-# WIDGET ITERATORS
-# ----------------
+# ----------------------------
+# WIDGET NEIGHTBORDS ITERATORS
+# ----------------------------
 
 # First -> Last
 iterator forward*(first: GUIWidget): GUIWidget =
   var frame = first
-  while frame != nil:
+  while not isNil(frame):
     yield frame
     frame = frame.next
 
 # Last -> First
 iterator reverse*(last: GUIWidget): GUIWidget =
   var frame = last
-  while frame != nil:
+  while not isNil(frame):
     yield frame
     frame = frame.prev
 
@@ -70,20 +72,47 @@ iterator reverse*(last: GUIWidget): GUIWidget =
 # WIDGET FLAGS & TARGET PROCS
 # ---------------------------
 
-proc set*(self: GUIWidget, mask: GUIFlags) {.inline.} =
-  self.flags = self.flags or mask
+proc target*(self: GUIWidget): GUITarget {.inline.} =
+  return cast[GUITarget](self)
+
+proc set*(self: GUIWidget, mask: GUIFlags) =
+  if (mask and wComplex) > 0:
+    let # Compare Flags
+      delta = self.flags xor mask
+      target = self.target
+    if (delta and wFocusHold) == wFocus:
+      pushSignal(target, msgFocus)
+    if (delta and wHold) == wHold:
+      pushSignal(target, msgHold)
+    if (delta and wDirty) == wDirty:
+      pushSignal(target, msgDirty)
+  # Replace Current Flags
+  self.flags = self.flags or 
+    (mask and not wFocusHold)
 
 proc clear*(self: GUIWidget, mask: GUIFlags) {.inline.} =
   self.flags = self.flags and not mask
 
 proc any*(self: GUIWidget, mask: GUIFlags): bool {.inline.} =
-  return (self.flags and mask) != 0
+  return (self.flags and mask) > 0
 
 proc test*(self: GUIWidget, mask: GUIFlags): bool {.inline.} =
   return (self.flags and mask) == mask
 
-proc target*(self: GUIWidget): GUITarget {.inline.} =
-  return cast[GUITarget](self)
+# ----------------------------
+# WIDGET ADD CHILD NODES PROCS
+# ----------------------------
+
+proc add*(parent, widget: GUIWidget) =
+  widget.parent = parent
+  # Add Widget to List
+  if parent.first.isNil:
+    parent.first = widget
+  else: # Add to Last
+    widget.prev = parent.last
+    parent.last.next = widget
+  # Set Widget To Last
+  parent.last = widget
 
 # ------------------------------------
 # WIDGET RECT PROCS layout-mouse event
@@ -115,52 +144,138 @@ proc pointOnArea*(widget: GUIWidget, x, y: int32): bool =
     x >= widget.rect.x and x <= widget.rect.x + widget.rect.w and
     y >= widget.rect.y and y <= widget.rect.y + widget.rect.h
 
-# ------------------------
-# WIDGET FRAMED open/close
-# ------------------------
+# ------------------------------
+# WIDGET FINDING BY CURSOR PROCS
+# ------------------------------
+
+proc find*(widget: GUIWidget, x, y: int32): GUIWidget =
+  result = widget.last
+  if isNil(result):
+    return widget
+  # Find Children
+  while true:
+    if pointOnArea(result, x, y):
+      if isNil(result.last):
+        return result
+      else: # Find Inside
+        result = result.last
+    # Check Prev Widget
+    if isNil(result.prev):
+      return result.parent
+    else: # Prev Widget
+      result = result.prev
+
+proc find*(widget, root: GUIWidget, x, y: int32): GUIWidget =
+  # Initial Widget
+  result = widget
+  # Initial Cursor
+  var cursor = widget
+  # Point Inside All Parents?
+  while cursor != root:
+    if not pointOnArea(cursor, x, y):
+      result = cursor.parent
+    cursor = cursor.parent
+  # Find Inside of Outside
+  if not isNil(result.last):
+    result = find(result, x, y)
+
+# -----------------------
+# WIDGET STEP FOCUS PROCS
+# -----------------------
+
+proc step*(widget: GUIWidget, back: bool): GUIWidget =
+  result = widget
+  # Step Neightbords until is focusable of is the same again
+  while true:
+    result = # Step Widget
+      if back: result.prev
+      else: result.next
+    # Reroll Widget
+    if isNil(result):
+      result = # Restart Widget
+        if back: widget.parent.last
+        else: widget.parent.first
+    # Check if is Focusable or is the same again
+    if result.test(wEnabled or wVisible) or 
+      result == widget: break
+
+# ---------------------------------------
+# WIDGET FRAMED open/close or move/resize
+# ---------------------------------------
 
 proc open*(widget: GUIWidget) =
-  # Send Widget to Window for open
-  pushSignal(
-    cast[GUITarget](nil), msgOpen,
-    unsafeAddr widget,
-    sizeof(GUIWidget)
-  )
+  if (widget.flags and (wFramed or wVisible)) == 0:
+    pushSignal(cast[GUITarget](widget), msgOpen)
 
 proc close*(widget: GUIWidget) =
-  # Send Widget to window for close
-  pushSignal(
-    cast[GUITarget](nil), msgClose,
-    unsafeAddr widget,
-    sizeof(GUIWidget)
-  )
+  if (widget.flags and wFramed) != 0:
+    pushSignal(cast[GUITarget](widget), msgClose)
 
 proc move*(widget: GUIWidget, x,y: int32) =
-  if (widget.flags and not wVisible or wFramed) != 0:
+  if (widget.flags and wFramed) != 0:
     widget.rect.x = x; widget.rect.y = y
-    # Mark as Dirty
-    widget.set(wDirty)
+    # Mark Widget as Layout Dirty
+    pushSignal(cast[GUITarget](widget), msgDirty)
 
 proc resize*(widget: GUIWidget, w,h: int32) =
-  if (widget.flags and not wVisible or wFramed) != 0:
+  if (widget.flags and wFramed) != 0:
     widget.rect.w = max(w, widget.hint.w)
     widget.rect.h = max(h, widget.hint.h)
-    # Mark as Dirty
-    widget.set(wDirty)
+    # Mark as Widget as Layout Dirty
+    pushSignal(cast[GUITarget](widget), msgDirty)
 
 # -----------------------------------------
 # WIDGET ABSTRACT METHODS - Single-Threaded
 # -----------------------------------------
 
-# X -- In/Out Handle Method
 method handle*(widget: GUIWidget, kind: GUIHandle) {.base.} = discard
-# 1 -- Event Methods
 method event*(widget: GUIWidget, state: ptr GUIState) {.base.} = discard
-method step*(widget: GUIWidget, back: bool) {.base.} =
-  widget.flags = widget.flags xor wFocus
-# 2 -- Tick Methods
 method notify*(widget: GUIWidget, sig: GUISignal) {.base.} = discard
 method update*(widget: GUIWidget) {.base.} = discard
 method layout*(widget: GUIWidget) {.base.} = discard
-# 3 -- Draw Method
 method draw*(widget: GUIWidget, ctx: ptr CTXRender) {.base.} = discard
+
+# ------------------------------
+# WIDGET TREE DIRTY/RENDER PROCS
+# ------------------------------
+
+proc dirty*(widget: GUIWidget) =
+  var cursor = widget
+  # Relayout Widget Tree
+  while true:
+    if cursor != widget: # Calculate Absolute
+      calcAbsolute(cursor, cursor.parent.rect)
+    if cursor.test(wVisible):
+      cursor.layout()
+    cursor = # Select Next Widget
+      if not isNil(cursor.first):
+        cursor.first
+      elif isNil(cursor.next):
+        if cursor.parent == widget: 
+          break # Stop Loop
+        cursor.parent.next
+      else: cursor.next
+  widget.flags = # Remove Widget Dirty
+    widget.flags and not wDirty
+
+proc render*(widget: GUIWidget, ctx: ptr CTXRender) =
+  var cursor = widget
+  # Relayout Widget Tree
+  while true:
+    if cursor.test(wVisible):
+      cursor.draw(ctx)
+    cursor = # Select Next Widget
+      if not isNil(cursor.first):
+        # Push Clipping
+        ctx.push(cursor.rect)
+        # Push Tree Level
+        cursor.first
+      elif isNil(cursor.next):
+        # Pop Clipping
+        ctx.pop()
+        # Check Tree Ending
+        if cursor.parent == widget: 
+          break # Stop Loop
+        # Pop Tree Level
+        cursor.parent.next
+      else: cursor.next
