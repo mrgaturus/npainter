@@ -4,7 +4,8 @@ import ../libs/egl
 import x11/xlib, x11/x
 import widget, event, render
 # Import Somes
-from timer import sleep
+from timer import 
+  walkTimers, sleep
 from config import metrics
 from ../libs/gl import gladLoadGL
 
@@ -50,9 +51,7 @@ type
     # Cache Widgets
     hold: GUIWidget
     focus: GUIWidget
-    # Hover Widgets
     hover: GUIWidget
-    inside: GUIWidget
 
 const LC_ALL = 6 # Hardcopied from gcc header
 proc setlocale(category: cint, locale: cstring): cstring
@@ -223,7 +222,7 @@ proc addFrame(win: var GUIWindow, frame: GUIWidget) =
   # Handle FrameIn
   handle(frame, inFrame)
   # Mark Visible and Dirty
-  set(frame, wVisible)
+  set(frame, wFrameOpen)
 
 proc delFrame(win: var GUIWindow, frame: GUIWidget) =
   # Unfocus if was focused
@@ -248,7 +247,7 @@ proc delFrame(win: var GUIWindow, frame: GUIWidget) =
   # Handle FrameOut
   handle(frame, outFrame)
   # Unmark Visible
-  clear(frame, wVisible)
+  clear(frame, wFrameOpen)
   # Check if above is removed
   if frame == win.above:
     win.above = frame.next
@@ -289,8 +288,9 @@ proc grab(win: var GUIWindow, widget: GUIWidget, evtype: int32) =
     # Grab Current Widget
     widget.set(wGrab)
     # Elevate Frame if is not Stacked
-    if not widget.test(wStacked):
-      elevateFrame(win, win.hover)
+    let frame = widget.frame
+    if not test(frame, wStacked):
+      elevateFrame(win, frame)
   elif evtype == ButtonRelease:
     # UnGrab X11 Mouse Input
     discard XUngrabPointer(win.display, CurrentTime)
@@ -326,7 +326,7 @@ proc step(win: var GUIWindow, back: bool) =
       win.focus = widget
 
 proc hold(win: var GUIWindow, widget: GUIWidget) =
-  if widget != win.hold:
+  if widget != win.hold and isNil(win.above):
     # Handle Hold Out
     if not isNil(win.hold):
       handle(win.hold, outHold)
@@ -360,8 +360,8 @@ proc check(win: var GUIWindow, widget: GUIWidget) =
 proc find(win: var GUIWindow, state: ptr GUIState): GUIWidget =
   case state.eventType
   of evMouseMove, evMouseClick, evMouseRelease, evMouseAxis:
-    if not isNil(win.inside) and test(win.inside, wGrab):
-      result = win.inside # Grabbed Inside
+    if not isNil(win.hover) and test(win.hover, wGrab):
+      result = win.hover # Grabbed Inside
     elif isNil(win.above): # Not Stacked
       if isNil(win.hold): # Find Frames
         for widget in reverse(win.last):
@@ -377,48 +377,40 @@ proc find(win: var GUIWindow, state: ptr GUIState): GUIWidget =
       if isNil(result): result = win.hold
     # Check if is Nil
     if isNil(result):
-      if not isNil(win.inside):
-        handle(win.inside, outHover)
-        clear(win.inside, wHover)
-        # Remove Inside
-        win.inside = nil
-      # Remove Hover
-      win.hover = nil
-    # Check if Found is Grabbed or Holded
-    elif result == win.inside and 
-    result.test(wGrab) or result == win.hold:
+      if not isNil(win.hover):
+        handle(win.hover, outHover)
+        clear(win.hover, wHover)
+        # Remove Hover
+        win.hover = nil
+    # Check if is grabbed of holded
+    elif result.any(wGrab or wHold):
       if pointOnArea(result, state.mx, state.my):
         result.set(wHover)
       else: result.clear(wHover)
-    # Check and Change Hover
-    elif result == win.hover:
-      result = find(win.inside, 
-        result, state.mx, state.my)
-      if result != win.inside:
-        # Unhover Prev Inside
-        if not isNil(win.inside):
-          handle(win.inside, outHover)
-          clear(win.inside, wHover)
-        # Hover Current Widget
+    # Check if is at the same frame
+    elif not isNil(win.hover) and result == win.hover.frame:
+      result = # Find Interior Widget
+        find(win.hover, state.mx, state.my)
+      if result != win.hover:
+        # Handle Hover Out
+        handle(win.hover, outHover)
+        clear(win.hover, wHover)
+        # Handle Hover In
         result.handle(inHover)
         result.set(wHover)
-        # Replace Inside
-        win.inside = result
-    else: # Hover Other Frame
-      # Unhover Prev Inside
-      if not isNil(win.inside):
-        handle(win.inside, outHover)
-        clear(win.inside, wHover)
-      # Set New Hovered
-      win.hover = result
-      # Hover Inside Widget
-      result = # Find Inside Widget
+        # Replace Hover
+        win.hover = result
+    else: # Not at the same frame
+      if not isNil(win.hover):
+        handle(win.hover, outHover)
+        clear(win.hover, wHover)
+      result = # Find Interior Widget
         find(result, state.mx, state.my)
-      # Handle Hover Action
+      # Handle Hover In
       result.handle(inHover)
       result.set(wHover)
-      # Change Current Hover
-      win.inside = result
+      # Replace Hover
+      win.hover = result
   of evKeyDown, evKeyUp:
     if not isNil(win.focus):
       return win.focus # Use Normal focus
@@ -506,6 +498,12 @@ proc handleSignals*(win: var GUIWindow): bool =
       check(win, widget)
   # Still Alive
   return false
+
+proc handleTimers*(win: var GUIWindow) =
+  for widget in walkTimers():
+    widget.update()
+    # Check Focus and Hold
+    check(win, widget)
 
 proc render*(win: var GUIWindow) =
   begin(win.ctx) # -- Begin GUI Rendering

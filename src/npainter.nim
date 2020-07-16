@@ -25,7 +25,12 @@ type
   GUIBlank = ref object of GUIWidget
     frame: GUIWidget
     texture: GLuint
-    t: GUITimer
+  GUIFondo = ref object of GUIWidget
+    color: uint32
+
+method draw(fondo: GUIFondo, ctx: ptr CTXRender) =
+  ctx.color fondo.color
+  ctx.fill rect(fondo.rect)
 
 var coso: UTF8Input
 proc helloworld*(g, d: pointer) =
@@ -57,35 +62,37 @@ proc triangle_naive(buffer: pointer, w, h: int32, v: ptr CPUTriangle) {.importc:
 
 method draw*(widget: GUIBlank, ctx: ptr CTXRender) =
   ctx.color 0xFFFFFFFF'u32
+  ctx.fill rect(widget.rect)
   ctx.texture(rect widget.rect, widget.texture)
 
 method event*(widget: GUIBlank, state: ptr GUIState) =
   #echo "cursor mx: ", state.mx, " cursor my: ", state.my
   if state.eventType == evMouseClick:
-    if not isNil(widget.frame) and test(widget.frame, wVisible):
-      echo "true"
+    if not isNil(widget.frame) and test(widget.frame, wFramed):
       widget.clear(wHold)
+      close(widget.frame)
     else:
-      widget.t = newTimer(250)
-      widget.set(wFocus or wUpdate)
+      pushTimer(widget.target, 1000)
+      widget.set(wFocus)
   elif state.eventType == evMouseRelease:
-    if not checkTimer(widget.t):
-      widget.clear(wUpdate)
+    # Remove Timer
+    stopTimer(widget.target)
   if widget.test(wGrab) and not isNil(widget.frame):
     move(widget.frame, state.mx + 5, state.my + 5)
 
 method update*(widget: GUIBlank) =
-  if checkTimer(widget.t):
-    if widget.frame != nil:
-      open(widget.frame)
-      widget.set(wHold)
-    widget.clear(wUpdate)
+  echo "reached"
+  if widget.frame != nil:
+    widget.set(wHold)
+    open(widget.frame)
+  # Remove Timer
+  stopTimer(widget.target)
 
 method handle*(widget: GUIBlank, kind: GUIHandle) =
   #echo "handle done: ", kind.repr
   #echo "by: ", cast[uint](widget)
+  echo "i'm here: ", kind
   if kind == outHold: close(widget.frame)
-
 
 proc blend*(dst, src: uint32): uint32{.importc: "blend_normal".}
 proc fill*(buffer: var seq[uint32], x, y, w, h: int32, color: uint32) =
@@ -131,14 +138,14 @@ when isMainModule:
   if ft2_init(addr ft) != 0:
     echo "ERROR: failed initialize FT2"
   # Create a new Window
-  let root = new GUIWidget
+  let root = new GUIFondo
   block: # Create Widgets
     # Create two blanks
     var
       sub, blank: GUIBlank
-      con: GUIWidget
+      con: GUIFondo
     # Initialize Root
-    #root.color = 0xFF000000'u32
+    root.color = 0xFF000000'u32
     root.flags = wStandard or wOpaque
     # --- Blank #1 ---
     blank = new GUIBlank
@@ -152,8 +159,8 @@ when isMainModule:
     blank.geometry(20,20,100,100)
     blank.texture = cpu_raster
     block: # Menu Blank #2
-      con = new GUIWidget
-      #con.color = 0xAA637a90'u32
+      con = new GUIFondo
+      con.color = 0xAA637a90'u32
       con.flags = wPopup
       con.rect.w = 200
       con.rect.h = 100
@@ -167,10 +174,10 @@ when isMainModule:
       sub.flags = wStandard
       sub.geometry(40,10,20,20)
       block: # Sub Menu #1
-        let subcon = new GUIWidget
-        #subcon.color = 0xFFbdb88f'u32
+        let subcon = new GUIFondo
+        subcon.color = 0xFFbdb88f'u32
         subcon.flags = wEnabled
-        subcon.rect.w = 200
+        subcon.rect.w = 300
         subcon.rect.h = 80
         # Sub-sub blank 1#
         var subsub = new GUIBlank
@@ -264,6 +271,7 @@ when isMainModule:
     while true:
       win.handleEvents() # Input
       if win.handleSignals(): break
+      win.handleTimers() # Timers
       # Render Main Program
       glClearColor(0.5, 0.5, 0.5, 1.0)
       glClear(GL_COLOR_BUFFER_BIT or GL_DEPTH_BUFFER_BIT)

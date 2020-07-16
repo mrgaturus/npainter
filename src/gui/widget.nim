@@ -32,6 +32,7 @@ const # For now is better use traditional flags
   wComplex = wFocus or wHold or wDirty
   # Public Multi-Checking Flags
   wHoverGrab* = wHover or wGrab
+  wFrameOpen* = wFramed or wVisible or wDirty
   wFocusCheck* = wFocus or wVisible or wEnabled
 
 type
@@ -144,16 +145,19 @@ proc pointOnArea*(widget: GUIWidget, x, y: int32): bool =
     x >= widget.rect.x and x <= widget.rect.x + widget.rect.w and
     y >= widget.rect.y and y <= widget.rect.y + widget.rect.h
 
-# ------------------------------
-# WIDGET FINDING BY CURSOR PROCS
-# ------------------------------
+# -------------------------
+# WIDGET TREE FINDING PROCS
+# -------------------------
 
-proc find*(widget: GUIWidget, x, y: int32): GUIWidget =
+proc frame*(widget: GUIWidget): GUIWidget =
+  result = widget
+  # Walk to Outermost Parent
+  while not isNil(result.parent):
+    result = widget.parent
+
+proc inside(widget: GUIWidget, x, y: int32): GUIWidget =
   result = widget.last
-  if isNil(result):
-    return widget
-  # Find Children
-  while true:
+  while true: # Find Children
     if pointOnArea(result, x, y):
       if isNil(result.last):
         return result
@@ -165,19 +169,19 @@ proc find*(widget: GUIWidget, x, y: int32): GUIWidget =
     else: # Prev Widget
       result = result.prev
 
-proc find*(widget, root: GUIWidget, x, y: int32): GUIWidget =
+proc find*(widget: GUIWidget, x, y: int32): GUIWidget =
   # Initial Widget
   result = widget
   # Initial Cursor
   var cursor = widget
   # Point Inside All Parents?
-  while cursor != root:
+  while cursor.parent != nil:
     if not pointOnArea(cursor, x, y):
       result = cursor.parent
     cursor = cursor.parent
   # Find Inside of Outside
   if not isNil(result.last):
-    result = find(result, x, y)
+    result = inside(result, x, y)
 
 # -----------------------
 # WIDGET STEP FOCUS PROCS
@@ -204,7 +208,7 @@ proc step*(widget: GUIWidget, back: bool): GUIWidget =
 # ---------------------------------------
 
 proc open*(widget: GUIWidget) =
-  if (widget.flags and (wFramed or wVisible)) == 0:
+  if (widget.flags and wFramed) == 0:
     pushSignal(cast[GUITarget](widget), msgOpen)
 
 proc close*(widget: GUIWidget) =
