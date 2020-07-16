@@ -49,7 +49,6 @@ type
     above: GUIWidget
     last: GUIWidget
     # Cache Widgets
-    hold: GUIWidget
     focus: GUIWidget
     hover: GUIWidget
 
@@ -237,13 +236,6 @@ proc delFrame(win: var GUIWindow, frame: GUIWidget) =
     clear(frame, wHoverGrab)
     # Remove Hover
     win.hover = nil
-  # Unhold if is holded
-  if frame.test(wHold):
-    handle(frame, outHold)
-    clear(frame, wHold)
-    # Remove Hold
-    if frame == win.hold:
-      win.hold = nil
   # Handle FrameOut
   handle(frame, outFrame)
   # Unmark Visible
@@ -325,23 +317,6 @@ proc step(win: var GUIWindow, back: bool) =
       # Change Focus
       win.focus = widget
 
-proc hold(win: var GUIWindow, widget: GUIWidget) =
-  if widget != win.hold and isNil(win.above):
-    # Handle Hold Out
-    if not isNil(win.hold):
-      handle(win.hold, outHold)
-      clear(win.hold, wHold)
-    # Handle Focus Out
-    if not isNil(win.focus):
-      handle(win.focus, outFocus)
-      clear(win.focus, wFocus)
-    # Handle Hold In
-    handle(widget, inHold)
-    widget.flags = # Put Flag
-      widget.flags or wHold
-    # Replace Hold
-    win.hold = widget
-
 proc check(win: var GUIWindow, widget: GUIWidget) =
   if widget == win.focus and 
     not widget.test(wFocusCheck):
@@ -350,12 +325,6 @@ proc check(win: var GUIWindow, widget: GUIWidget) =
     widget.clear(wFocus)
     # Remove Widget Focus
     win.focus = nil
-  if widget == win.hold and 
-    not widget.test(wHold):
-    # Handle Widget UnHold
-    widget.handle(outHold)
-    # Remove Widget Hold
-    win.hold = nil
 
 proc find(win: var GUIWindow, state: ptr GUIState): GUIWidget =
   case state.eventType
@@ -363,18 +332,14 @@ proc find(win: var GUIWindow, state: ptr GUIState): GUIWidget =
     if not isNil(win.hover) and test(win.hover, wGrab):
       result = win.hover # Grabbed Inside
     elif isNil(win.above): # Not Stacked
-      if isNil(win.hold): # Find Frames
-        for widget in reverse(win.last):
-          if pointOnArea(widget, state.mx, state.my):
-            result = widget; break # Frame Found
-      else: result = win.hold
+      for widget in reverse(win.last):
+        if pointOnArea(widget, state.mx, state.my):
+          result = widget; break # Frame Found
     else: # Stacked
       for widget in reverse(win.last):
         if widget.next == win.above: break
-        if widget.test(wHold) or pointOnArea(widget, state.mx, state.my):
+        if pointOnArea(widget, state.mx, state.my):
           result = widget; break # Frame Found
-      # Use Holded Widget if not found
-      if isNil(result): result = win.hold
     # Check if is Nil
     if isNil(result):
       if not isNil(win.hover):
@@ -382,8 +347,8 @@ proc find(win: var GUIWindow, state: ptr GUIState): GUIWidget =
         clear(win.hover, wHover)
         # Remove Hover
         win.hover = nil
-    # Check if is grabbed of holded
-    elif result.any(wGrab or wHold):
+    # Check if is Grabbed
+    elif result.test(wGrab):
       if pointOnArea(result, state.mx, state.my):
         result.set(wHover)
       else: result.clear(wHover)
@@ -412,15 +377,10 @@ proc find(win: var GUIWindow, state: ptr GUIState): GUIWidget =
       # Replace Hover
       win.hover = result
   of evKeyDown, evKeyUp:
-    if not isNil(win.focus):
-      return win.focus # Use Normal focus
-    elif not isNil(win.above): # Stacked
-      for widget in reverse(win.above):
-        if widget.next == win.above: break
-        if widget.test(wHold):
-          result = widget
-          break # Hold Found
-    if isNil(result): result = win.hold
+    result = # Allways Focus
+      if isNil(win.focus): 
+        win.root # Fallback
+      else: win.focus
 
 # --------------------------
 # GUI WINDOW MAIN LOOP PROCS
@@ -491,10 +451,10 @@ proc handleSignals*(win: var GUIWindow): bool =
               test(widget, wFramed):
             delFrame(win, widget)
       of msgFocus: focus(win, widget)
-      of msgHold: hold(win, widget)
       of msgDirty: dirty(widget)
-      of msgTrigger: notify(widget, signal)
-      # Check Focus and Hold
+      of msgTrigger: # Handle Signal Data
+        notify(widget, addr signal.data)
+      # Check Focus and Visible
       check(win, widget)
   # Still Alive
   return false
@@ -502,13 +462,16 @@ proc handleSignals*(win: var GUIWindow): bool =
 proc handleTimers*(win: var GUIWindow) =
   for widget in walkTimers():
     widget.update()
-    # Check Focus and Hold
+    # Check Focus and Visible
     check(win, widget)
 
 proc render*(win: var GUIWindow) =
   begin(win.ctx) # -- Begin GUI Rendering
   for widget in forward(win.root):
-    render(widget, addr win.ctx)
+    widget.draw(addr win.ctx)
+    # Render Widget Childrens
+    if not isNil(widget.first):
+      render(widget, addr win.ctx)
     # Draw Commands
     render(win.ctx)
   finish() # -- End GUI Rendering

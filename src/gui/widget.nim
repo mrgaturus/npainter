@@ -19,7 +19,6 @@ const # For now is better use traditional flags
   wFocus* = uint16(1 shl 7)
   wHover* = uint16(1 shl 8) # A
   wGrab* = uint16(1 shl 9) # A
-  wHold* = uint16(1 shl 10)
   # Rendering - Opaque and Forced Hidden
   wOpaque* = uint16(1 shl 12)
   wHidden* = uint16(1 shl 13)
@@ -27,9 +26,6 @@ const # For now is better use traditional flags
   # Default Flags - Widget Constructor
   wStandard* = wVisible or wEnabled # Visible-Enabled
   wPopup* = wEnabled or wStacked # Enabled-Stacked
-  # Multi-Checking Flags
-  wFocusHold = wFocus or wHold
-  wComplex = wFocus or wHold or wDirty
   # Public Multi-Checking Flags
   wHoverGrab* = wHover or wGrab
   wFrameOpen* = wFramed or wVisible or wDirty
@@ -77,19 +73,16 @@ proc target*(self: GUIWidget): GUITarget {.inline.} =
   return cast[GUITarget](self)
 
 proc set*(self: GUIWidget, mask: GUIFlags) =
-  if (mask and wComplex) > 0:
+  if (mask and (wFocus or wDirty)) > 0:
     let # Compare Flags
       delta = self.flags xor mask
       target = self.target
-    if (delta and wFocusHold) == wFocus:
+    if (delta and wFocus) == wFocus:
       pushSignal(target, msgFocus)
-    if (delta and wHold) == wHold:
-      pushSignal(target, msgHold)
     if (delta and wDirty) == wDirty:
       pushSignal(target, msgDirty)
   # Replace Current Flags
-  self.flags = self.flags or 
-    (mask and not wFocusHold)
+  self.flags = self.flags or mask
 
 proc clear*(self: GUIWidget, mask: GUIFlags) {.inline.} =
   self.flags = self.flags and not mask
@@ -126,6 +119,7 @@ proc geometry*(widget: GUIWidget, x,y,w,h: int32) =
 proc minimum*(widget: GUIWidget, w,h: int32) =
   widget.hint.w = w; widget.hint.h = h
 
+# -- Used by Layout for Surface Visibility
 proc calcAbsolute*(widget: GUIWidget, pivot: var GUIRect) =
   # Calcule Absolute Position
   widget.rect.x = pivot.x + widget.hint.x
@@ -145,9 +139,45 @@ proc pointOnArea*(widget: GUIWidget, x, y: int32): bool =
     x >= widget.rect.x and x <= widget.rect.x + widget.rect.w and
     y >= widget.rect.y and y <= widget.rect.y + widget.rect.h
 
-# -------------------------
-# WIDGET TREE FINDING PROCS
-# -------------------------
+# ---------------------------------------
+# WIDGET FRAMED open/close or move/resize
+# ---------------------------------------
+
+proc open*(widget: GUIWidget) =
+  if (widget.flags and wFramed) == 0:
+    pushSignal(cast[GUITarget](widget), msgOpen)
+
+proc close*(widget: GUIWidget) =
+  if (widget.flags and wFramed) != 0:
+    pushSignal(cast[GUITarget](widget), msgClose)
+
+proc move*(widget: GUIWidget, x,y: int32) =
+  if (widget.flags and wFramed) != 0:
+    widget.rect.x = x; widget.rect.y = y
+    # Mark Widget as Layout Dirty
+    pushSignal(cast[GUITarget](widget), msgDirty)
+
+proc resize*(widget: GUIWidget, w,h: int32) =
+  if (widget.flags and wFramed) != 0:
+    widget.rect.w = max(w, widget.hint.w)
+    widget.rect.h = max(h, widget.hint.h)
+    # Mark as Widget as Layout Dirty
+    pushSignal(cast[GUITarget](widget), msgDirty)
+
+# -----------------------------------------
+# WIDGET ABSTRACT METHODS - Single-Threaded
+# -----------------------------------------
+
+method handle*(widget: GUIWidget, kind: GUIHandle) {.base.} = discard
+method event*(widget: GUIWidget, state: ptr GUIState) {.base.} = discard
+method notify*(widget: GUIWidget, data: pointer) {.base.} = discard
+method update*(widget: GUIWidget) {.base.} = discard
+method layout*(widget: GUIWidget) {.base.} = discard
+method draw*(widget: GUIWidget, ctx: ptr CTXRender) {.base.} = discard
+
+# ----------------------------
+# WIDGET FINDING - EVENT QUEUE
+# ----------------------------
 
 proc frame*(widget: GUIWidget): GUIWidget =
   result = widget
@@ -183,13 +213,13 @@ proc find*(widget: GUIWidget, x, y: int32): GUIWidget =
   if not isNil(result.last):
     result = inside(result, x, y)
 
-# -----------------------
-# WIDGET STEP FOCUS PROCS
-# -----------------------
+# -------------------------------
+# WIDGET STEP FOCUS - EVENT QUEUE
+# -------------------------------
 
 proc step*(widget: GUIWidget, back: bool): GUIWidget =
   result = widget
-  # Step Neightbords until is focusable of is the same again
+  # Step Neightbords
   while true:
     result = # Step Widget
       if back: result.prev
@@ -203,83 +233,61 @@ proc step*(widget: GUIWidget, back: bool): GUIWidget =
     if result.test(wEnabled or wVisible) or 
       result == widget: break
 
-# ---------------------------------------
-# WIDGET FRAMED open/close or move/resize
-# ---------------------------------------
-
-proc open*(widget: GUIWidget) =
-  if (widget.flags and wFramed) == 0:
-    pushSignal(cast[GUITarget](widget), msgOpen)
-
-proc close*(widget: GUIWidget) =
-  if (widget.flags and wFramed) != 0:
-    pushSignal(cast[GUITarget](widget), msgClose)
-
-proc move*(widget: GUIWidget, x,y: int32) =
-  if (widget.flags and wFramed) != 0:
-    widget.rect.x = x; widget.rect.y = y
-    # Mark Widget as Layout Dirty
-    pushSignal(cast[GUITarget](widget), msgDirty)
-
-proc resize*(widget: GUIWidget, w,h: int32) =
-  if (widget.flags and wFramed) != 0:
-    widget.rect.w = max(w, widget.hint.w)
-    widget.rect.h = max(h, widget.hint.h)
-    # Mark as Widget as Layout Dirty
-    pushSignal(cast[GUITarget](widget), msgDirty)
-
-# -----------------------------------------
-# WIDGET ABSTRACT METHODS - Single-Threaded
-# -----------------------------------------
-
-method handle*(widget: GUIWidget, kind: GUIHandle) {.base.} = discard
-method event*(widget: GUIWidget, state: ptr GUIState) {.base.} = discard
-method notify*(widget: GUIWidget, sig: GUISignal) {.base.} = discard
-method update*(widget: GUIWidget) {.base.} = discard
-method layout*(widget: GUIWidget) {.base.} = discard
-method draw*(widget: GUIWidget, ctx: ptr CTXRender) {.base.} = discard
-
-# ------------------------------
-# WIDGET TREE DIRTY/RENDER PROCS
-# ------------------------------
+# --------------------------------
+# WIDGET LAYOUT TREE - EVENT QUEUE
+# --------------------------------
 
 proc dirty*(widget: GUIWidget) =
-  var cursor = widget
-  # Relayout Widget Tree
-  while true:
-    if cursor != widget: # Calculate Absolute
-      calcAbsolute(cursor, cursor.parent.rect)
-    if cursor.test(wVisible):
-      cursor.layout()
-    cursor = # Select Next Widget
-      if not isNil(cursor.first):
-        cursor.first
-      elif isNil(cursor.next):
-        if cursor.parent == widget: 
-          break # Stop Loop
-        cursor.parent.next
-      else: cursor.next
-  widget.flags = # Remove Widget Dirty
+  if widget.test(wVisible):
+    widget.layout()
+    # Check if Has Children
+    if not isNil(widget.first):
+      var cursor = widget.first
+      while true: # Iterate Childrens
+        calcAbsolute(cursor, cursor.parent.rect)
+        # Do Layout and Check Inside
+        if cursor.test(wVisible):
+          cursor.layout()
+          if not isNil(cursor.first):
+            cursor = cursor.first
+            continue # Next Level
+        cursor = # Select Next Widget
+          if isNil(cursor.next):
+            if cursor.parent == widget: 
+              break # Stop Loop
+            cursor.parent.next
+          else: cursor.next
+  widget.flags = # Clear Dirty
     widget.flags and not wDirty
 
+# ------------------------------
+# WIDGET RENDER CHILDRENS - MAIN LOOP
+# ------------------------------
+
 proc render*(widget: GUIWidget, ctx: ptr CTXRender) =
-  var cursor = widget
-  # Relayout Widget Tree
-  while true:
+  # Push Clipping
+  ctx.push(widget.rect)
+  # Start at Children
+  var cursor = widget.first
+  while true: # Render Tree
     if cursor.test(wVisible):
       cursor.draw(ctx)
-    cursor = # Select Next Widget
+      # Check if has Childrens
       if not isNil(cursor.first):
         # Push Clipping
         ctx.push(cursor.rect)
-        # Push Tree Level
-        cursor.first
-      elif isNil(cursor.next):
-        # Pop Clipping
-        ctx.pop()
+        # Set Cursor Next Level
+        cursor = cursor.first
+        continue # Next Level
+    cursor = # Select Next Widget
+      if isNil(cursor.next):
         # Check Tree Ending
         if cursor.parent == widget: 
           break # Stop Loop
+        # Pop Clipping
+        ctx.pop()
         # Pop Tree Level
         cursor.parent.next
       else: cursor.next
+  # Pop Clipping
+  ctx.pop()

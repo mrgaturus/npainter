@@ -69,7 +69,6 @@ method event*(widget: GUIBlank, state: ptr GUIState) =
   #echo "cursor mx: ", state.mx, " cursor my: ", state.my
   if state.eventType == evMouseClick:
     if not isNil(widget.frame) and test(widget.frame, wFramed):
-      widget.clear(wHold)
       close(widget.frame)
     else:
       pushTimer(widget.target, 1000)
@@ -83,7 +82,6 @@ method event*(widget: GUIBlank, state: ptr GUIState) =
 method update*(widget: GUIBlank) =
   echo "reached"
   if widget.frame != nil:
-    widget.set(wHold)
     open(widget.frame)
   # Remove Timer
   stopTimer(widget.target)

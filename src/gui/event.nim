@@ -224,13 +224,11 @@ proc pushCallback(cb: GUICallback, data: pointer, size: Natural) =
 type
   WidgetSignal* = enum
     msgOpen, msgClose
-    msgFocus, msgHold
-    msgDirty, msgTrigger
+    msgFocus, msgDirty
+    msgTrigger # Custom
   WindowSignal* = enum
-    msgFocusOut, msgHoldOut
-    # Window Internal Stuff
     msgOpenIM, msgCloseIM
-    msgTerminate
+    msgFocusOut, msgTerminate
 
 # ----------------------------------
 # GUI WIDGET SIGNAL PUSHER TEMPLATES
