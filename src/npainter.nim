@@ -10,10 +10,10 @@ from gui/widgets/slider import newSlider
 from gui/widgets/scroll import newScroll
 from gui/widgets/color import newColorBar
 from omath import Value, interval, lerp, RGBColor
-from assets import setIcons
+from assets import icons
 from utf8 import UTF8Input, `text=`
 
-setIcons 16:
+icons 16:
   iconBrush = "brush.svg"
   iconClear = "clear.svg"
   iconClose = "close.svg"
@@ -30,9 +30,15 @@ type
 
 method draw(fondo: GUIFondo, ctx: ptr CTXRender) =
   ctx.color if fondo.test(wHover):
-    0x277f7f7f'u32
-  else: 0xFF7f7f7f'u32
+    fondo.color or 0xFF000000'u32
+  else: fondo.color
   ctx.fill rect(fondo.rect)
+
+method event(fondo: GUIFondo, state: ptr GUIState) =
+  if state.eventType == evMouseClick:
+    if fondo.test(wStacked) and 
+    not fondo.test(wHover):
+      fondo.clear(wFramed)
 
 var coso: UTF8Input
 proc helloworld*(g, d: pointer) =
@@ -176,7 +182,7 @@ when isMainModule:
       block: # Sub Menu #1
         let subcon = new GUIFondo
         subcon.color = 0xFFbdb88f'u32
-        subcon.flags = wEnabled
+        subcon.flags = wStandard
         subcon.rect.w = 300
         subcon.rect.h = 80
         # Sub-sub blank 1#

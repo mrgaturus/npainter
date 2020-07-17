@@ -21,7 +21,7 @@ const # Common Paths
   fontPath = "data/font.ttf"
   iconsPath = "data/icons.dat"
 
-when defined(packIcons):
+when defined(icons):
   from strutils import join
   const icons_pack = 
     "../svg/icons_pack.sh"
@@ -58,10 +58,10 @@ proc newIcons*(): BUFIcons =
   else: # Failed Loading Icons
     log(lvError, "failed loading icons file: ", iconsPath)
 
-macro setIcons*(size: Natural, list: untyped) =
+macro icons*(size: Natural, list: untyped) =
   var index: uint16 # Current Icon ID
   result = newNimNode(nnkConstSection)
-  when defined(packIcons): # Generate Dat file
+  when defined(icons): # Generate Dat file
     var args = # icons_pack arguments
       @[icons_pack, iconsPath, $size.intVal]
     for icon in list:
