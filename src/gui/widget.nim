@@ -4,7 +4,7 @@ from event import
 from render import 
   CTXRender, GUIRect, push, pop
 
-const # I need XOR
+const # Widget Flags
   # Widget Windowing
   wFramed* = uint16(1 shl 0) # C
   wStacked* = uint16(1 shl 1) # I
@@ -36,7 +36,6 @@ const # I need XOR
   wStandard* = wFocusable or wMouse
   wPopup* = wStacked or wStandard
   # -- Window-Only Automatic Handling
-  wStackGrab* = wStacked or wGrab
   wHoverGrab* = wHover or wGrab
   # -- Reactive Handling Mask Flags
   wHandleMask = wFramed or wDirty or wFocus
@@ -124,7 +123,7 @@ proc set*(self: GUIWidget, mask: GUIFlags) =
     self.flags or (delta and wProtected)
 
 proc clear*(self: GUIWidget, mask: GUIFlags) =
-  var delta = mask and self.flags
+  let delta = mask and self.flags
   # Check if mask needs handling
   if (delta and wHandleClear) > 0:
     let target = self.target
