@@ -29,7 +29,9 @@ type
     color: uint32
 
 method draw(fondo: GUIFondo, ctx: ptr CTXRender) =
-  ctx.color fondo.color
+  ctx.color if fondo.test(wHover):
+    0x277f7f7f'u32
+  else: 0xFF7f7f7f'u32
   ctx.fill rect(fondo.rect)
 
 var coso: UTF8Input
@@ -61,7 +63,9 @@ proc triangle_naive(buffer: pointer, w, h: int32, v: ptr CPUTriangle) {.importc:
 # ------------------
 
 method draw*(widget: GUIBlank, ctx: ptr CTXRender) =
-  ctx.color 0xFFFFFFFF'u32
+  ctx.color if widget.test(wHover):
+    0xFF7f7f7f'u32
+  else: 0xFFFFFFFF'u32
   ctx.fill rect(widget.rect)
   ctx.texture(rect widget.rect, widget.texture)
 
@@ -69,7 +73,7 @@ method event*(widget: GUIBlank, state: ptr GUIState) =
   #echo "cursor mx: ", state.mx, " cursor my: ", state.my
   if state.eventType == evMouseClick:
     if not isNil(widget.frame) and test(widget.frame, wFramed):
-      close(widget.frame)
+      widget.frame.set(wFramed)
     else:
       pushTimer(widget.target, 1000)
       widget.set(wFocus)
@@ -82,15 +86,13 @@ method event*(widget: GUIBlank, state: ptr GUIState) =
 method update*(widget: GUIBlank) =
   echo "reached"
   if widget.frame != nil:
-    open(widget.frame)
+    widget.frame.set(wFramed)
   # Remove Timer
   stopTimer(widget.target)
 
 method handle*(widget: GUIBlank, kind: GUIHandle) =
-  #echo "handle done: ", kind.repr
-  #echo "by: ", cast[uint](widget)
-  echo "i'm here: ", kind
-  if kind == outHold: close(widget.frame)
+  echo "handle done: ", kind.repr
+  echo "by: ", cast[uint](widget)
 
 proc blend*(dst, src: uint32): uint32{.importc: "blend_normal".}
 proc fill*(buffer: var seq[uint32], x, y, w, h: int32, color: uint32) =
@@ -265,7 +267,7 @@ when isMainModule:
   glPixelStorei(GL_UNPACK_ALIGNMENT, 4)
   glBindTexture(GL_TEXTURE_2D, 0)
   # Open Window
-  if win.open(root):
+  if win.show(root):
     while true:
       win.handleEvents() # Input
       if win.handleSignals(): break
@@ -275,5 +277,5 @@ when isMainModule:
       glClear(GL_COLOR_BUFFER_BIT or GL_DEPTH_BUFFER_BIT)
       # Render GUI
       win.render()
-    # Close Window
-    win.close()
+  # Close Window
+  win.dispose()

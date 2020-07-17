@@ -156,23 +156,24 @@ proc newGUIWindow*(w, h: int32, global: pointer): GUIWindow =
 # WINDOW OPEN/CLOSE PROCS
 # -----------------------
 
-proc open*(win: var GUIWindow, root: GUIWidget): bool =
-  # Set the new root at first and next
-  win.root = root; win.last = root
-  # Root has Window and Frame Signals
-  root.flags = wStandard or wOpaque
+proc show*(win: var GUIWindow, root: GUIWidget): bool =
+  # Set First Widget
+  win.root = root
+  win.last = root
+  # Root is Standard
+  root.flags = wStandard or wVisible
   # Set to Global Dimensions
   root.rect.w = metrics.width
   root.rect.h = metrics.height
   # Shows the Window on the screen
   result = XMapWindow(win.display, win.xID) != BadWindow
   discard XSync(win.display, 0) # Wait for show it
-  # Set Renderer Viewport Dimension
+  # Set Renderer Viewport Dimensions
   viewport(win.ctx, metrics.width, metrics.height)
   # Mark root as Dirty
   set(win.root, wDirty)
 
-proc close*(win: var GUIWindow) =
+proc dispose*(win: var GUIWindow) =
   # Dispose Queue
   disposeQueue()
   # Dispose UTF8Buffer
@@ -187,11 +188,11 @@ proc close*(win: var GUIWindow) =
   discard XDestroyWindow(win.display, win.xID)
   discard XCloseDisplay(win.display)
 
-# --------------------
+# -----------------------------
 # WINDOW FLOATING PRIVATE PROCS
-# --------------------
+# -----------------------------
 
-# --- Add Helpers ---
+# -- Add Helper
 proc addLeft(pivot: GUIWidget, frame: GUIWidget) {.inline.} =
   # Add to right of widget prev
   frame.prev = pivot.prev
@@ -200,7 +201,14 @@ proc addLeft(pivot: GUIWidget, frame: GUIWidget) {.inline.} =
   frame.next = pivot
   pivot.prev = frame
 
-# Guaranted to be added last to the list
+proc addRight(pivot: GUIWidget, frame: GUIWidget) {.inline.} =
+  # Add to left of widget next
+  frame.next = pivot.next
+  pivot.next.prev = frame
+  # Add to right of widget
+  frame.prev = pivot
+  pivot.next = frame
+
 proc addLast(last: var GUIWidget, frame: GUIWidget) {.inline.} =
   frame.next = nil
   # Prev allways exist
@@ -209,37 +217,8 @@ proc addLast(last: var GUIWidget, frame: GUIWidget) {.inline.} =
   # Last is frame
   last = frame
 
-proc addFrame(win: var GUIWindow, frame: GUIWidget) =
-  # Add to left of head of stack or to tail
-  if test(frame, wStacked):
-    if isNil(win.above):
-      win.above = frame
-    addLast(win.last, frame)
-  elif isNil(win.above): 
-    addLast(win.last, frame)
-  else: addLeft(win.above, frame)
-  # Handle FrameIn
-  handle(frame, inFrame)
-  # Mark Visible and Dirty
-  set(frame, wFrameOpen)
-
-proc delFrame(win: var GUIWindow, frame: GUIWidget) =
-  # Unfocus if was focused
-  if frame == win.focus:
-    handle(frame, outFocus)
-    clear(frame, wFocus)
-    # Remove focus
-    win.focus = nil
-  # Unhover if has hover or grab
-  if frame == win.hover:
-    handle(frame, outHover)
-    clear(frame, wHoverGrab)
-    # Remove Hover
-    win.hover = nil
-  # Handle FrameOut
-  handle(frame, outFrame)
-  # Unmark Visible
-  clear(frame, wFrameOpen)
+# -- Delete Helper
+proc delete(win: var GUIWindow, frame: GUIWidget) =
   # Check if above is removed
   if frame == win.above:
     win.above = frame.next
@@ -254,7 +233,7 @@ proc delFrame(win: var GUIWindow, frame: GUIWidget) =
   frame.prev = nil
 
 # --- Mark As Top Level ---
-proc elevateFrame(win: var GUIWindow, frame: GUIWidget) =
+proc elevate(win: var GUIWindow, frame: GUIWidget) =
   if frame != win.root and frame != win.last:
     # Remove frame from it's position
     frame.prev.next = frame.next
@@ -270,62 +249,7 @@ proc elevateFrame(win: var GUIWindow, frame: GUIWidget) =
 # GUI WINDOW MAIN LOOP HELPER PROCS
 # ---------------------------------
 
-# Grab X11 Window
-proc grab(win: var GUIWindow, widget: GUIWidget, evtype: int32) =
-  if evtype == ButtonPress:
-    # Grab X11 Window Mouse Input
-    discard XGrabPointer(win.display, win.xID, 0,
-        ButtonPressMask or ButtonReleaseMask or PointerMotionMask,
-        GrabModeAsync, GrabModeAsync, None, None, CurrentTime)
-    # Grab Current Widget
-    widget.set(wGrab)
-    # Elevate Frame if is not Stacked
-    let frame = widget.frame
-    if not test(frame, wStacked):
-      elevateFrame(win, frame)
-  elif evtype == ButtonRelease:
-    # UnGrab X11 Mouse Input
-    discard XUngrabPointer(win.display, CurrentTime)
-    # UnGrab Current Widget
-    widget.clear(wGrab)
-
-proc focus(win: var GUIWindow, widget: GUIWidget) =
-  if widget != win.focus:
-    # Handle Focus Out
-    if not isNil(win.focus):
-      handle(win.focus, outFocus)
-      clear(win.focus, wFocus)
-    # Handle Focus In
-    handle(widget, inFocus)
-    widget.flags = # Put Flag
-      widget.flags or wFocus
-    # Replace Focus
-    win.focus = widget
-
-proc step(win: var GUIWindow, back: bool) =
-  var widget = win.focus
-  if not isNil(widget.parent):
-    widget = step(widget, back)
-    if widget != win.focus:
-      # Handle Focus Out
-      handle(win.focus, outFocus)
-      clear(win.focus, wFocus)
-      # Handle Focus In
-      handle(widget, inFocus)
-      widget.flags = # Put Flag
-        widget.flags or wFocus
-      # Change Focus
-      win.focus = widget
-
-proc check(win: var GUIWindow, widget: GUIWidget) =
-  if widget == win.focus and 
-    not widget.test(wFocusCheck):
-    # Handle Widget Unfocus
-    widget.handle(outFocus)
-    widget.clear(wFocus)
-    # Remove Widget Focus
-    win.focus = nil
-
+# -- Find Widget by State
 proc find(win: var GUIWindow, state: ptr GUIState): GUIWidget =
   case state.eventType
   of evMouseMove, evMouseClick, evMouseRelease, evMouseAxis:
@@ -338,20 +262,21 @@ proc find(win: var GUIWindow, state: ptr GUIState): GUIWidget =
     else: # Stacked
       for widget in reverse(win.last):
         if widget.next == win.above: break
-        if pointOnArea(widget, state.mx, state.my):
+        if (widget.flags and wWalkCheck) == wStacked or
+        pointOnArea(widget, state.mx, state.my):
           result = widget; break # Frame Found
     # Check if is Nil
     if isNil(result):
       if not isNil(win.hover):
         handle(win.hover, outHover)
-        clear(win.hover, wHover)
+        clear(win.hover.flags, wHover)
         # Remove Hover
         win.hover = nil
-    # Check if is Grabbed
+    # Check if is Grabbed or is a Popup
     elif result.test(wGrab):
       if pointOnArea(result, state.mx, state.my):
-        result.set(wHover)
-      else: result.clear(wHover)
+        result.flags.set(wHover)
+      else: result.flags.clear(wHover)
     # Check if is at the same frame
     elif not isNil(win.hover) and result == win.hover.frame:
       result = # Find Interior Widget
@@ -359,28 +284,155 @@ proc find(win: var GUIWindow, state: ptr GUIState): GUIWidget =
       if result != win.hover:
         # Handle Hover Out
         handle(win.hover, outHover)
-        clear(win.hover, wHover)
+        clear(win.hover.flags, wHover)
         # Handle Hover In
         result.handle(inHover)
-        result.set(wHover)
+        result.flags.set(wHover)
         # Replace Hover
         win.hover = result
+      # Check if is Popup
+      elif result.test(wStacked):
+        if pointOnArea(result, state.mx, state.my):
+          result.flags.set(wHover)
+        else: result.flags.clear(wHover)
     else: # Not at the same frame
       if not isNil(win.hover):
         handle(win.hover, outHover)
-        clear(win.hover, wHover)
+        clear(win.hover.flags, wHover)
       result = # Find Interior Widget
         find(result, state.mx, state.my)
       # Handle Hover In
       result.handle(inHover)
-      result.set(wHover)
+      result.flags.set(wHover)
       # Replace Hover
       win.hover = result
   of evKeyDown, evKeyUp:
-    result = # Allways Focus
-      if isNil(win.focus): 
+    result = # Focus Root if there is no popup
+      if isNil(win.focus) and isNil(win.above):
         win.root # Fallback
-      else: win.focus
+      else: win.focus # Use Focus
+
+# -- Grab X11 Window
+proc grab(win: var GUIWindow, widget: GUIWidget, evtype: int32) =
+  if evtype == ButtonPress:
+    # Grab X11 Window Mouse Input
+    discard XGrabPointer(win.display, win.xID, 0,
+        ButtonPressMask or ButtonReleaseMask or PointerMotionMask,
+        GrabModeAsync, GrabModeAsync, None, None, CurrentTime)
+    # Grab Current Widget
+    widget.flags.set(wGrab)
+    # Elevate Frame if is not Stacked
+    let frame = widget.frame
+    if not test(frame, wStacked):
+      elevate(win, frame)
+  elif evtype == ButtonRelease:
+    # UnGrab X11 Mouse Input
+    discard XUngrabPointer(win.display, CurrentTime)
+    # UnGrab Current Widget
+    widget.flags.clear(wGrab)
+
+# -- Step Focus
+proc step(win: var GUIWindow, back: bool) =
+  var widget = win.focus
+  if not isNil(widget.parent):
+    widget = step(widget, back)
+    if widget != win.focus:
+      # Handle Focus Out
+      clear(win.focus.flags, wFocus)
+      handle(win.focus, outFocus)
+      # Handle Focus In
+      widget.flags.set(wFocus)
+      widget.handle(inFocus)
+      # Change Focus
+      win.focus = widget
+
+# -- Open/Close Subwindows
+proc open(win: var GUIWindow, widget: GUIWidget) =
+  if widget != win.root and 
+  not widget.test(wFrameCheck):
+    # Open as Popup
+    if widget.test(wStacked):
+      if not isNil(win.focus):
+        clear(win.focus.flags, wFocus)
+        handle(win.focus, outFocus)
+        # Remove Focus
+        win.focus = nil
+      # Add Popup to Window
+      if isNil(widget.parent):
+        addLast(win.last, widget)
+        if isNil(win.above):
+          win.above = widget
+      else: # Add Child Popup
+        if test(widget.parent, wStacked):
+          if widget.parent == win.last:
+            addLast(win.last, widget) # Last Frame
+          else: addRight(widget.parent, widget)
+          # Mark as Child Popup
+          widget.parent = nil
+          widget.flags.set(wWalker)
+        else: # Invalid Open Request
+          widget.flags.clear(wFramed)
+    else: # Standard Frame
+      if isNil(win.above):
+        addLast(win.last, widget)
+      else: addLeft(win.above, widget)
+  else: widget.flags.clear(wFramed)
+  # Handle Frame Opening if Valid
+  if (widget.flags and wFrameCheck) == wFramed:
+    widget.flags.set(wVisible)
+    widget.handle(inFrame)
+
+proc close(win: var GUIWindow, widget: GUIWidget) =
+  if widget != win.root and
+  isNil(widget.parent) and
+  widget.test(wVisible):
+    win.delete(widget)
+    # Check Current Focus
+    if not isNil(win.focus):
+      if win.focus.frame == widget:
+        clear(win.focus.flags, wFocus)
+        handle(win.focus, outFocus)
+        # Remove Focus
+        win.focus = nil
+    # Handle Frame Closing
+    widget.flags.clear(wVisible)
+    widget.handle(outFrame)
+
+# -- Relayout Widget
+proc dirty(win: var GUIWindow, widget: GUIWidget) =
+  if widget.test(wVisible):
+    widget.dirty()
+    # Check Focus Visibility
+    if not isNil(win.focus) and 
+    not win.focus.visible:
+      clear(win.focus.flags, wFocus)
+      handle(win.focus, outFocus)
+      # Remove Focus
+      win.focus = nil
+  widget.flags.clear(wDirty)
+
+# -- Focus Handling
+proc focus(win: var GUIWindow, widget: GUIWidget) =
+  if widget != win.root and 
+  widget.test(wFocusable) and 
+  widget != win.focus:
+    if not isNil(win.focus):
+      clear(win.focus.flags, wFocus)
+      handle(win.focus, outFocus)
+    # Handle Focus In
+    widget.flags.set(wFocus)
+    widget.handle(inFocus)
+    # Replace Focus
+    win.focus = widget
+
+proc check(win: var GUIWindow, widget: GUIWidget) =
+  # Check if is still focused
+  if widget == win.focus and 
+  not widget.test(wFocusCheck):
+    widget.flags.clear(wFocus)
+    widget.handle(outFocus)
+    # Remove Focus
+    win.focus = nil
 
 # --------------------------
 # GUI WINDOW MAIN LOOP PROCS
@@ -426,8 +478,6 @@ proc handleEvents*(win: var GUIWindow) =
             win.grab(found, event.theType)
             # Procces Event
             event(found, state)
-            # Check Focus and Hold
-            check(win, found)
 
 proc handleSignals*(win: var GUIWindow): bool =
   for signal in pollQueue():
@@ -442,28 +492,19 @@ proc handleSignals*(win: var GUIWindow): bool =
     else: # Process Widget Signal
       let widget = cast[GUIWidget](signal.id)
       case WidgetSignal(signal.msg)
-      of msgOpen, msgClose:
-        if not isNil(widget) and widget != win.root:
-          if signal.msg == ord(msgOpen) and
-              not test(widget, wFramed):
-            addFrame(win, widget)
-          elif signal.msg == ord(msgClose) and
-              test(widget, wFramed):
-            delFrame(win, widget)
+      of msgOpen: open(win, widget)
+      of msgClose: close(win, widget)
       of msgFocus: focus(win, widget)
-      of msgDirty: dirty(widget)
+      of msgDirty: dirty(win, widget)
+      of msgCheck: check(win, widget)
       of msgTrigger: # Handle Signal Data
         notify(widget, addr signal.data)
-      # Check Focus and Visible
-      check(win, widget)
   # Still Alive
   return false
 
 proc handleTimers*(win: var GUIWindow) =
   for widget in walkTimers():
     widget.update()
-    # Check Focus and Visible
-    check(win, widget)
 
 proc render*(win: var GUIWindow) =
   begin(win.ctx) # -- Begin GUI Rendering

@@ -225,7 +225,7 @@ type
   WidgetSignal* = enum
     msgOpen, msgClose
     msgFocus, msgDirty
-    msgTrigger # Custom
+    msgCheck, msgTrigger
   WindowSignal* = enum
     msgOpenIM, msgCloseIM
     msgFocusOut, msgTerminate

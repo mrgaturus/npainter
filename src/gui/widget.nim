@@ -4,38 +4,52 @@ from event import
 from render import 
   CTXRender, GUIRect, push, pop
 
-const # For now is better use traditional flags
-  # Rendering on Screen
-  wFramed* = uint16(1 shl 0) # A
-  # Indicators - Update -> Layout
-  wUpdate* = uint16(1 shl 1)
-  wLayout* = uint16(1 shl 2)
-  wDirty* = uint16(1 shl 3)
+const # I need XOR
+  # Widget Windowing
+  wFramed* = uint16(1 shl 0) # C
+  wStacked* = uint16(1 shl 1) # I
+  wWalker* = uint16(1 shl 2) # A
+  # Layoutning Placeholder
+  wDirty* = uint16(1 shl 3) # C
   # Status - Visible, Enabled and Popup
   wVisible* = uint16(1 shl 4) # A
-  wEnabled* = uint16(1 shl 5)
-  wStacked* = uint16(1 shl 6)
+  wEnabled* = uint16(1 shl 5) # C
+  wKeyboard* = uint16(1 shl 6) # C
+  wMouse* = uint16(1 shl 7) # C
   # Handlers - Focus, Hover and Grab
-  wFocus* = uint16(1 shl 7)
-  wHover* = uint16(1 shl 8) # A
-  wGrab* = uint16(1 shl 9) # A
+  wFocus* = uint16(1 shl 8) # C
+  wHover* = uint16(1 shl 9) # A
+  wGrab* = uint16(1 shl 10) # A
   # Rendering - Opaque and Forced Hidden
-  wOpaque* = uint16(1 shl 12)
-  wHidden* = uint16(1 shl 13)
-  # ---------------------
-  # Default Flags - Widget Constructor
-  wStandard* = wVisible or wEnabled # Visible-Enabled
-  wPopup* = wEnabled or wStacked # Enabled-Stacked
-  # Public Multi-Checking Flags
+  wOpaque* = uint16(1 shl 11) # C
+  wHidden* = uint16(1 shl 12) # C
+  # ------ WIDGET FLAGS MASKS ------
+  wFocusable* = wEnabled or wKeyboard
+  wClickable = wVisible or wMouse
+  # -- Flags Checking Mask
+  wFrameCheck* = wFramed or wVisible
+  wWalkCheck* = wStacked or wWalker
+  wGrabCheck* = wWalkCheck or wGrab
+  wFocusCheck* = wFocusable or wFocus
+  wRenderCheck = wVisible or wOpaque
+  # -- Default Flags - Widget Constructor
+  wStandard* = wFocusable or wMouse
+  wPopup* = wStacked or wStandard
+  # -- Window-Only Automatic Handling
+  wStackGrab* = wStacked or wGrab
   wHoverGrab* = wHover or wGrab
-  wFrameOpen* = wFramed or wVisible or wDirty
-  wFocusCheck* = wFocus or wVisible or wEnabled
+  # -- Reactive Handling Mask Flags
+  wHandleMask = wFramed or wDirty or wFocus
+  wHandleClear = wFramed or wFocusCheck
+  # -- Protect Automatic / Define Flags
+  wProtected = # Avoid Changing Automatics
+    not(wStacked or wWalker or wVisible or wHoverGrab)
 
 type
   GUIFlags* = uint16
   GUIHandle* = enum
-    inFocus, inHover, inHold, inFrame
-    outFocus, outHover, outHold, outFrame
+    inFocus, inHover, inFrame
+    outFocus, outHover, outFrame
   GUIWidget* {.inheritable.} = ref object
     # Widget Parent
     parent*: GUIWidget
@@ -65,27 +79,63 @@ iterator reverse*(last: GUIWidget): GUIWidget =
     yield frame
     frame = frame.prev
 
-# ---------------------------
-# WIDGET FLAGS & TARGET PROCS
-# ---------------------------
+# --------------------------
+# WIDGET SIGNAL TARGET PROCS
+# --------------------------
 
 proc target*(self: GUIWidget): GUITarget {.inline.} =
-  return cast[GUITarget](self)
+  assert(not self.isNil); cast[GUITarget](self)
 
+template trigger*(target: GUITarget) =
+  pushSignal(target, msgTrigger)
+
+template trigger*(target: GUITarget, data: typed) =
+  pushSignal(target, msgTrigger, data)
+
+# -------------------------------
+# WIDGET FLAGS MANIPULATION PROCS
+# -------------------------------
+
+# -- Unsafe Flags Handling
+proc set*(flags: var GUIFlags, mask: GUIFlags) {.inline.} =
+  flags = flags or mask
+
+proc clear*(flags: var GUIFlags, mask: GUIFlags) {.inline.} =
+  flags = flags and not mask
+
+# -- Safe Flags Handling
 proc set*(self: GUIWidget, mask: GUIFlags) =
-  if (mask and (wFocus or wDirty)) > 0:
-    let # Compare Flags
-      delta = self.flags xor mask
-      target = self.target
-    if (delta and wFocus) == wFocus:
-      pushSignal(target, msgFocus)
+  var delta = mask and not self.flags
+  # Check if mask needs handling
+  if (delta and wHandleMask) > 0:
+    let target = self.target
+    # Open Widget as Subwindow
+    if (delta and wFramed) == wFramed:
+      pushSignal(target, msgOpen)
+      delta = delta or wDirty
+    # Relayout Widget and Childrens
     if (delta and wDirty) == wDirty:
       pushSignal(target, msgDirty)
-  # Replace Current Flags
-  self.flags = self.flags or mask
+    # Request Replace Window Focus
+    if (delta and wFocus) == wFocus:
+      pushSignal(target, msgFocus)
+      delta = delta and not wFocus
+  self.flags = # Merge Flags Mask
+    self.flags or (delta and wProtected)
 
-proc clear*(self: GUIWidget, mask: GUIFlags) {.inline.} =
-  self.flags = self.flags and not mask
+proc clear*(self: GUIWidget, mask: GUIFlags) =
+  var delta = mask and self.flags
+  # Check if mask needs handling
+  if (delta and wHandleClear) > 0:
+    let target = self.target
+    # Close Window Subwindow
+    if (delta and wFramed) == wFramed:
+      pushSignal(target, msgClose)
+    # Check if focus status is altered
+    if (delta and wFocusCheck) > 0:
+      pushSignal(target, msgCheck)
+  self.flags = # Clear Flags Mask
+    self.flags and not (delta and wProtected)
 
 proc any*(self: GUIWidget, mask: GUIFlags): bool {.inline.} =
   return (self.flags and mask) > 0
@@ -135,34 +185,26 @@ proc calcAbsolute*(widget: GUIWidget, pivot: var GUIRect) =
     (cast[uint16](test) shl 4)
 
 proc pointOnArea*(widget: GUIWidget, x, y: int32): bool =
-  return (widget.flags and wVisible) == wVisible and
+  return (widget.flags and wClickable) == wClickable and
     x >= widget.rect.x and x <= widget.rect.x + widget.rect.w and
     y >= widget.rect.y and y <= widget.rect.y + widget.rect.h
 
-# ---------------------------------------
-# WIDGET FRAMED open/close or move/resize
-# ---------------------------------------
-
-proc open*(widget: GUIWidget) =
-  if (widget.flags and wFramed) == 0:
-    pushSignal(cast[GUITarget](widget), msgOpen)
-
-proc close*(widget: GUIWidget) =
-  if (widget.flags and wFramed) != 0:
-    pushSignal(cast[GUITarget](widget), msgClose)
+# -----------------------------
+# WIDGET FRAMED Move and Resize
+# -----------------------------
 
 proc move*(widget: GUIWidget, x,y: int32) =
   if (widget.flags and wFramed) != 0:
     widget.rect.x = x; widget.rect.y = y
-    # Mark Widget as Layout Dirty
-    pushSignal(cast[GUITarget](widget), msgDirty)
+    # Mark Widget as Dirty
+    widget.set(wDirty)
 
 proc resize*(widget: GUIWidget, w,h: int32) =
   if (widget.flags and wFramed) != 0:
     widget.rect.w = max(w, widget.hint.w)
     widget.rect.h = max(h, widget.hint.h)
-    # Mark as Widget as Layout Dirty
-    pushSignal(cast[GUITarget](widget), msgDirty)
+    # Mark Widget as Dirty
+    widget.set(wDirty)
 
 # -----------------------------------------
 # WIDGET ABSTRACT METHODS - Single-Threaded
@@ -237,26 +279,34 @@ proc step*(widget: GUIWidget, back: bool): GUIWidget =
 # WIDGET LAYOUT TREE - EVENT QUEUE
 # --------------------------------
 
+proc visible*(widget: GUIWidget): bool =
+  var cursor = widget
+  # Walk to Outermost Parent
+  while not isNil(cursor.parent):
+    if not cursor.test(wVisible):
+      return false # Invisible
+    cursor = widget.parent
+  true # Visible
+
 proc dirty*(widget: GUIWidget) =
-  if widget.test(wVisible):
-    widget.layout()
-    # Check if Has Children
-    if not isNil(widget.first):
-      var cursor = widget.first
-      while true: # Iterate Childrens
-        calcAbsolute(cursor, cursor.parent.rect)
-        # Do Layout and Check Inside
-        if cursor.test(wVisible):
-          cursor.layout()
-          if not isNil(cursor.first):
-            cursor = cursor.first
-            continue # Next Level
-        cursor = # Select Next Widget
-          if isNil(cursor.next):
-            if cursor.parent == widget: 
-              break # Stop Loop
-            cursor.parent.next
-          else: cursor.next
+  widget.layout()
+  # Check if Has Children
+  if not isNil(widget.first):
+    var cursor = widget.first
+    while true: # Iterate Childrens
+      calcAbsolute(cursor, cursor.parent.rect)
+      # Do Layout and Check Inside
+      if cursor.test(wVisible):
+        cursor.layout()
+        if not isNil(cursor.first):
+          cursor = cursor.first
+          continue # Next Level
+      cursor = # Select Next Widget
+        if isNil(cursor.next):
+          if cursor.parent == widget: 
+            break # Stop Loop
+          cursor.parent.next
+        else: cursor.next
   widget.flags = # Clear Dirty
     widget.flags and not wDirty
 
@@ -269,8 +319,8 @@ proc render*(widget: GUIWidget, ctx: ptr CTXRender) =
   ctx.push(widget.rect)
   # Start at Children
   var cursor = widget.first
-  while true: # Render Tree
-    if cursor.test(wVisible):
+  while true: # Render Each Visible Tree Widget
+    if (cursor.flags and wRenderCheck) == wVisible:
       cursor.draw(ctx)
       # Check if has Childrens
       if not isNil(cursor.first):
