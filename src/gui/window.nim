@@ -265,14 +265,14 @@ proc find(win: var GUIWindow, state: ptr GUIState): GUIWidget =
         if (widget.flags and wWalkCheck) == wStacked or
         pointOnArea(widget, state.mx, state.my):
           result = widget; break # Frame Found
-    # Check if is Nil
+    # Check if Not Found
     if isNil(result):
       if not isNil(win.hover):
         handle(win.hover, outHover)
         clear(win.hover.flags, wHover)
         # Remove Hover
         win.hover = nil
-    # Check if is Grabbed or is a Popup
+    # Check if is Grabbed
     elif result.test(wGrab):
       if pointOnArea(result, state.mx, state.my):
         result.flags.set(wHover)
@@ -290,8 +290,8 @@ proc find(win: var GUIWindow, state: ptr GUIState): GUIWidget =
         result.flags.set(wHover)
         # Replace Hover
         win.hover = result
-      # Check if is Popup
-      elif result.test(wStacked):
+      # Check if is Popup and not Popup Children
+      elif (result.flags and wWalkCheck) == wStacked:
         if pointOnArea(result, state.mx, state.my):
           result.flags.set(wHover)
         else: result.flags.clear(wHover)
