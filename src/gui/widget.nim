@@ -306,8 +306,6 @@ proc dirty*(widget: GUIWidget) =
             break # Stop Loop
           cursor.parent.next
         else: cursor.next
-  widget.flags = # Clear Dirty
-    widget.flags and not wDirty
 
 # ------------------------------
 # WIDGET RENDER CHILDRENS - MAIN LOOP

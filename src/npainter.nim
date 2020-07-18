@@ -151,7 +151,7 @@ when isMainModule:
       sub, blank: GUIBlank
       con: GUIFondo
     # Initialize Root
-    root.color = 0xFF000000'u32
+    root.color = 0xFF323232'u32
     root.flags = wStandard or wOpaque
     # --- Blank #1 ---
     blank = new GUIBlank

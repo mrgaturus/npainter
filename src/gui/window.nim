@@ -291,7 +291,7 @@ proc find(win: var GUIWindow, state: ptr GUIState): GUIWidget =
         # Replace Hover
         win.hover = result
       # Check if is Popup and not Popup Children
-      elif (result.flags and wWalkCheck) == wStacked:
+      if (result.flags and wWalkCheck) == wStacked:
         if pointOnArea(result, state.mx, state.my):
           result.flags.set(wHover)
         else: result.flags.clear(wHover)
