@@ -49,11 +49,11 @@ type
 
 # UTF8Buffer allocation/reallocation
 proc utf8buffer*(state: var GUIState, cap: int32) =
-  if state.utf8str.isNil:
+  if state.utf8str.isNil: # Alloc First Time
     state.utf8str = cast[cstring](alloc(cap))
-  else: # Realloc UTF8 Buffer to new size
-    state.utf8str = cast[cstring](realloc(state.utf8str, cap))
-  state.utf8cap = cap
+  else: state.utf8str = cast[cstring](
+    realloc(state.utf8str, cap))
+  state.utf8cap = cap # Expand
 
 # X11 to GUIState translation
 proc translateXEvent*(state: var GUIState, display: PDisplay, event: PXEvent,
@@ -77,8 +77,7 @@ proc translateXEvent*(state: var GUIState, display: PDisplay, event: PXEvent,
     # Check is buffer size is not enough
     if state.utf8state == XBufferOverflow:
       utf8buffer(state, state.utf8size)
-      state.utf8cap = state.utf8size
-      state.utf8size =
+      state.utf8size = # Retry Lookup Char Again
         Xutf8LookupString(xic, cast[PXKeyPressedEvent](event), state.utf8str,
             state.utf8cap, state.key.addr, state.utf8state.addr)
     # Update Keyboard Modifers

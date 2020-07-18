@@ -78,7 +78,8 @@ method event(self: GUITextBox, state: ptr GUIState) =
     else: # Add UTF8 Char
       case state.utf8state
       of UTF8Nothing, UTF8Keysym: discard
-      else: insert(self.input, state.utf8str)
+      else: insert(self.input, 
+        state.utf8str, state.utf8size)
   elif state.eventType == evMouseClick:
     # Get Cursor Position
     self.input.cursor = index(self.input.text,
