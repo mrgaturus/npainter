@@ -7,7 +7,7 @@ from ../../omath import
 from ../event import GUIState
 from ../config import 
   metrics, theme
-from ../atlas import textWidth
+from ../atlas import width
 
 type
   GUISlider* = ref object of GUIWidget
@@ -50,7 +50,7 @@ method draw(self: GUISlider, ctx: ptr CTXRender) =
     else: $self.value[].toInt
   ctx.color(theme.text)
   ctx.text( # On The Right Side
-    self.rect.x + self.rect.w - textWidth(text) - 4, 
+    self.rect.x + self.rect.w - text.width - 4, 
     self.rect.y - metrics.descender, text)
 
 method event(self: GUISlider, state: ptr GUIState) =

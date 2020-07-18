@@ -402,7 +402,7 @@ proc checkTexture*(atlas: CTXAtlas): bool =
 # ATLAS GLYPH AND ICONS LOOKUP PROCS
 # ----------------------------------
 
-proc getGlyph*(atlas: CTXAtlas, charcode: uint16): ptr TEXGlyph =
+proc glyph*(atlas: CTXAtlas, charcode: uint16): ptr TEXGlyph =
   # Check if lookup needs expand
   if int32(charcode) >= len(atlas.lookup):
     atlas.lookup.setLen(1 + int32 charcode)
@@ -413,20 +413,20 @@ proc getGlyph*(atlas: CTXAtlas, charcode: uint16): ptr TEXGlyph =
   of 0xFFFF: addr atlas.glyphs[0]
   else: addr atlas.glyphs[lookup]
 
-proc getIcon*(atlas: CTXAtlas, icon: uint16): ptr TEXIcon =
-  result = addr atlas.icons[icon] # Get Icon UV Coords
+proc icon*(atlas: CTXAtlas, id: uint16): ptr TEXIcon =
+  result = addr atlas.icons[id] # Get Icon UV Coords
 
 # --------------------------
 # ATLAS GLOBAL METRICS PROCS
 # --------------------------
 
-proc textWidth*(str: string): int32 =
+proc width*(str: string): int32 =
   let atlas = # Get Atlas from Global
     cast[CTXAtlas](metrics.opaque)
   for rune in runes16(str):
-    result += atlas.getGlyph(rune).advance
+    result += atlas.glyph(rune).advance
 
-proc textWidth*(str: string, e: int32): int32 =
+proc width*(str: string, e: int32): int32 =
   let atlas = # Get Atlas from Global
     cast[CTXAtlas](metrics.opaque)
   var # Iterator
@@ -434,9 +434,9 @@ proc textWidth*(str: string, e: int32): int32 =
     rune: uint16
   while i < e:
     rune16(str, i, rune) # Decode Rune
-    result += atlas.getGlyph(rune).advance
+    result += atlas.glyph(rune).advance
 
-proc textIndex*(str: string, w: int32): int32 =
+proc index*(str: string, w: int32): int32 =
   let atlas = # Get Atlas from Global
     cast[CTXAtlas](metrics.opaque)
   var # Iterator
@@ -445,7 +445,7 @@ proc textIndex*(str: string, w: int32): int32 =
     advance: int16
   while result < len(str):
     rune16(str, i, rune) # Decode Rune
-    advance = atlas.getGlyph(rune).advance
+    advance = atlas.glyph(rune).advance
     # Substract expected Width
     unsafeAddr(w)[] -= advance
     if w > 0: result = i

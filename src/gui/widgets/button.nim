@@ -2,7 +2,7 @@ import ../widget, ../render
 from ../event import 
   GUIState, GUIEvent, GUICallback, pushCallback
 from ../config import metrics, theme
-from ../atlas import textWidth
+from ../atlas import width
 
 type
   GUIButton = ref object of GUIWidget
@@ -12,7 +12,7 @@ type
 proc newButton*(label: string, cb: GUICallback): GUIButton =
   new result # Initialize Button
   # Set to Font Size Metrics
-  result.minimum(textWidth(label), 
+  result.minimum(label.width, 
     metrics.fontSize - metrics.descender)
   # Widget Standard Flag
   result.flags = wStandard

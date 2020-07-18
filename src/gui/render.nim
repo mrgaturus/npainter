@@ -512,7 +512,7 @@ proc text*(ctx: ptr CTXRender, x,y: int32, str: string) =
   # Render Text Top to Bottom
   for rune in runes16(str):
     let glyph = # Load Glyph
-      ctx.atlas.getGlyph(rune)
+      ctx.atlas.glyph(rune)
     # Reserve Vertex and Elements
     ctx.addVerts(4, 6); block:
       let # Quad Coordinates
@@ -537,7 +537,7 @@ proc text*(ctx: ptr CTXRender, x,y: int32, clip: CTXRect, str: string) =
   # Render Text Top to Bottom
   for rune in runes16(str):
     let glyph = # Load Glyph
-      ctx.atlas.getGlyph(rune)
+      ctx.atlas.glyph(rune)
     var # Vertex Information
       xo = float32 x + glyph.xo
       xw = xo + float32 glyph.w
@@ -578,7 +578,7 @@ proc text*(ctx: ptr CTXRender, x,y: int32, clip: CTXRect, str: string) =
     # To Next Glyph X Position
     unsafeAddr(x)[] += glyph.advance
 
-proc icon*(ctx: ptr CTXRender, x,y: int32, icon: uint16) =
+proc icon*(ctx: ptr CTXRender, x,y: int32, id: uint16) =
   ctx.addVerts(4, 6)
   let # Icon Rect
     x = float32 x
@@ -586,7 +586,7 @@ proc icon*(ctx: ptr CTXRender, x,y: int32, icon: uint16) =
     xw = x + float32 metrics.iconSize
     yh = y + float32 metrics.iconSize
     # Lookup Icon from Atlas
-    icon = ctx.atlas.getIcon(icon)
+    icon = ctx.atlas.icon(id)
   # Icon Vertex Definition
   vertexUV(0, x, y, icon.x1, icon.y1)
   vertexUV(1, xw, y, icon.x2, icon.y1)

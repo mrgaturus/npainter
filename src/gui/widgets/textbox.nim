@@ -5,7 +5,7 @@ from x11/keysym import
 # -----------------------
 import ../widget, ../render, ../../utf8
 from ../config import metrics, theme
-from ../atlas import textWidth, textIndex
+from ../atlas import width, index
 from ../event import
   UTF8Nothing, UTF8Keysym,
   GUIState, GUIEvent, pushSignal, 
@@ -28,7 +28,7 @@ proc newTextBox*(input: ptr UTF8Input): GUITextBox =
 
 method draw(self: GUITextBox, ctx: ptr CTXRender) =
   if self.input.changed: # Recalculate Text Scroll and Cursor
-    self.wi = textWidth(self.input.text, self.input.cursor)
+    self.wi = width(self.input.text, self.input.cursor)
     if self.wi - self.wo > self.rect.w - 8: # Multiple of 24
       self.wo = (self.wi - self.rect.w + 32) div 24 * 24
     elif self.wi < self.wo: # Multiple of 24
@@ -81,7 +81,7 @@ method event(self: GUITextBox, state: ptr GUIState) =
       else: insert(self.input, state.utf8str)
   elif state.eventType == evMouseClick:
     # Get Cursor Position
-    self.input.cursor = textIndex(self.input.text,
+    self.input.cursor = index(self.input.text,
       state.mx - self.rect.x + self.wo - 4)
     # Focus Textbox
     self.set(wFocus)
