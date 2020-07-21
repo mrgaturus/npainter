@@ -8,9 +8,8 @@ from widget import GUIWidget
 type
   GUITimer = object
     target: GUITarget
-    secs: Timespec
-    # Ignore Secs
-    now: bool
+    stamp: Timespec
+    milsecs: int
   GUITimers = seq[GUITimer]
 var # Global Timers
   timers: GUITimers
@@ -40,20 +39,23 @@ proc check(a: Timespec): bool =
     (b.tv_sec == a.tv_sec and 
     b.tv_nsec >= a.tv_nsec)
 
-# -- Push Timers
-proc pushTimer*(target: GUITarget, milsecs: int) =
-  var timer: GUITimer
-  timer.target = target
-  timer.secs = current(milsecs)
-  # Add Timer to Global
-  timers.add(timer)
-
-proc pushTimer*(target: GUITarget) =
-  var timer: GUITimer
-  timer.target = target
-  timer.now = true
-  # Add Timer to Global
-  timers.add(timer)
+# -- Add a Timer
+proc pushTimer*(target: GUITarget, milsecs = 0) =
+  var found = false
+  block: # Check
+    var i: int32
+    # Find Timers
+    while i < len(timers):
+      if timers[i].target == target:
+        found = true; break
+      inc(i) # Next Timer
+  if not found:
+    var timer: GUITimer
+    timer.target = target
+    timer.milsecs = milsecs
+    timer.stamp = current(milsecs)
+    # Add Timer to Global
+    timers.add(timer)
 
 # -- Delete a Timer
 proc stopTimer*(target: GUITarget) =
@@ -61,25 +63,28 @@ proc stopTimer*(target: GUITarget) =
   # Find Timer and Delete
   while i < len(timers):
     if timers[i].target == target:
-      timers.delete(i)
-      break # Stop Loop
+      timers.delete(i); break
     inc(i) # Next Timer
 
 # -- Walk Timers
 iterator walkTimers*(): GUIWidget =
-  var timer: ptr GUITimer
-  var i, L: int32
+  var # Iterator
+    i, L: int32
+    timer: ptr GUITimer
   # Get Current Len
   L = len(timers).int32
   while i < L:
     # Handle Timer
     timer = addr timers[i]
-    if timer.now or check(timer.secs):
+    if check(timer.stamp):
       yield cast[GUIWidget](timer.target)
-    # Handle Deleted Timer
+    # Check if was not deleted
     if L != len(timers):
-      dec(L) # Dec Len
-    else: inc(i)
+      dec(L) # Removed
+    else: # Still Here
+      timer.stamp = 
+        current(timer.milsecs)
+      inc(i) # Next Timer
 
 # ------------------
 # SYSTEM REIMPLEMENT
