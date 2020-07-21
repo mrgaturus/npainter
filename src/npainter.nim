@@ -9,6 +9,8 @@ from gui/widgets/textbox import newTextBox
 from gui/widgets/slider import newSlider
 from gui/widgets/scroll import newScroll
 from gui/widgets/color import newColorBar
+from gui/atlas import width
+from gui/config import metrics, theme
 from omath import Value, interval, lerp, RGBColor
 from assets import icons
 from utf8 import UTF8Input, `text=`
@@ -18,6 +20,220 @@ icons 16:
   iconClear = "clear.svg"
   iconClose = "close.svg"
   iconReset = "reset.svg"
+
+# ------------------------
+# TEST MENU WIDGET
+# ------------------------
+
+type
+  GUIMenuKind = enum
+    mkMenu, mkAction
+  GUIMenuItem = object
+    name: string
+    width: int32
+    case kind: GUIMenuKind:
+    of mkMenu:
+      menu: GUIMenu
+    of mkAction:
+      cb: GUICallback
+  GUIMenu = ref object of GUIWidget
+    hover, submenu: int32
+    bar: GUIMenuBar
+    items: seq[GUIMenuItem]
+  GUIMenuTile = object
+    name: string
+    width: int32
+    menu: GUIMenu
+  GUIMenuBar = ref object of GUIWidget
+    grab: bool
+    hover: int32
+    items: seq[GUIMenuTile]
+
+# -- Both Menus --
+proc add(self: GUIMenuBar, name: string, menu: GUIMenu) =
+  menu.bar = self # Set Menu
+  self.items.add GUIMenuTile(
+    name: name, menu: menu)
+
+proc add(self: GUIMenu, name: string, menu: GUIMenu) =
+  if menu != self: # Avoid Cycle
+    self.items.add GUIMenuItem(
+      name: name, menu: menu, kind: mkMenu)
+
+proc add(self: GUIMenu, name: string, cb: GUICallback) =
+  self.items.add GUIMenuItem( # Add Callback
+    name: name, cb: cb, kind: mkAction)
+
+# -- Standard Menu
+proc newMenu(): GUIMenu =
+  new result # Alloc
+  # Define Atributes
+  result.flags = wPopup
+  result.hover = -1
+  result.submenu = -1
+
+method layout(self: GUIMenu) =
+  var # Max Width/Height
+    mw, mh: int32
+  for item in mitems(self.items):
+    mw = max(mw, item.name.width)
+    mh += metrics.fontSize
+  # Set Dimensions
+  self.rect.w = # Reserve Space
+    mw + (metrics.fontSize shl 1)
+  self.rect.h = mh + 4
+
+method draw(self: GUIMenu, ctx: ptr CTXRender) =
+  var 
+    offset = self.rect.y + 2
+    index: int32
+  let x = self.rect.x + (metrics.fontSize)
+  # Draw Background
+  ctx.color theme.bgContainer
+  ctx.fill rect(self.rect)
+  ctx.color theme.text
+  # Draw Each Menu
+  for item in mitems(self.items):
+    if self.hover == index:
+      ctx.color theme.hoverWidget
+      var r = rect(self.rect)
+      r.y = offset.float32
+      r.yh = r.y + float32(metrics.fontSize)
+      ctx.fill(r)
+      ctx.color theme.text
+    ctx.text(x, offset - metrics.descender, item.name)
+    offset += metrics.fontSize
+    inc(index) # Next Index
+  ctx.color theme.bgWidget
+  ctx.line rect(self.rect), 1
+
+method event(self: GUIMenu, state: ptr GUIState) =
+  case state.eventType
+  of evMouseClick, evMouseMove:
+    if self.test(wHover):
+      var # Search Hovered Item
+        index: int32
+        cursor = self.rect.y + 2
+      for item in mitems(self.items):
+        let space = cursor + metrics.fontSize
+        if state.my > cursor and state.my < space:
+          case item.kind
+          of mkMenu: # Submenu
+            if state.eventType == evMouseMove and index != self.submenu:
+              if self.submenu >= 0 and self.items[self.submenu].kind == mkMenu:
+                clear(self.items[self.submenu].menu, wFramed)
+              # Open new Submenu
+              item.menu.parent = self
+              item.menu.set(wFramed)
+              item.menu.move(self.rect.x + self.rect.w - 1, cursor - 2)
+              self.submenu = index
+          of mkAction: # Callback
+            if state.eventType == evMouseClick:
+              pushCallback(item.cb)
+              self.clear(wFramed)
+              if not isNil(self.bar):
+                self.bar.grab = false
+          # Menu Item Found
+          self.hover = index; return
+        # Next Menu
+        cursor = space
+        inc(index)
+    elif not isNil(self.bar) and # Use Menu Bar
+    pointOnArea(self.bar, state.mx, state.my):
+      self.bar.event(state)
+    elif state.eventType == evMouseClick:
+      self.clear(wFramed) # Close Menu
+      if not isNil(self.bar):
+        self.bar.grab = false
+    self.hover = -1 # Remove Current Hover
+  else: discard
+
+method handle(self: GUIMenu, kind: GUIHandle) =
+  case kind
+  of outFrame: # Close Submenu y Close is requested
+    if self.submenu >= 0 and self.items[self.submenu].kind == mkMenu:
+      clear(self.items[self.submenu].menu, wFramed)
+    self.submenu = -1
+  else: discard
+
+# -- Menu Bar
+proc newMenuBar(): GUIMenuBar =
+  new result # Alloc
+  # Define Atributes
+  result.hover = -1
+  result.flags = wStandard
+  result.minimum(0, metrics.fontSize)
+
+method layout(self: GUIMenuBar) =
+  # Get Text Widths
+  for menu in mitems(self.items):
+    menu.width = menu.name.width
+
+method draw(self: GUIMenuBar, ctx: ptr CTXRender) =
+  # Draw Background
+  ctx.color theme.bgWidget
+  ctx.fill rect(self.rect)
+  # Draw Each Menu
+  var # Iterator
+    index: int32
+    cursor: int32 = self.rect.x
+    r: CTXRect
+  r.y = float32(self.rect.y)
+  r.yh = r.y + float32(self.hint.h)
+  # Set Text Color
+  ctx.color theme.text
+  for item in mitems(self.items):
+    if self.hover == index:
+      # Set Hover Color
+      ctx.color theme.hoverWidget
+      # Define Rect
+      r.x = cursor.float32
+      r.xw = r.x + 4 +
+        float32(item.width)
+      # Fill Rect
+      ctx.fill(r)
+      # Return Text Color
+      ctx.color theme.text
+    cursor += 2
+    ctx.text(cursor, 
+      self.rect.y + 2, item.name)
+    cursor += item.width + 2
+    inc(index) # Current Index
+
+method event(self: GUIMenuBar, state: ptr GUIState) =
+  case state.eventType
+  of evMouseClick, evMouseMove:
+    var # Search Hovered Item
+      cursor = self.rect.x
+      index: int32
+    for item in mitems(self.items):
+      let space = cursor + item.width + 4
+      if state.mx > cursor and state.mx < space:
+        if state.eventType == evMouseClick:
+          if item.menu.test(wFramed):
+            item.menu.clear(wFramed)
+            self.grab = false
+          else: # Open Popup
+            self.grab = true
+            item.menu.set(wFramed)
+          item.menu.move(cursor,
+            self.rect.y + self.rect.h)
+        elif self.grab and self.hover >= 0 and
+        index != self.hover:
+          # Change Menu To Other
+          self.items[self.hover].menu.clear(wFramed)
+          item.menu.set(wFramed)
+          item.menu.move(cursor,
+            self.rect.y + self.rect.h)
+        self.hover = index; break
+      # Next Menu
+      cursor = space
+      inc(index)
+  else: discard
+
+# -----------------------
+# TEST MISC WIDGETS STUFF
+# -----------------------
 
 type
   Counter = object
@@ -112,6 +328,12 @@ proc fill*(buffer: var seq[uint32], x, y, w, h: int32, color: uint32) =
       inc(xi)
     inc(i); inc(yi)
 
+proc exit(a, b: pointer) =
+  pushSignal(msgTerminate)
+
+proc world(a, b: pointer) =
+  echo "Hello World"
+
 when isMainModule:
   var counter = Counter(
     clicked: 0, 
@@ -145,6 +367,27 @@ when isMainModule:
     echo "ERROR: failed initialize FT2"
   # Create a new Window
   let root = new GUIFondo
+  block: # Create Menu Bar
+    var bar = newMenuBar()
+    var menu: GUIMenu
+    # Create a Menu
+    menu = newMenu()
+    menu.add("Hello World", world)
+    menu.add("Exit A", exit)
+    bar.add("File", menu)
+    # Create Other Menu
+    menu = newMenu()
+    menu.add("Hello World", world)
+    menu.add("Exit B", exit)
+    bar.add("Other", menu)
+    block: # SubMenu
+      var sub = newMenu()
+      sub.add("Hello Inside", world)
+      sub.add("Kill Program", exit)
+      menu.add("The Game", sub)
+    # Add Menu Bar to Root Widget
+    bar.geometry(20, 160, 200, bar.hint.h)
+    root.add(bar)
   block: # Create Widgets
     # Create two blanks
     var
@@ -263,7 +506,7 @@ when isMainModule:
   middle = getTime()
   triangle_naive(addr cpu_pixels[0], 512, 256, addr tri)
   finish = getTime()
-  echo "sse: ", middle - start, "\nnaive: ", finish - middle
+  #echo "sse: ", middle - start, "\nnaive: ", finish - middle
   fill(cpu_pixels, 0, 0, 512, 256, 0x1100FF00'u32)
   # Put it to raster
   glBindTexture(GL_TEXTURE_2D, cpu_raster)
