@@ -120,6 +120,7 @@ type
     of sCallback:
       cb: GUICallback
     # Signal Data
+    size*: Natural
     data*: GUIOpaque
   # Signal Generic Data
   GUITarget* = distinct pointer
@@ -187,6 +188,7 @@ proc pushSignal(id: pointer, msg: uint8, data: pointer, size: Natural) =
   nsignal.id = id
   nsignal.msg = msg
   # Copy Optionally Data
+  nsignal.size = size
   if size > 0 and not isNil(data):
     copyMem(addr nsignal.data, data, size)
   # Add new signal to Front
@@ -206,6 +208,7 @@ proc pushCallback(cb: GUICallback, data: pointer, size: Natural) =
   nsignal.kind = sCallback
   nsignal.cb = cb
   # Copy Optionally Data
+  nsignal.size = size
   if size > 0 and not isNil(data):
     copyMem(addr nsignal.data, data, size)
   # Add new signal to Front
