@@ -78,22 +78,13 @@ iterator reverse*(last: GUIWidget): GUIWidget =
     yield frame
     frame = frame.prev
 
-# --------------------------
-# WIDGET SIGNAL TARGET PROCS
-# --------------------------
+# ------------------------------------
+# WIDGET SIGNAL & FLAGS HANDLING PROCS
+# ------------------------------------
 
+# -- Widget Signal Target
 proc target*(self: GUIWidget): GUITarget {.inline.} =
-  assert(not self.isNil); cast[GUITarget](self)
-
-template trigger*(target: GUITarget) =
-  pushSignal(target, msgTrigger)
-
-template trigger*(target: GUITarget, data: typed) =
-  pushSignal(target, msgTrigger, data)
-
-# -------------------------------
-# WIDGET FLAGS MANIPULATION PROCS
-# -------------------------------
+  cast[GUITarget](self) # Avoid Ref Count Loosing
 
 # -- Unsafe Flags Handling
 proc set*(flags: var GUIFlags, mask: GUIFlags) {.inline.} =
@@ -136,6 +127,7 @@ proc clear*(self: GUIWidget, mask: GUIFlags) =
   self.flags = # Clear Flags Mask
     self.flags and not (delta and wProtected)
 
+# -- Flags Testing
 proc any*(self: GUIWidget, mask: GUIFlags): bool {.inline.} =
   return (self.flags and mask) > 0
 
@@ -211,7 +203,6 @@ proc resize*(widget: GUIWidget, w,h: int32) =
 
 method handle*(widget: GUIWidget, kind: GUIHandle) {.base.} = discard
 method event*(widget: GUIWidget, state: ptr GUIState) {.base.} = discard
-method notify*(widget: GUIWidget, data: pointer) {.base.} = discard
 method update*(widget: GUIWidget) {.base.} = discard
 method layout*(widget: GUIWidget) {.base.} = discard
 method draw*(widget: GUIWidget, ctx: ptr CTXRender) {.base.} = discard

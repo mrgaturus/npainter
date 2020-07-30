@@ -481,24 +481,23 @@ proc handleEvents*(win: var GUIWindow) =
 
 proc handleSignals*(win: var GUIWindow): bool =
   for signal in pollQueue():
-    # is GUI Callback?
-    if callSignal(signal): continue
-    elif isNil(signal.id):
-      case WindowSignal(signal.msg)
-      of msgOpenIM: XSetICFocus(win.xic)
-      of msgCloseIM: XUnsetICFocus(win.xic)
-      of msgTerminate: return true
-      else: discard
-    else: # Process Widget Signal
-      let widget = cast[GUIWidget](signal.id)
-      case WidgetSignal(signal.msg)
+    case signal.kind
+    of sCallback:
+      signal.call()
+    of sWidget:
+      let widget = 
+        cast[GUIWidget](signal.id)
+      case signal.msg
       of msgOpen: open(win, widget)
       of msgClose: close(win, widget)
       of msgFocus: focus(win, widget)
       of msgDirty: dirty(win, widget)
       of msgCheck: check(win, widget)
-      of msgTrigger: # Handle Signal Data
-        notify(widget, addr signal.data)
+    of sWindow:
+      case signal.w_msg
+      of msgOpenIM: XSetICFocus(win.xic)
+      of msgCloseIM: XUnsetICFocus(win.xic)
+      of msgTerminate: return true
   # Still Alive
   return false
 

@@ -108,19 +108,27 @@ proc translateXEvent*(state: var GUIState, display: PDisplay, event: PXEvent,
 
 type
   # GUI Signal Private
-  SKind = enum
-    sSignal, sCallback
+  SKind* = enum
+    sCallback # CB
+    sWidget, sWindow
+  WidgetSignal* = enum
+    msgOpen, msgClose # Framing
+    msgDirty, msgFocus, msgCheck
+  WindowSignal* = enum
+    msgOpenIM, msgCloseIM
+    msgTerminate # Close
   Signal = object
     next: GUISignal
     # Signal or Callback
-    case kind: SKind
-    of sSignal:
-      id*: pointer
-      msg*: uint8
+    case kind*: SKind
     of sCallback:
-      cb: GUICallback
+      cb*: GUICallback
+    of sWidget:
+      id*: GUITarget
+      msg*: WidgetSignal
+    of sWindow:
+      w_msg*: WindowSignal
     # Signal Data
-    size*: Natural
     data*: GUIOpaque
   # Signal Generic Data
   GUITarget* = distinct pointer
@@ -163,32 +171,37 @@ iterator pollQueue*(): GUISignal =
   queue.back = nil
   queue.front = nil
 
-# --------------------
-# CALLBACK CALLER PROC
-# --------------------
-
-proc callSignal*(signal: GUISignal): bool =
-  result = signal.kind == sCallback
-  if result: signal.cb(queue.global,
-    cast[pointer](addr signal.data)
-  )
-
 # ---------------------------
 # SIGNAL UNSAFE PUSHING PROCS
 # ---------------------------
 
-proc pushSignal(id: pointer, msg: uint8, data: pointer, size: Natural) =
-  # Allocs new signal
+proc pushSignal*(id: GUITarget, msg: WidgetSignal) =
+  assert(not cast[pointer](id).isNil)
+  # Allocs New Signal
   let nsignal = cast[GUISignal](
-    alloc0(sizeof(Signal) + size)
+    alloc0(Signal.sizeof)
   ); nsignal.next = nil
-  # Signal Kind
-  nsignal.kind = sSignal
-  # Assign Msg
+  # Widget Signal Kind
+  nsignal.kind = sWidget
   nsignal.id = id
   nsignal.msg = msg
+  # Add new signal to Front
+  if queue.front.isNil:
+    queue.back = nsignal
+    queue.front = nsignal
+  else:
+    queue.front.next = nsignal
+    queue.front = nsignal
+
+proc pushSignal(msg: WindowSignal, data: pointer, size: Natural) =
+  # Allocs New Signal
+  let nsignal = cast[GUISignal](
+    alloc0(Signal.sizeof + size)
+  ); nsignal.next = nil
+  # Window Signal Kind
+  nsignal.kind = sWindow
+  nsignal.wmsg = msg
   # Copy Optionally Data
-  nsignal.size = size
   if size > 0 and not isNil(data):
     copyMem(addr nsignal.data, data, size)
   # Add new signal to Front
@@ -200,15 +213,15 @@ proc pushSignal(id: pointer, msg: uint8, data: pointer, size: Natural) =
     queue.front = nsignal
 
 proc pushCallback(cb: GUICallback, data: pointer, size: Natural) =
-  # Allocs new signal
+  assert(not cb.isNil)
+  # Allocs New Signal
   let nsignal = cast[GUISignal](
-    alloc0(sizeof(Signal) + size)
+    alloc0(Signal.sizeof + size)
   ); nsignal.next = nil
   # Assign Callback
   nsignal.kind = sCallback
   nsignal.cb = cb
   # Copy Optionally Data
-  nsignal.size = size
   if size > 0 and not isNil(data):
     copyMem(addr nsignal.data, data, size)
   # Add new signal to Front
@@ -219,51 +232,19 @@ proc pushCallback(cb: GUICallback, data: pointer, size: Natural) =
     queue.front.next = nsignal
     queue.front = nsignal
 
-# ------------------------------
-# GUI WIDGET/WINDOW SIGNAL ENUMS
-# ------------------------------
-
-type
-  WidgetSignal* = enum
-    msgOpen, msgClose
-    msgFocus, msgDirty
-    msgCheck, msgTrigger
-  WindowSignal* = enum
-    msgOpenIM, msgCloseIM
-    msgFocusOut, msgTerminate
-
 # ----------------------------------
 # GUI WIDGET SIGNAL PUSHER TEMPLATES
 # ----------------------------------
 
-template pushSignal*(w: GUITarget, msg: WidgetSignal, data: pointer, size: Natural) =
-  pushSignal(cast[pointer](w), cast[uint8](msg), data, size)
-
-template pushSignal*(w: GUITarget, msg: WidgetSignal, data: typed) =
-  pushSignal(cast[pointer](w), cast[uint8](msg), addr data, sizeof(data))
-
-template pushSignal*(w: GUITarget, msg: WidgetSignal) =
-  pushSignal(cast[pointer](w), cast[uint8](msg), nil, 0)
-
-# ----------------------------------
-# GUI WINDOW SIGNAL PUSHER TEMPLATES
-# ----------------------------------
-
-template pushSignal*(msg: WindowSignal, data: pointer, size: Natural) =
-  pushSignal(nil, cast[uint8](msg), data, size)
-
 template pushSignal*(msg: WindowSignal, data: typed) =
-  pushSignal(nil, cast[uint8](msg), addr data, sizeof(data))
+  pushSignal(msg, addr data, sizeof(data))
 
 template pushSignal*(msg: WindowSignal) =
-  pushSignal(nil, cast[uint8](msg), nil, 0)
+  pushSignal(msg, nil, 0)
 
 # ------------------------------------
 # GUI CALLBACK SIGNAL PUSHER TEMPLATES
 # ------------------------------------
-
-template pushCallback*(cb: proc, data: pointer, size: Natural) =
-  pushCallback(cast[GUICallback](cb), data, size)
 
 template pushCallback*(cb: proc, data: typed) =
   pushCallback(cast[GUICallback](cb), addr data, sizeof(data))
@@ -274,6 +255,9 @@ template pushCallback*(cb: proc) =
 # ---------------------------------
 # GUI SIGNAL DATA POINTER CONVERTER
 # ---------------------------------
+
+template call*(sig: GUISignal) =
+  sig.cb(queue.global, addr signal.data)
 
 template convert*(data: GUIOpaque, t: type): ptr t =
   cast[ptr t](addr data)
