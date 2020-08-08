@@ -112,8 +112,9 @@ type
     sCallback # CB
     sWidget, sWindow
   WidgetSignal* = enum
-    msgOpen, msgClose # Framing
     msgDirty, msgFocus, msgCheck
+    msgClose, msgFrame
+    msgPopup, msgTooltip
   WindowSignal* = enum
     msgOpenIM, msgCloseIM
     msgTerminate # Close
@@ -200,7 +201,7 @@ proc pushSignal(msg: WindowSignal, data: pointer, size: Natural) =
   ); nsignal.next = nil
   # Window Signal Kind
   nsignal.kind = sWindow
-  nsignal.wmsg = msg
+  nsignal.w_msg = msg
   # Copy Optionally Data
   if size > 0 and not isNil(data):
     copyMem(addr nsignal.data, data, size)
@@ -237,7 +238,7 @@ proc pushCallback(cb: GUICallback, data: pointer, size: Natural) =
 # ----------------------------------
 
 template pushSignal*(msg: WindowSignal, data: typed) =
-  pushSignal(msg, addr data, sizeof(data))
+  pushSignal(msg, addr data, sizeof data)
 
 template pushSignal*(msg: WindowSignal) =
   pushSignal(msg, nil, 0)
@@ -247,7 +248,7 @@ template pushSignal*(msg: WindowSignal) =
 # ------------------------------------
 
 template pushCallback*(cb: proc, data: typed) =
-  pushCallback(cast[GUICallback](cb), addr data, sizeof(data))
+  pushCallback(cast[GUICallback](cb), addr data, sizeof data)
 
 template pushCallback*(cb: proc) =
   pushCallback(cast[GUICallback](cb), nil, 0)

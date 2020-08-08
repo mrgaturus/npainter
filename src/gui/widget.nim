@@ -4,45 +4,46 @@ from event import
 from render import 
   CTXRender, GUIRect, push, pop
 
-const # Widget Flags
-  # Widget Windowing
-  wFramed* = uint16(1 shl 0) # C
-  wStacked* = uint16(1 shl 1) # I
-  wWalker* = uint16(1 shl 2) # A
-  # Layoutning Placeholder
-  wDirty* = uint16(1 shl 3) # C
+const # Widget Bit-Flags
+  wChild* = uint16(1 shl 0) # C
+  wFrame* = uint16(1 shl 1) # C
+  wPopup* = uint16(1 shl 2) # C
+  wWalker* = uint16(1 shl 3) # A
+  wTooltip* = uint16(1 shl 4) # C
+  # Layoutning Mark - Placeholder
+  wDirty* = uint16(1 shl 5) # C
   # Status - Visible, Enabled and Popup
-  wVisible* = uint16(1 shl 4) # A
-  wEnabled* = uint16(1 shl 5) # C
-  wKeyboard* = uint16(1 shl 6) # C
-  wMouse* = uint16(1 shl 7) # C
+  wVisible* = uint16(1 shl 6) # A
+  wEnabled* = uint16(1 shl 7) # C
+  wKeyboard* = uint16(1 shl 8) # C
+  wMouse* = uint16(1 shl 9) # C
   # Handlers - Focus, Hover and Grab
-  wFocus* = uint16(1 shl 8) # C
-  wHover* = uint16(1 shl 9) # A
-  wGrab* = uint16(1 shl 10) # A
+  wFocus* = uint16(1 shl 10) # C
+  wHover* = uint16(1 shl 11) # A
+  wGrab* = uint16(1 shl 12) # A
   # Rendering - Opaque and Forced Hidden
-  wOpaque* = uint16(1 shl 11) # C
-  wHidden* = uint16(1 shl 12) # C
+  wOpaque* = uint16(1 shl 13) # C
+  wHidden* = uint16(1 shl 14) # C
   # ------ WIDGET FLAGS MASKS ------
   wFocusable* = wEnabled or wKeyboard
-  wClickable = wVisible or wMouse
-  # -- Flags Checking Mask
-  wFrameCheck* = wFramed or wVisible
-  wWalkCheck* = wStacked or wWalker
-  wGrabCheck* = wWalkCheck or wGrab
-  wFocusCheck* = wFocusable or wFocus
-  wRenderCheck = wVisible or wOpaque
-  # -- Default Flags - Widget Constructor
-  wStandard* = wFocusable or wMouse
-  wPopup* = wStacked or wStandard
-  # -- Window-Only Automatic Handling
+  wClickable* = wVisible or wMouse
+  # -- Convenient Combinations Masks
   wHoverGrab* = wHover or wGrab
+  wFraming* = wFrame or wPopup or wTooltip
+  # -- Checking Flags Masks
+  wWalkCheck* = wPopup or wWalker
+  wFrameCheck* = wChild or wFraming
+  wRenderCheck* = wVisible or wOpaque
+  wFocusCheck* = wFocusable or wFocus
+  wGrabCheck* = wPopup or wWalker or wGrab
   # -- Reactive Handling Mask Flags
-  wHandleMask = wFramed or wDirty or wFocus
-  wHandleClear = wFramed or wFocusCheck
+  wHandleMask = wFraming or wDirty or wFocus
+  wHandleClear = wFraming or wFocusCheck
   # -- Protect Automatic / Define Flags
   wProtected = # Avoid Changing Automatics
-    not(wStacked or wWalker or wVisible or wHoverGrab)
+    not(wChild or wWalker or wVisible or wHoverGrab)
+  # -- Default Flags - Widget Constructor
+  wStandard* = wFocusable or wMouse
 
 type
   GUIFlags* = uint16
@@ -99,17 +100,20 @@ proc set*(self: GUIWidget, mask: GUIFlags) =
   # Check if mask needs handling
   if (delta and wHandleMask) > 0:
     let target = self.target
-    # Open Widget as Subwindow
-    if (delta and wFramed) == wFramed:
-      pushSignal(target, msgOpen)
-      delta = delta or wDirty
+    # Open Widget as Widget Frame
+    if (delta and wFraming) > 0 and
+    (self.flags and wFrameCheck) == 0:
+      case delta and wFraming
+      of wFrame: pushSignal(target, msgFrame)
+      of wPopup: pushSignal(target, msgPopup)
+      of wTooltip: pushSignal(target, msgTooltip)
+      else: delta = delta and not wFraming
     # Relayout Widget and Childrens
     if (delta and wDirty) == wDirty:
       pushSignal(target, msgDirty)
     # Request Replace Window Focus
     if (delta and wFocus) == wFocus:
       pushSignal(target, msgFocus)
-      delta = delta and not wFocus
   self.flags = # Merge Flags Mask
     self.flags or (delta and wProtected)
 
@@ -119,7 +123,7 @@ proc clear*(self: GUIWidget, mask: GUIFlags) =
   if (delta and wHandleClear) > 0:
     let target = self.target
     # Close Window Subwindow
-    if (delta and wFramed) == wFramed:
+    if (delta and wFraming) > 0:
       pushSignal(target, msgClose)
     # Check if focus status is altered
     if (delta and wFocusCheck) > 0:
@@ -148,6 +152,8 @@ proc add*(parent, widget: GUIWidget) =
     parent.last.next = widget
   # Set Widget To Last
   parent.last = widget
+  # Mark Widget as Children
+  widget.flags.set(wChild)
 
 # ------------------------------------
 # WIDGET RECT PROCS layout-mouse event
@@ -161,7 +167,7 @@ proc minimum*(widget: GUIWidget, w,h: int32) =
   widget.hint.w = w; widget.hint.h = h
 
 # -- Used by Layout for Surface Visibility
-proc calcAbsolute*(widget: GUIWidget, pivot: var GUIRect) =
+proc calcAbsolute(widget: GUIWidget, pivot: var GUIRect) =
   # Calcule Absolute Position
   widget.rect.x = pivot.x + widget.hint.x
   widget.rect.y = pivot.y + widget.hint.y
@@ -173,7 +179,7 @@ proc calcAbsolute*(widget: GUIWidget, pivot: var GUIRect) =
     widget.rect.y + widget.rect.h >= pivot.y
   # Mark Visible if Passed
   widget.flags = (widget.flags and not wVisible) or 
-    (cast[uint16](test) shl 4)
+    (cast[uint16](test) shl 6)
 
 proc pointOnArea*(widget: GUIWidget, x, y: int32): bool =
   return (widget.flags and wClickable) == wClickable and
@@ -185,13 +191,13 @@ proc pointOnArea*(widget: GUIWidget, x, y: int32): bool =
 # -----------------------------
 
 proc move*(widget: GUIWidget, x,y: int32) =
-  if (widget.flags and wFramed) != 0:
+  if (widget.flags and wFraming) > 0:
     widget.rect.x = x; widget.rect.y = y
     # Mark Widget as Dirty
     widget.set(wDirty)
 
 proc resize*(widget: GUIWidget, w,h: int32) =
-  if (widget.flags and wFramed) != 0:
+  if (widget.flags and wFraming) > 0:
     widget.rect.w = max(w, widget.hint.w)
     widget.rect.h = max(h, widget.hint.h)
     # Mark Widget as Dirty

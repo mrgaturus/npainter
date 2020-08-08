@@ -78,13 +78,13 @@ iterator walkTimers*(): GUIWidget =
     timer = addr timers[i]
     if check(timer.stamp):
       yield cast[GUIWidget](timer.target)
-    # Check if was not deleted
-    if L != len(timers):
-      dec(L) # Removed
-    else: # Still Here
-      timer.stamp = 
-        current(timer.milsecs)
-      inc(i) # Next Timer
+      # Check if was not deleted
+      if L == len(timers):
+        timer.stamp = 
+          current(timer.milsecs)
+      else: # Deleted Timer
+        dec(L); continue
+    inc(i) # Next Timer
 
 # ------------------
 # SYSTEM REIMPLEMENT

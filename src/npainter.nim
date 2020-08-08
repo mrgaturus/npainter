@@ -21,8 +21,27 @@ icons 16:
   iconClose = "close.svg"
   iconReset = "reset.svg"
 
+# -------------------
+# TEST TOOLTIP WIDGET
+# -------------------
+
+type
+  GUITooltip = ref object of GUIWidget
+
+method draw(tp: GUITooltip, ctx: ptr CTXRender) =
+  ctx.color theme.bgWidget
+  ctx.fill rect(tp.rect.x, tp.rect.y, 
+    "TEST TOOLTIP".width, metrics.fontSize)
+  ctx.color theme.text
+  ctx.text(tp.rect.x, tp.rect.y, "TEST TOOLTIP")
+
+method update(tp: GUITooltip) =
+  if tp.test(wTooltip):
+    tp.clear(wTooltip)
+  else: tp.set(wTooltip)
+
 # ------------------------
-# TEST MENU WIDGET
+# TEST MENU WIDGET PROTOTYPE
 # ------------------------
 
 type
@@ -68,7 +87,7 @@ proc add(self: GUIMenu, name: string, cb: GUICallback) =
 proc newMenu(): GUIMenu =
   new result # Alloc
   # Define Atributes
-  result.flags = wPopup
+  result.flags = wMouse
   result.hover = -1
   result.submenu = -1
 
@@ -121,16 +140,16 @@ method event(self: GUIMenu, state: ptr GUIState) =
           of mkMenu: # Submenu
             if state.eventType == evMouseMove and index != self.submenu:
               if self.submenu >= 0 and self.items[self.submenu].kind == mkMenu:
-                clear(self.items[self.submenu].menu, wFramed)
+                clear(self.items[self.submenu].menu, wPopup)
               # Open new Submenu
               item.menu.parent = self
-              item.menu.set(wFramed)
+              item.menu.set(wPopup)
               item.menu.move(self.rect.x + self.rect.w - 1, cursor - 2)
               self.submenu = index
           of mkAction: # Callback
             if state.eventType == evMouseClick:
               pushCallback(item.cb)
-              self.clear(wFramed)
+              self.clear(wPopup)
               if not isNil(self.bar):
                 self.bar.grab = false
           # Menu Item Found
@@ -142,7 +161,7 @@ method event(self: GUIMenu, state: ptr GUIState) =
     pointOnArea(self.bar, state.mx, state.my):
       self.bar.event(state)
     elif state.eventType == evMouseClick:
-      self.clear(wFramed) # Close Menu
+      self.clear(wPopup) # Close Menu
       if not isNil(self.bar):
         self.bar.grab = false
     self.hover = -1 # Remove Current Hover
@@ -152,7 +171,7 @@ method handle(self: GUIMenu, kind: GUIHandle) =
   case kind
   of outFrame: # Close Submenu y Close is requested
     if self.submenu >= 0 and self.items[self.submenu].kind == mkMenu:
-      clear(self.items[self.submenu].menu, wFramed)
+      clear(self.items[self.submenu].menu, wPopup)
     self.submenu = -1
   else: discard
 
@@ -210,19 +229,19 @@ method event(self: GUIMenuBar, state: ptr GUIState) =
       let space = cursor + item.width + 4
       if state.mx > cursor and state.mx < space:
         if state.eventType == evMouseClick:
-          if item.menu.test(wFramed):
-            item.menu.clear(wFramed)
+          if item.menu.test(wPopup):
+            item.menu.clear(wPopup)
             self.grab = false
           else: # Open Popup
             self.grab = true
-            item.menu.set(wFramed)
+            item.menu.set(wPopup)
           item.menu.move(cursor,
             self.rect.y + self.rect.h)
         elif self.grab and self.hover >= 0 and
         index != self.hover:
           # Change Menu To Other
-          self.items[self.hover].menu.clear(wFramed)
-          item.menu.set(wFramed)
+          self.items[self.hover].menu.clear(wPopup)
+          item.menu.set(wPopup)
           item.menu.move(cursor,
             self.rect.y + self.rect.h)
         self.hover = index; break
@@ -252,9 +271,9 @@ method draw(fondo: GUIFondo, ctx: ptr CTXRender) =
 
 method event(fondo: GUIFondo, state: ptr GUIState) =
   if state.eventType == evMouseClick:
-    if fondo.test(wStacked) and 
+    if fondo.test(wPopup) and 
     not fondo.test(wHover):
-      fondo.clear(wFramed)
+      fondo.clear(wPopup)
 
 var coso: UTF8Input
 proc helloworld*(g, d: pointer) =
@@ -294,21 +313,22 @@ method draw*(widget: GUIBlank, ctx: ptr CTXRender) =
 method event*(widget: GUIBlank, state: ptr GUIState) =
   #echo "cursor mx: ", state.mx, " cursor my: ", state.my
   if state.eventType == evMouseClick:
-    if not isNil(widget.frame) and test(widget.frame, wFramed):
-      widget.frame.set(wFramed)
+    if not isNil(widget.frame) and test(widget.frame, wFrame):
+      widget.frame.clear(wFrame)
     else:
       pushTimer(widget.target, 1000)
       widget.set(wFocus)
   elif state.eventType == evMouseRelease:
     # Remove Timer
+    echo "w timer removed"
     stopTimer(widget.target)
   if widget.test(wGrab) and not isNil(widget.frame):
     move(widget.frame, state.mx + 5, state.my + 5)
 
 method update*(widget: GUIBlank) =
-  echo "reached"
+  echo "w timer open frame"
   if widget.frame != nil:
-    widget.frame.set(wFramed)
+    widget.frame.set(wFrame)
   # Remove Timer
   stopTimer(widget.target)
 
@@ -410,7 +430,7 @@ when isMainModule:
     block: # Menu Blank #2
       con = new GUIFondo
       con.color = 0xAA637a90'u32
-      con.flags = wPopup
+      con.flags = wStandard
       con.rect.w = 200
       con.rect.h = 100
       # Sub-Blank #1
@@ -485,7 +505,10 @@ when isMainModule:
       color.geometry(300, 500, color.hint.w * 2, color.hint.h * 2)
       root.add(color)
     root.add(button)
-    # Creates new Window
+  # Create a random tooltip
+  var tooltip = new GUITooltip
+  tooltip.rect.x = 40
+  tooltip.rect.y = 180
   
   # Draw a triangle
   var tri: CPUTriangle
@@ -516,7 +539,8 @@ when isMainModule:
   glPixelStorei(GL_UNPACK_ALIGNMENT, 4)
   glBindTexture(GL_TEXTURE_2D, 0)
   # Open Window
-  if win.show(root):
+  if win.open(root):
+    pushTimer(tooltip.target, 1000)
     while true:
       win.handleEvents() # Input
       if win.handleSignals(): break
@@ -527,4 +551,4 @@ when isMainModule:
       # Render GUI
       win.render()
   # Close Window
-  win.dispose()
+  win.close()
