@@ -22,8 +22,8 @@
 import x11/x, x11/xlib
 type
   EGLNativeDisplayType* = PDisplay
-  EGLNativePixmapType* = TPixmap
-  EGLNativeWindowType* = TWindow
+  EGLNativePixmapType* = Pixmap
+  EGLNativeWindowType* = Window
 
 # Types
 type

@@ -57,7 +57,7 @@ proc utf8buffer*(state: var GUIState, cap: int32) =
 
 # X11 to GUIState translation
 proc translateXEvent*(state: var GUIState, display: PDisplay, event: PXEvent,
-    xic: TXIC): bool =
+    xic: XIC): bool =
   state.eventType = cast[GUIEvent](event.theType - 2)
   case event.theType
   of ButtonPress, ButtonRelease:
@@ -85,7 +85,7 @@ proc translateXEvent*(state: var GUIState, display: PDisplay, event: PXEvent,
   of KeyRelease:
     # Handle key-repeat properly
     if XEventsQueued(display, QueuedAfterReading) != 0:
-      var nEvent: TXEvent
+      var nEvent: XEvent
       discard XPeekEvent(display, nEvent.addr)
       if nEvent.theType == KeyPress and
           nEvent.xkey.time == event.xkey.time and

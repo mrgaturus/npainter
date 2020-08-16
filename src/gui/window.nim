@@ -32,10 +32,10 @@ type
   GUIWindow* = object
     # X11 Display & Window
     display: PDisplay
-    xID: TWindow
+    xID: Window
     # X11 Input Method
-    xim: TXIM
-    xic: TXIC
+    xim: XIM
+    xic: XIC
     # EGL Context
     eglDsp: EGLDisplay
     eglCfg: EGLConfig
@@ -70,9 +70,9 @@ proc createXIM(win: var GUIWindow) =
   if win.xic == nil:
     log(lvWarning, "failed creating XIM context")
 
-proc createXWindow(x11: PDisplay, w, h: uint32): TWindow =
+proc createXWindow(x11: PDisplay, w, h: uint32): Window =
   var # Attributes and EGL
-    attr: TXSetWindowAttributes
+    attr: XSetWindowAttributes
   attr.event_mask =
     KeyPressMask or
     KeyReleaseMask or
@@ -451,7 +451,7 @@ proc tooltip(win: var GUIWindow, widget: GUIWidget) =
 # --------------------------
 
 proc handleEvents*(win: var GUIWindow) =
-  var event: TXEvent
+  var event: XEvent
   # Input Event Handing
   while XPending(win.display) != 0:
     discard XNextEvent(win.display, addr event)
