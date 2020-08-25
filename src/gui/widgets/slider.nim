@@ -17,7 +17,7 @@ type
 proc newSlider*(value: ptr Value, decimals = 0i8): GUISlider =
   new result # Initialize Slider
   # Widget Standard Flag
-  result.flags = wStandard
+  result.flags = wMouse
   # Set Minimun Size
   result.minimum(0, metrics.fontSize - 
     metrics.descender)
@@ -54,7 +54,7 @@ method draw(self: GUISlider, ctx: ptr CTXRender) =
     self.rect.y - metrics.descender, text)
 
 method event(self: GUISlider, state: ptr GUIState) =
-  if self.test(wGrab):
+  if self.test(wGrab or wMouse):
     self.value[].lerp clamp(
       (state.mx - self.rect.x) / self.rect.w, 
       0, 1), self.decimals == 0

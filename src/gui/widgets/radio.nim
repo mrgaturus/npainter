@@ -15,7 +15,7 @@ proc newRadio*(label: string, expected: byte, check: ptr byte): GUIRadio =
   # Set to Font Size Metrics
   result.minimum(0, metrics.fontSize)
   # Widget Standard Flag
-  result.flags = wStandard
+  result.flags = wMouse
   # Radio Button Attributes
   result.label = label
   result.expected = expected
@@ -46,7 +46,6 @@ method draw(self: GUIRadio, ctx: ptr CTXRender) =
     self.label)
 
 method event(self: GUIRadio, state: ptr GUIState) =
-  if self.test(wMouse):
-    if state.eventType == evMouseRelease and
-        self.test(wHover):
-      self.check[] = self.expected
+  if state.eventType == evMouseRelease and
+      self.test(wHover or wMouse):
+    self.check[] = self.expected

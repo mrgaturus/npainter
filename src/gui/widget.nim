@@ -9,7 +9,7 @@ const # Widget Bit-Flags
   # Hidden and Visibility Check
   wHidden* = uint8(1 shl 1) # C
   wVisible* = uint8(1 shl 2) # A
-  # Enabled and Clickable
+  # Separated Enabled Status
   wKeyboard* = uint8(1 shl 3) # C
   wMouse* = uint8(1 shl 4) # C
   # Focus, Hover and Grab
@@ -17,9 +17,8 @@ const # Widget Bit-Flags
   wHover* = uint8(1 shl 6) # A
   wGrab* = uint8(1 shl 7) # A
   # -- Status Checking Masks
-  wFocusCheck* = wVisible or wKeyboard
-  wHoverCheck* = wVisible or wMouse
   wHoverGrab* = wHover or wGrab
+  wFocusCheck* = wVisible or wKeyboard
   # -- Set/Clear Handle Masks
   wHandleMask = wFocus or wDirty
   wHandleClear = wFocus or wFocusCheck
@@ -155,7 +154,7 @@ proc calcAbsolute(widget: GUIWidget, pivot: var GUIRect) =
     (cast[uint8](test) shl 2) # See wVisible
 
 proc pointOnArea*(widget: GUIWidget, x, y: int32): bool =
-  return (widget.flags and wHoverCheck) == wHoverCheck and
+  return (widget.flags and wVisible) == wVisible and
     x >= widget.rect.x and x <= widget.rect.x + widget.rect.w and
     y >= widget.rect.y and y <= widget.rect.y + widget.rect.h
 

@@ -15,7 +15,7 @@ proc newButton*(label: string, cb: GUICallback): GUIButton =
   result.minimum(label.width, 
     metrics.fontSize - metrics.descender)
   # Widget Standard Flag
-  result.flags = wStandard
+  result.flags = wMouse
   # Widget Attributes
   result.label = label
   result.cb = cb
@@ -37,5 +37,5 @@ method draw(self: GUIButton, ctx: ptr CTXRender) =
 
 method event(self: GUIButton, state: ptr GUIState) =
   if state.eventType == evMouseRelease and 
-  self.test(wHover) and not isNil(self.cb): 
-    pushCallback(self.cb)
+  self.test(wHover or wMouse) and not isNil(self.cb): 
+    pushCallback(self.cb) # Call Callback

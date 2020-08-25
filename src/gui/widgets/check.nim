@@ -14,7 +14,7 @@ proc newCheckbox*(label: string, check: ptr bool): GUICheckBox =
   # Set to Font Size Metrics
   result.minimum(0, metrics.fontSize)
   # Button Attributes
-  result.flags = wStandard
+  result.flags = wMouse
   result.label = label
   result.check = check
 
@@ -44,5 +44,5 @@ method draw(self: GUICheckBox, ctx: ptr CTXRender) =
 
 method event(self: GUICheckBox, state: ptr GUIState) =
   if state.eventType == evMouseRelease and
-      self.test(wHover):
+      self.test(wHover or wMouse):
     self.check[] = not self.check[]

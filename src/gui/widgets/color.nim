@@ -30,7 +30,7 @@ let hueSix = # Hue Six Breakpoints
 
 proc newColorBar*(color: ptr RGBColor): GUIColorBar =
   new result # Alloc Color Wheel
-  result.flags = wStandard
+  result.flags = wMouse
   # 100x100 minimun size
   result.minimum(100, 100)
   # Widget Attributes

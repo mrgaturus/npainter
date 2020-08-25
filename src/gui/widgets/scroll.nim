@@ -16,7 +16,7 @@ type
 proc newScroll*(value: ptr Value, v = false): GUIScroll =
   new result # Initialize Slider
   # Widget Standard Flag
-  result.flags = wStandard
+  result.flags = wMouse
   # Set Minimun Size
   result.minimum( # The Same as Font Size
     metrics.fontSize, metrics.fontSize)
