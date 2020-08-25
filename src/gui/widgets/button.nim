@@ -37,5 +37,5 @@ method draw(self: GUIButton, ctx: ptr CTXRender) =
 
 method event(self: GUIButton, state: ptr GUIState) =
   if state.eventType == evMouseRelease and 
-      self.test(wHover or wEnabled) and 
-      not isNil(self.cb): pushCallback(self.cb)
+  self.test(wHover) and not isNil(self.cb): 
+    pushCallback(self.cb)

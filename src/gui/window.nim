@@ -160,8 +160,10 @@ proc newGUIWindow*(w, h: int32, global: pointer): GUIWindow =
 proc open*(win: var GUIWindow, root: GUIWidget): bool =
   # Set First Widget and Last Frame
   win.root = root; win.frame = root
-  # Root is Standard and has framing protection
-  root.flags = wStandard or wVisible or wChild
+  # Set as Frame Kind
+  root.kind = wgFrame
+  root.flags = # Visible
+    wStandard or wVisible
   # Set to Global Dimensions
   root.rect.w = metrics.width
   root.rect.h = metrics.height
@@ -246,8 +248,8 @@ proc find(win: var GUIWindow, state: ptr GUIState): GUIWidget =
     else: # Find Popups
       for widget in reverse(win.popup):
         if widget == win.frame: break # Not Found
-        if (widget.flags and wWalkCheck) == wPopup or
-        pointOnArea(widget, state.mx, state.my):
+        if widget.kind == wgPopup or pointOnArea(
+            widget, state.mx, state.my):
           result = widget; break # Popup Found
     # Check if Not Found
     if isNil(result):
@@ -274,8 +276,8 @@ proc find(win: var GUIWindow, state: ptr GUIState): GUIWidget =
         result.flags.set(wHover)
         # Replace Hover
         win.hover = result
-      # Check if is Popup and not Popup Children
-      if (result.flags and wWalkCheck) == wPopup:
+      # Check if is Popup
+      if result.kind == wgPopup:
         if pointOnArea(result, state.mx, state.my):
           result.flags.set(wHover)
         else: result.flags.clear(wHover)
@@ -307,8 +309,8 @@ proc grab(win: var GUIWindow, widget: GUIWidget, evtype: int32) =
     widget.flags.set(wGrab)
     # Elevate if is a Frame
     let frame = widget.frame
-    if (frame.flags and wFraming) == wFrame:
-      elevate(win, frame) # Guaranted a Frame 
+    if frame.kind == wgFrame:
+      elevate(win, frame)
   elif evtype == ButtonRelease:
     # Ungrab X11 Mouse Input
     discard XUngrabPointer(win.display, CurrentTime)
@@ -345,8 +347,8 @@ proc dirty(win: var GUIWindow, widget: GUIWidget) =
 
 # -- Focus Handling
 proc focus(win: var GUIWindow, widget: GUIWidget) =
-  if widget != win.root and 
-  widget.test(wFocusable) and 
+  if widget != win.root and
+  widget.test(wFocusCheck) and
   widget != win.focus:
     if not isNil(win.focus):
       clear(win.focus.flags, wFocus)
@@ -359,8 +361,8 @@ proc focus(win: var GUIWindow, widget: GUIWidget) =
 
 proc check(win: var GUIWindow, widget: GUIWidget) =
   # Check if is still focused
-  if widget == win.focus and 
-  not widget.test(wFocusCheck):
+  if widget == win.focus and
+  not widget.test(wFocusCheck or wFocus):
     widget.flags.clear(wFocus)
     widget.handle(outFocus)
     # Remove Focus
@@ -369,7 +371,7 @@ proc check(win: var GUIWindow, widget: GUIWidget) =
 # -- Close any Frame/Popup/Tooltip
 proc close(win: var GUIWindow, widget: GUIWidget) =
   if widget.test(wVisible) and 
-  not widget.test(wChild):
+  widget.kind > wgChild:
     # is Last Frame?
     if widget == win.frame:
       win.frame = widget.prev
@@ -391,12 +393,12 @@ proc close(win: var GUIWindow, widget: GUIWidget) =
     # Remove from List
     widget.delete()
     # Remove Visible Flag
-    widget.flags.clear(
-      wVisible or wWalker)
+    widget.flags.clear(wVisible)
 
 # -- Open as Frame/Popup/Tooltip
 proc frame(win: var GUIWindow, widget: GUIWidget) =
-  if not widget.any(wChild or wVisible):
+  if widget.kind > wgChild and
+  not widget.test(wVisible):
     insert(win.frame, widget)
     win.frame = widget
     # Remove Parent if has
@@ -404,33 +406,27 @@ proc frame(win: var GUIWindow, widget: GUIWidget) =
     # Mark as Visible and Dirty
     widget.flags.set(wVisible)
     widget.set(wDirty)
-  else: widget.flags.clear(wFrame)
 
 proc popup(win: var GUIWindow, widget: GUIWidget) =
-  if not widget.any(wChild or wVisible):
-    if not isNil(widget.parent) and 
-    test(widget.parent, wPopup or wVisible):
-      insert(widget.parent, widget)
-      # Change Last Popup if is after Last
-      if widget.parent == win.popup:
-        win.popup = widget
-      # Mark as Popup Children
-      widget.flags.set(wWalker)
-    elif isNil(win.popup):
+  if widget.kind > wgChild and
+  not widget.test(wVisible):
+    # Insert Widget to List
+    if isNil(win.popup):
       insert(win.frame, widget)
-      win.popup = widget
     else: # Change Last Popup
       insert(win.popup, widget)
-      win.popup = widget
+    # Change Last Popup
+    win.popup = widget
     # Remove Parent if has
     widget.parent = nil
     # Mark as Visible and Dirty
     widget.flags.set(wVisible)
     widget.set(wDirty)
-  else: widget.flags.clear(wPopup)
 
 proc tooltip(win: var GUIWindow, widget: GUIWidget) =
-  if not widget.any(wChild or wVisible):
+  if widget.kind > wgChild and
+  not widget.test(wVisible):
+    # Inset Widget To List
     if not isNil(win.tooltip):
       insert(win.tooltip, widget)
     elif not isNil(win.popup):
@@ -444,7 +440,6 @@ proc tooltip(win: var GUIWindow, widget: GUIWidget) =
     # Mark as Visible and Dirty
     widget.flags.set(wVisible)
     widget.set(wDirty)
-  else: widget.flags.clear(wTooltip)
 
 # --------------------------
 # GUI WINDOW MAIN LOOP PROCS

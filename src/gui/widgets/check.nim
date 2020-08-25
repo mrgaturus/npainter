@@ -43,7 +43,6 @@ method draw(self: GUICheckBox, ctx: ptr CTXRender) =
     self.label)
 
 method event(self: GUICheckBox, state: ptr GUIState) =
-  if self.test(wEnabled):
-    if state.eventType == evMouseRelease and
-        self.test(wHover):
-      self.check[] = not self.check[]
+  if state.eventType == evMouseRelease and
+      self.test(wHover):
+    self.check[] = not self.check[]
