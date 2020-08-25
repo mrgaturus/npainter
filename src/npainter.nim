@@ -181,7 +181,6 @@ proc newMenuBar(): GUIMenuBar =
   new result # Alloc
   # Define Atributes
   result.hover = -1
-  result.flags = wStandard
   result.minimum(0, metrics.fontSize)
 
 method layout(self: GUIMenuBar) =
@@ -415,47 +414,38 @@ when isMainModule:
       con: GUIFondo
     # Initialize Root
     root.color = 0xFF323232'u32
-    root.flags = wStandard
     # --- Blank #1 ---
     blank = new GUIBlank
-    blank.flags = wStandard
     blank.geometry(300,150,512,256)
     blank.texture = cpu_raster
     root.add(blank)
     # --- Blank #2 ---
     blank = new GUIBlank
-    blank.flags = wStandard
     blank.geometry(20,20,100,100)
     blank.texture = cpu_raster
     block: # Menu Blank #2
       con = new GUIFondo
       con.color = 0xAA637a90'u32
-      con.flags = wStandard
       con.rect.w = 200
       con.rect.h = 100
       # Sub-Blank #1
       sub = new GUIBlank
-      sub.flags = wStandard
       sub.geometry(10,10,20,20)
       con.add(sub)
       # Sub-Blank #2
       sub = new GUIBlank
-      sub.flags = wStandard
       sub.geometry(40,10,20,20)
       block: # Sub Menu #1
         let subcon = new GUIFondo
         subcon.color = 0xFFbdb88f'u32
-        subcon.flags = wStandard
         subcon.rect.w = 300
         subcon.rect.h = 80
         # Sub-sub blank 1#
         var subsub = new GUIBlank
-        subsub.flags = wStandard
         subsub.geometry(10,10,180,20)
         subcon.add(subsub)
         # Sub-sub blank 2#
         subsub = new GUIBlank
-        subsub.flags = wStandard
         subsub.geometry(10,40,180,20)
         subcon.add(subsub)
         # Add to Sub

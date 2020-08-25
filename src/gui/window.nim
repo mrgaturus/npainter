@@ -162,8 +162,7 @@ proc open*(win: var GUIWindow, root: GUIWidget): bool =
   win.root = root; win.frame = root
   # Set as Frame Kind
   root.kind = wgFrame
-  root.flags = # Visible
-    wStandard or wVisible
+  root.flags.set(wVisible)
   # Set to Global Dimensions
   root.rect.w = metrics.width
   root.rect.h = metrics.height

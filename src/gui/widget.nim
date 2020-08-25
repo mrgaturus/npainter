@@ -24,8 +24,6 @@ const # Widget Bit-Flags
   wHandleClear = wFocus or wFocusCheck
   wProtected = # Protect Automatics
     not(wVisible or wHover or wGrab)
-  # -- Widget Constructor Mask
-  wStandard* = wKeyboard or wMouse
 
 type
   GUIFlags* = uint8
