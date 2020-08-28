@@ -35,7 +35,7 @@ method draw(tp: GUITooltip, ctx: ptr CTXRender) =
   ctx.color theme.text
   ctx.text(tp.rect.x, tp.rect.y, "TEST TOOLTIP")
 
-method update(tp: GUITooltip) =
+method timer(tp: GUITooltip) =
   if tp.test(wVisible):
     tp.close()
   else: tp.open()
@@ -324,7 +324,7 @@ method event*(widget: GUIBlank, state: ptr GUIState) =
   if widget.test(wGrab) and not isNil(widget.frame):
     move(widget.frame, state.mx + 5, state.my + 5)
 
-method update*(widget: GUIBlank) =
+method timer*(widget: GUIBlank) =
   echo "w timer open frame"
   if widget.frame != nil:
     open(widget.frame)
@@ -437,17 +437,32 @@ when isMainModule:
       sub.geometry(40,10,20,20)
       block: # Sub Menu #1
         let subcon = new GUIFondo
-        subcon.color = 0xFFbdb88f'u32
+        subcon.color = 0x72bdb88f'u32
         subcon.rect.w = 300
         subcon.rect.h = 80
         # Sub-sub blank 1#
         var subsub = new GUIBlank
-        subsub.geometry(10,10,180,20)
+        subsub.geometry(10,10,80,20)
         subcon.add(subsub)
         # Sub-sub blank 2#
         subsub = new GUIBlank
-        subsub.geometry(10,40,180,20)
+        subsub.geometry(10,40,80,20)
         subcon.add(subsub)
+        # Add Sub to Sub
+        block: # Sub Menu #1
+          let fondo = new GUIFondo
+          fondo.color = 0x64000000'u32
+          fondo.geometry(90, 50, 300, 80)
+          # Sub-sub blank 1#
+          var s = new GUIBlank
+          s.geometry(10,10,20,20)
+          fondo.add(s)
+          # Sub-sub blank 2#
+          s = new GUIBlank
+          s.geometry(10,40,20,20)
+          fondo.add(s)
+          # Add Fondo to sub
+          subcon.add(fondo)
         # Add to Sub
         subcon.kind = wgPopup
         sub.frame = subcon

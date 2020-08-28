@@ -250,8 +250,9 @@ proc find(win: var GUIWindow, state: ptr GUIState): GUIWidget =
         if widget.kind == wgPopup or pointOnArea(
             widget, state.mx, state.my):
           result = widget; break # Popup Found
-    # Check if Not Found
-    if isNil(result):
+    # Check if Not Found or Outside of Popup
+    if isNil(result) or result.kind == wgPopup and
+    not pointOnArea(result, state.mx, state.my):
       if not isNil(win.hover):
         handle(win.hover, outHover)
         clear(win.hover.flags, wHover)
@@ -276,11 +277,6 @@ proc find(win: var GUIWindow, state: ptr GUIState): GUIWidget =
         result.flags.set(wHover)
         # Replace Hover
         win.hover = result
-      # Check if is Popup
-      if result.kind == wgPopup:
-        if pointOnArea(result, state.mx, state.my):
-          result.flags.set(wHover)
-        else: result.flags.clear(wHover)
     else: # Not at the same frame
       if not isNil(win.hover):
         handle(win.hover, outHover)
@@ -518,7 +514,7 @@ proc handleSignals*(win: var GUIWindow): bool =
 
 proc handleTimers*(win: var GUIWindow) =
   for widget in walkTimers():
-    widget.update()
+    widget.timer()
 
 proc render*(win: var GUIWindow) =
   begin(win.ctx) # -- Begin GUI Rendering

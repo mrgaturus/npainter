@@ -194,7 +194,7 @@ proc resize*(widget: GUIWidget, w,h: int32) =
 
 method handle*(widget: GUIWidget, kind: GUIHandle) {.base.} = discard
 method event*(widget: GUIWidget, state: ptr GUIState) {.base.} = discard
-method update*(widget: GUIWidget) {.base.} = discard
+method timer*(widget: GUIWidget) {.base.} = discard
 method layout*(widget: GUIWidget) {.base.} = discard
 method draw*(widget: GUIWidget, ctx: ptr CTXRender) {.base.} = discard
 
@@ -206,7 +206,7 @@ proc outside*(widget: GUIWidget): GUIWidget =
   result = widget
   # Walk to Outermost Parent
   while not isNil(result.parent):
-    result = widget.parent
+    result = result.parent
 
 proc inside(widget: GUIWidget, x, y: int32): GUIWidget =
   result = widget.last
@@ -284,12 +284,17 @@ proc dirty*(widget: GUIWidget) =
         if not isNil(cursor.first):
           cursor = cursor.first
           continue # Next Level
-      cursor = # Select Next Widget
-        if isNil(cursor.next):
-          if cursor.parent == widget: 
-            break # Stop Loop
-          cursor.parent.next
-        else: cursor.next
+      # Select Next Widget
+      if isNil(cursor.next):
+        cursor = cursor.parent
+        while cursor != widget:
+          if isNil(cursor.next):
+            cursor = cursor.parent
+          else: # Found Level
+            cursor = cursor.next
+            continue # Prev Level
+        break # Stop Iterating
+      else: cursor = cursor.next
 
 # ------------------------------
 # WIDGET RENDER CHILDRENS - MAIN LOOP
@@ -310,15 +315,19 @@ proc render*(widget: GUIWidget, ctx: ptr CTXRender) =
         # Set Cursor Next Level
         cursor = cursor.first
         continue # Next Level
-    cursor = # Select Next Widget
-      if isNil(cursor.next):
-        # Check Tree Ending
-        if cursor.parent == widget: 
-          break # Stop Loop
+    # Select Next Widget
+    if isNil(cursor.next):
+      cursor = cursor.parent
+      while cursor != widget:
         # Pop Clipping
         ctx.pop()
-        # Pop Tree Level
-        cursor.parent.next
-      else: cursor.next
+        # Find Next Widget
+        if isNil(cursor.next):
+          cursor = cursor.parent
+        else: # Found Level
+          cursor = cursor.next
+          continue # Prev Level
+      break # Stop Iterating
+    else: cursor = cursor.next
   # Pop Clipping
   ctx.pop()
