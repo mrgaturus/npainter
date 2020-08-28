@@ -256,14 +256,23 @@ proc find(win: var GUIWindow, state: ptr GUIState): GUIWidget =
         if widget.kind == wgPopup or pointOnArea(
             widget, state.mx, state.my):
           result = widget; break # Popup Found
-    # Check if Not Found of Outside of Popup
-    if isNil(result) or result.kind == wgPopup and
-    not pointOnArea(result, state.mx, state.my):
+    # Check if Not Found
+    if isNil(result):
       if not isNil(win.hover):
         handle(win.hover, outHover)
         clear(win.hover.flags, wHover)
         # Remove Hover
         win.hover = nil
+    # Check if is Outside of a Popup
+    elif result.kind == wgPopup and
+    not pointOnArea(result, state.mx, state.my):
+      if result != win.hover and not isNil(win.hover):
+        handle(win.hover, outHover)
+        clear(win.hover.flags, wHover)
+        # Replace Hover
+        win.hover = result
+      # Remove Hover Flag
+      result.flags.clear(wHover)
     # Check if is at the same frame
     elif not isNil(win.hover) and 
     result == win.hover.outside:
@@ -275,9 +284,10 @@ proc find(win: var GUIWindow, state: ptr GUIState): GUIWidget =
         clear(win.hover.flags, wHover)
         # Handle Hover In
         result.handle(inHover)
-        result.flags.set(wHover)
         # Replace Hover
         win.hover = result
+      # Allways Set Hover Flag
+      result.flags.set(wHover)
     else: # Not at the same frame
       if not isNil(win.hover):
         handle(win.hover, outHover)
@@ -386,6 +396,20 @@ proc close(win: var GUIWindow, widget: GUIWidget) =
     widget.delete()
     # Remove Visible Flag
     widget.flags.clear(wVisible)
+    # Unfocus Children Widget
+    if not isNil(win.focus) and
+    win.focus.outside == widget:
+      clear(win.focus.flags, wFocus)
+      handle(win.focus, outFocus)
+      # Remove Focus
+      win.focus = nil
+    # Unhover Children Widget
+    if not isNil(win.hover) and
+    win.hover.outside == widget:
+      handle(win.hover, outHover)
+      clear(win.hover.flags, wHoverGrab)
+      # Remove Hover
+      win.hover = nil
 
 # -- Open as Frame/Popup/Tooltip
 proc frame(win: var GUIWindow, widget: GUIWidget) =
