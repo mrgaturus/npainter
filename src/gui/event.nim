@@ -117,6 +117,7 @@ type
     msgPopup, msgTooltip
   WindowSignal* = enum
     msgOpenIM, msgCloseIM
+    msgUnfocus, msgUnhover
     msgTerminate # Close
   Signal = object
     next: GUISignal

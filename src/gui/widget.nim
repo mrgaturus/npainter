@@ -202,7 +202,7 @@ method draw*(widget: GUIWidget, ctx: ptr CTXRender) {.base.} = discard
 # WIDGET FINDING - EVENT QUEUE
 # ----------------------------
 
-proc frame*(widget: GUIWidget): GUIWidget =
+proc outside*(widget: GUIWidget): GUIWidget =
   result = widget
   # Walk to Outermost Parent
   while not isNil(result.parent):

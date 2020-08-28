@@ -263,7 +263,8 @@ proc find(win: var GUIWindow, state: ptr GUIState): GUIWidget =
         result.flags.set(wHover)
       else: result.flags.clear(wHover)
     # Check if is at the same frame
-    elif not isNil(win.hover) and result == win.hover.frame:
+    elif not isNil(win.hover) and 
+    result == win.hover.outside:
       result = # Find Interior Widget
         find(win.hover, state.mx, state.my)
       if result != win.hover:
@@ -297,22 +298,16 @@ proc find(win: var GUIWindow, state: ptr GUIState): GUIWidget =
         win.root # Fallback
       else: win.focus # Use Focus
 
-# -- Grab X11 Window
+# -- Grab Widget
 proc grab(win: var GUIWindow, widget: GUIWidget, evtype: int32) =
   if evtype == ButtonPress:
-    # Grab X11 Window Mouse Input
-    discard XGrabPointer(win.display, win.xID, 0,
-        ButtonPressMask or ButtonReleaseMask or PointerMotionMask,
-        GrabModeAsync, GrabModeAsync, None, None, CurrentTime)
     # Grab Current Widget
     widget.flags.set(wGrab)
     # Elevate if is a Frame
-    let frame = widget.frame
+    let frame = widget.outside
     if frame.kind == wgFrame:
       elevate(win, frame)
   elif evtype == ButtonRelease:
-    # Ungrab X11 Mouse Input
-    discard XUngrabPointer(win.display, CurrentTime)
     # Ungrab Current Widget
     widget.flags.clear(wGrab)
 
@@ -450,7 +445,7 @@ proc handleEvents*(win: var GUIWindow) =
   while XPending(win.display) != 0:
     discard XNextEvent(win.display, addr event)
     if XFilterEvent(addr event, 0) != 0:
-      continue
+      continue # Skip IM Event
     case event.theType:
     of Expose: discard
     of ConfigureNotify: # Resize
@@ -505,9 +500,20 @@ proc handleSignals*(win: var GUIWindow): bool =
       case signal.w_msg
       of msgOpenIM: XSetICFocus(win.xic)
       of msgCloseIM: XUnsetICFocus(win.xic)
-      of msgTerminate: return true
-  # Still Alive
-  return false
+      of msgUnfocus: # Un Focus
+        if not isNil(win.focus):
+          clear(win.focus.flags, wFocus)
+          handle(win.focus, outFocus)
+          # Remove Focus
+          win.focus = nil
+      of msgUnhover: # Un Hover
+        if not isNil(win.hover):
+          handle(win.hover, outHover)
+          clear(win.hover.flags, wHoverGrab)
+          # Remove Hover
+          win.hover = nil
+      of msgTerminate: 
+        return true
 
 proc handleTimers*(win: var GUIWindow) =
   for widget in walkTimers():
