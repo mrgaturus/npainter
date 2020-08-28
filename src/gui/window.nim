@@ -364,8 +364,9 @@ proc check(win: var GUIWindow, widget: GUIWidget) =
 
 # -- Close any Frame/Popup/Tooltip
 proc close(win: var GUIWindow, widget: GUIWidget) =
-  if widget.test(wVisible) and 
-  widget.kind > wgChild:
+  if widget.test(wVisible) and
+  widget.kind > wgChild and
+  widget != win.root: # Avoid Root
     # is Last Frame?
     if widget == win.frame:
       win.frame = widget.prev
