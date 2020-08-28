@@ -250,9 +250,8 @@ proc find(win: var GUIWindow, state: ptr GUIState): GUIWidget =
         if widget.kind == wgPopup or pointOnArea(
             widget, state.mx, state.my):
           result = widget; break # Popup Found
-    # Check if Not Found or Outside of Popup
-    if isNil(result) or result.kind == wgPopup and
-    not pointOnArea(result, state.mx, state.my):
+    # Check if Not Found
+    if isNil(result):
       if not isNil(win.hover):
         handle(win.hover, outHover)
         clear(win.hover.flags, wHover)
@@ -263,6 +262,14 @@ proc find(win: var GUIWindow, state: ptr GUIState): GUIWidget =
       if pointOnArea(result, state.mx, state.my):
         result.flags.set(wHover)
       else: result.flags.clear(wHover)
+    # Check if is Outside of Popup
+    elif result.kind == wgPopup and
+    not pointOnArea(result, state.mx, state.my):
+      if not isNil(win.hover):
+        handle(win.hover, outHover)
+        clear(win.hover.flags, wHover)
+        # Remove Hover
+        win.hover = nil
     # Check if is at the same frame
     elif not isNil(win.hover) and 
     result == win.hover.outside:
