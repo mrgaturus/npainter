@@ -36,6 +36,6 @@ method draw(self: GUIButton, ctx: ptr CTXRender) =
     self.rect.y - metrics.descender, self.label)
 
 method event(self: GUIButton, state: ptr GUIState) =
-  if state.eventType == evMouseRelease and 
-  self.test(wHover or wMouse) and not isNil(self.cb): 
+  if state.kind == evMouseRelease and 
+  self.test(wHover) and not isNil(self.cb): 
     pushCallback(self.cb) # Call Callback

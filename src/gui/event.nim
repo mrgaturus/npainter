@@ -35,7 +35,7 @@ type
     evMouseMove
     evMouseAxis
   GUIState* = object
-    eventType*: GUIEvent
+    kind*: GUIEvent
     key*: uint
     # Mouse Event Detail
     mx*, my*: int32
@@ -58,7 +58,8 @@ proc utf8buffer*(state: var GUIState, cap: int32) =
 # X11 to GUIState translation
 proc translateXEvent*(state: var GUIState, display: PDisplay, event: PXEvent,
     xic: XIC): bool =
-  state.eventType = cast[GUIEvent](event.theType - 2)
+  state.kind = # Set Event Kind
+    cast[GUIEvent](event.theType - 2)
   case event.theType
   of ButtonPress, ButtonRelease:
     state.mx = event.xbutton.x

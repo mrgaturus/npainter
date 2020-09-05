@@ -46,6 +46,5 @@ method draw(self: GUIRadio, ctx: ptr CTXRender) =
     self.label)
 
 method event(self: GUIRadio, state: ptr GUIState) =
-  if state.eventType == evMouseRelease and
-      self.test(wHover or wMouse):
+  if state.kind == evMouseRelease and self.test(wHover):
     self.check[] = self.expected

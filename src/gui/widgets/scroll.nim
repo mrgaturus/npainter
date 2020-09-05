@@ -53,7 +53,7 @@ method draw(self: GUIScroll, ctx: ptr CTXRender) =
   ctx.fill(rect)
 
 method event*(self: GUIScroll, state: ptr GUIState) =
-  if state.eventType == evMouseClick:
+  if state.kind == evMouseClick:
     self.gp = float32:
       if self.vertical:
         state.my

@@ -129,7 +129,7 @@ method draw(self: GUIMenu, ctx: ptr CTXRender) =
   ctx.line rect(self.rect), 1
 
 method event(self: GUIMenu, state: ptr GUIState) =
-  case state.eventType
+  case state.kind
   of evMouseClick, evMouseMove:
     if self.test(wHover):
       var # Search Hovered Item
@@ -140,7 +140,7 @@ method event(self: GUIMenu, state: ptr GUIState) =
         if state.my > cursor and state.my < space:
           case item.kind
           of mkMenu: # Submenu
-            if state.eventType == evMouseMove and index != self.submenu:
+            if state.kind == evMouseMove and index != self.submenu:
               if self.submenu >= 0 and self.items[self.submenu].kind == mkMenu:
                 close(self.items[self.submenu].menu)
               # Open new Submenu
@@ -148,7 +148,7 @@ method event(self: GUIMenu, state: ptr GUIState) =
               item.menu.move(self.rect.x + self.rect.w - 1, cursor - 2)
               self.submenu = index
           of mkAction: # Callback
-            if state.eventType == evMouseClick:
+            if state.kind == evMouseClick:
               pushCallback(item.cb)
               self.close()
               if not isNil(self.bar):
@@ -161,7 +161,7 @@ method event(self: GUIMenu, state: ptr GUIState) =
     elif not isNil(self.bar) and # Use Menu Bar
     pointOnArea(self.bar, state.mx, state.my):
       self.bar.event(state)
-    elif state.eventType == evMouseClick:
+    elif state.kind == evMouseClick:
       self.close() # Close Menu
       if not isNil(self.bar):
         self.bar.grab = false
@@ -180,6 +180,7 @@ method handle(self: GUIMenu, kind: GUIHandle) =
 proc newMenuBar(): GUIMenuBar =
   new result # Alloc
   # Define Atributes
+  result.flags = wMouse
   result.hover = -1
   result.minimum(0, metrics.fontSize)
 
@@ -220,7 +221,7 @@ method draw(self: GUIMenuBar, ctx: ptr CTXRender) =
     inc(index) # Current Index
 
 method event(self: GUIMenuBar, state: ptr GUIState) =
-  case state.eventType
+  case state.kind
   of evMouseClick, evMouseMove:
     var # Search Hovered Item
       cursor = self.rect.x
@@ -228,7 +229,7 @@ method event(self: GUIMenuBar, state: ptr GUIState) =
     for item in mitems(self.items):
       let space = cursor + item.width + 4
       if state.mx > cursor and state.mx < space:
-        if state.eventType == evMouseClick:
+        if state.kind == evMouseClick:
           if item.menu.test(wVisible):
             close(item.menu)
             self.grab = false
@@ -270,7 +271,7 @@ method draw(fondo: GUIFondo, ctx: ptr CTXRender) =
   ctx.fill rect(fondo.rect)
 
 method event(fondo: GUIFondo, state: ptr GUIState) =
-  if state.eventType == evMouseClick:
+  if state.kind == evMouseClick:
     if not fondo.test(wHover):
       fondo.close() # Close
 
@@ -311,13 +312,13 @@ method draw*(widget: GUIBlank, ctx: ptr CTXRender) =
 
 method event*(widget: GUIBlank, state: ptr GUIState) =
   #echo "cursor mx: ", state.mx, " cursor my: ", state.my
-  if state.eventType == evMouseClick:
+  if state.kind == evMouseClick:
     if not isNil(widget.frame) and test(widget.frame, wVisible):
       close(widget.frame)
     else:
       pushTimer(widget.target, 1000)
       widget.set(wFocus)
-  elif state.eventType == evMouseRelease:
+  elif state.kind == evMouseRelease:
     # Remove Timer
     echo "w timer removed"
     stopTimer(widget.target)

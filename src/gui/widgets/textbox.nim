@@ -62,7 +62,7 @@ method draw(self: GUITextBox, ctx: ptr CTXRender) =
     rect(self.rect), self.input.text)
 
 method event(self: GUITextBox, state: ptr GUIState) =
-  if state.eventType == evKeyDown:
+  if state.kind == evKeyDown:
     case state.key
     of XK_BackSpace: backspace(self.input)
     of XK_Delete: delete(self.input)
@@ -80,14 +80,14 @@ method event(self: GUITextBox, state: ptr GUIState) =
       of UTF8Nothing, UTF8Keysym: discard
       else: insert(self.input, 
         state.utf8str, state.utf8size)
-  elif state.eventType == evMouseClick:
+  elif state.kind == evMouseClick:
     # Get Cursor Position
     self.input.cursor = index(self.input.text,
       state.mx - self.rect.x + self.wo - 4)
     # Focus Textbox
     self.set(wFocus)
   # Mark Text Input as Dirty
-  if state.eventType < evMouseRelease:
+  if state.kind < evMouseRelease:
     self.input.changed = true
 
 method handle(widget: GUITextBox, kind: GUIHandle) =

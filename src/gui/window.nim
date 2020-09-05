@@ -236,7 +236,7 @@ proc elevate(win: var GUIWindow, widget: GUIWidget) =
 
 # -- Find Widget by State
 proc find(win: var GUIWindow, state: ptr GUIState): GUIWidget =
-  case state.eventType
+  case state.kind
   of evMouseMove, evMouseClick, evMouseRelease, evMouseAxis:
     if not isNil(win.hover) and test(win.hover, wGrab):
       result = win.hover
@@ -266,11 +266,6 @@ proc find(win: var GUIWindow, state: ptr GUIState): GUIWidget =
     # Check if is Outside of a Popup
     elif result.kind == wgPopup and
     not pointOnArea(result, state.mx, state.my):
-      if result != win.hover and not isNil(win.hover):
-        handle(win.hover, outHover)
-        clear(win.hover.flags, wHover)
-        # Replace Hover
-        win.hover = result
       # Remove Hover Flag
       result.flags.clear(wHover)
     # Check if is at the same frame
@@ -278,25 +273,21 @@ proc find(win: var GUIWindow, state: ptr GUIState): GUIWidget =
     result == win.hover.outside:
       result = # Find Interior Widget
         find(win.hover, state.mx, state.my)
-      if result != win.hover:
-        # Handle Hover Out
-        handle(win.hover, outHover)
-        clear(win.hover.flags, wHover)
-        # Handle Hover In
-        result.handle(inHover)
-        # Replace Hover
-        win.hover = result
-      # Allways Set Hover Flag
+      # Set Hovered Flag
       result.flags.set(wHover)
     else: # Not at the same frame
+      result = # Find Interior Widget
+        find(result, state.mx, state.my)
+      # Set Hovered Flag
+      result.flags.set(wHover)
+    # Check if is not the same
+    if result != win.hover:
+      # Handle Hover Out
       if not isNil(win.hover):
         handle(win.hover, outHover)
         clear(win.hover.flags, wHover)
-      result = # Find Interior Widget
-        find(result, state.mx, state.my)
       # Handle Hover In
       result.handle(inHover)
-      result.flags.set(wHover)
       # Replace Hover
       win.hover = result
   of evKeyDown, evKeyUp:
@@ -306,17 +297,20 @@ proc find(win: var GUIWindow, state: ptr GUIState): GUIWidget =
       else: win.focus # Use Focus
 
 # -- Grab Widget
-proc grab(win: var GUIWindow, widget: GUIWidget, evtype: int32) =
-  if evtype == ButtonPress:
+proc grab(win: var GUIWindow, widget: GUIWidget, kind: GUIEvent): bool =
+  if kind == evMouseClick:
     # Grab Current Widget
     widget.flags.set(wGrab)
     # Elevate if is a Frame
     let frame = widget.outside
     if frame.kind == wgFrame:
       elevate(win, frame)
-  elif evtype == ButtonRelease:
+  elif kind == evMouseRelease:
     # Ungrab Current Widget
     widget.flags.clear(wGrab)
+  # Check If Can Handle Event
+  widget.test(wMouse) or 
+    kind < evMouseClick
 
 # -- Step Focus
 proc step(win: var GUIWindow, back: bool) =
@@ -482,24 +476,22 @@ proc handleEvents*(win: var GUIWindow) =
         metrics.height = rect.h
         # Set Renderer Viewport
         viewport(win.ctx, rect.w, rect.h)
-        # Relayout and Redraw GUI
+        # Relayout Root Widget
         set(win.root, wDirty)
     else: # Check if the event is valid for be processed by a widget
       if translateXEvent(win.state, win.display, addr event, win.xic):
         let # Avoids win.state everywhere
           state = addr win.state
-          tabbed = state.eventType == evKeyDown and
+          tabbed = state.kind == evKeyDown and
             (state.key == RightTab or state.key == LeftTab)
         # Find Widget for Process Event
         if tabbed and not isNil(win.focus):
           step(win, state.key == LeftTab)
         else: # Process Event
-          let found = find(win, addr win.state)
-          # Check if was found
-          if not isNil(found):
-            # Grab/UnGrab x11 window and widget
-            win.grab(found, event.theType)
-            # Procces Event
+          let found = find(win, state)
+          # Check if can handle
+          if not isNil(found) and
+          win.grab(found, state.kind):
             event(found, state)
 
 proc handleSignals*(win: var GUIWindow): bool =
