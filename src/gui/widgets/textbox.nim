@@ -18,8 +18,8 @@ type
 
 proc newTextBox*(input: ptr UTF8Input): GUITextBox =
   new result # Initialize TextBox
-  # Widget Standard Flag
-  result.flags = wKeyboard
+  # Widget Standard Flags
+  result.flags = wMouse or wKeyboard
   # Set Minimun Size Like a Button
   result.minimum(0, 
     metrics.fontSize - metrics.descender)

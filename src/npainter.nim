@@ -1,561 +1,499 @@
-import times
 import libs/gl
-import libs/ft2
-import gui/[window, widget, render, event, timer]
-from gui/widgets/button import newButton
-from gui/widgets/check import newCheckbox
-from gui/widgets/radio import newRadio
-from gui/widgets/textbox import newTextBox
-from gui/widgets/slider import newSlider
-from gui/widgets/scroll import newScroll
-from gui/widgets/color import newColorBar
-from gui/atlas import width
-from gui/config import metrics, theme
-from omath import Value, interval, lerp, RGBColor
-from assets import icons
-from utf8 import UTF8Input, `text=`
+#import libs/ft2
+import gui/[
+  window, 
+  widget, 
+  render, 
+  #container, 
+  event
+  #timer
+  ]
+import painter/[
+  canvas
+]
+import times
+from math import floor
 
-icons 16:
-  iconBrush = "brush.svg"
-  iconClear = "clear.svg"
-  iconClose = "close.svg"
-  iconReset = "reset.svg"
-
-# -------------------
-# TEST TOOLTIP WIDGET
-# -------------------
-
-type
-  GUITooltip = ref object of GUIWidget
-
-method draw(tp: GUITooltip, ctx: ptr CTXRender) =
-  ctx.color theme.bgWidget
-  ctx.fill rect(tp.rect.x, tp.rect.y, 
-    "TEST TOOLTIP".width, metrics.fontSize)
-  ctx.color theme.text
-  ctx.text(tp.rect.x, tp.rect.y, "TEST TOOLTIP")
-
-method timer(tp: GUITooltip) =
-  if tp.test(wVisible):
-    tp.close()
-  else: tp.open()
-
-# ------------------------
-# TEST MENU WIDGET PROTOTYPE
-# ------------------------
-
-type
-  GUIMenuKind = enum
-    mkMenu, mkAction
-  GUIMenuItem = object
-    name: string
-    width: int32
-    case kind: GUIMenuKind:
-    of mkMenu:
-      menu: GUIMenu
-    of mkAction:
-      cb: GUICallback
-  GUIMenu = ref object of GUIWidget
-    hover, submenu: int32
-    bar: GUIMenuBar
-    items: seq[GUIMenuItem]
-  GUIMenuTile = object
-    name: string
-    width: int32
-    menu: GUIMenu
-  GUIMenuBar = ref object of GUIWidget
-    grab: bool
-    hover: int32
-    items: seq[GUIMenuTile]
-
-# -- Both Menus --
-proc add(self: GUIMenuBar, name: string, menu: GUIMenu) =
-  menu.bar = self # Set Menu
-  menu.kind = wgPopup
-  self.items.add GUIMenuTile(
-    name: name, menu: menu)
-
-proc add(self: GUIMenu, name: string, menu: GUIMenu) =
-  if menu != self: # Avoid Cycle
-    menu.kind = wgMenu
-    self.items.add GUIMenuItem(
-      name: name, menu: menu, kind: mkMenu)
-
-proc add(self: GUIMenu, name: string, cb: GUICallback) =
-  self.items.add GUIMenuItem( # Add Callback
-    name: name, cb: cb, kind: mkAction)
-
-# -- Standard Menu
-proc newMenu(): GUIMenu =
-  new result # Alloc
-  # Define Atributes
-  result.flags = wMouse
-  result.hover = -1
-  result.submenu = -1
-
-method layout(self: GUIMenu) =
-  var # Max Width/Height
-    mw, mh: int32
-  for item in mitems(self.items):
-    mw = max(mw, item.name.width)
-    mh += metrics.fontSize
-  # Set Dimensions
-  self.rect.w = # Reserve Space
-    mw + (metrics.fontSize shl 1)
-  self.rect.h = mh + 4
-
-method draw(self: GUIMenu, ctx: ptr CTXRender) =
-  var 
-    offset = self.rect.y + 2
-    index: int32
-  let x = self.rect.x + (metrics.fontSize)
-  # Draw Background
-  ctx.color theme.bgContainer
-  ctx.fill rect(self.rect)
-  ctx.color theme.text
-  # Draw Each Menu
-  for item in mitems(self.items):
-    if self.hover == index:
-      ctx.color theme.hoverWidget
-      var r = rect(self.rect)
-      r.y = offset.float32
-      r.yh = r.y + float32(metrics.fontSize)
-      ctx.fill(r)
-      ctx.color theme.text
-    ctx.text(x, offset - metrics.descender, item.name)
-    offset += metrics.fontSize
-    inc(index) # Next Index
-  ctx.color theme.bgWidget
-  ctx.line rect(self.rect), 1
-
-method event(self: GUIMenu, state: ptr GUIState) =
-  case state.kind
-  of evMouseClick, evMouseMove:
-    if self.test(wHover):
-      var # Search Hovered Item
-        index: int32
-        cursor = self.rect.y + 2
-      for item in mitems(self.items):
-        let space = cursor + metrics.fontSize
-        if state.my > cursor and state.my < space:
-          case item.kind
-          of mkMenu: # Submenu
-            if state.kind == evMouseMove and index != self.submenu:
-              if self.submenu >= 0 and self.items[self.submenu].kind == mkMenu:
-                close(self.items[self.submenu].menu)
-              # Open new Submenu
-              open(item.menu)
-              item.menu.move(self.rect.x + self.rect.w - 1, cursor - 2)
-              self.submenu = index
-          of mkAction: # Callback
-            if state.kind == evMouseClick:
-              pushCallback(item.cb)
-              self.close()
-              if not isNil(self.bar):
-                self.bar.grab = false
-          # Menu Item Found
-          self.hover = index; return
-        # Next Menu
-        cursor = space
-        inc(index)
-    elif not isNil(self.bar) and # Use Menu Bar
-    pointOnArea(self.bar, state.mx, state.my):
-      self.bar.event(state)
-    elif state.kind == evMouseClick:
-      self.close() # Close Menu
-      if not isNil(self.bar):
-        self.bar.grab = false
-    self.hover = -1 # Remove Current Hover
-  else: discard
-
-method handle(self: GUIMenu, kind: GUIHandle) =
-  case kind
-  of outFrame: # Close Submenu y Close is requested
-    if self.submenu >= 0 and self.items[self.submenu].kind == mkMenu:
-      close(self.items[self.submenu].menu)
-    self.submenu = -1
-  else: discard
-
-# -- Menu Bar
-proc newMenuBar(): GUIMenuBar =
-  new result # Alloc
-  # Define Atributes
-  result.flags = wMouse
-  result.hover = -1
-  result.minimum(0, metrics.fontSize)
-
-method layout(self: GUIMenuBar) =
-  # Get Text Widths
-  for menu in mitems(self.items):
-    menu.width = menu.name.width
-
-method draw(self: GUIMenuBar, ctx: ptr CTXRender) =
-  # Draw Background
-  ctx.color theme.bgWidget
-  ctx.fill rect(self.rect)
-  # Draw Each Menu
-  var # Iterator
-    index: int32
-    cursor: int32 = self.rect.x
-    r: CTXRect
-  r.y = float32(self.rect.y)
-  r.yh = r.y + float32(self.hint.h)
-  # Set Text Color
-  ctx.color theme.text
-  for item in mitems(self.items):
-    if self.hover == index:
-      # Set Hover Color
-      ctx.color theme.hoverWidget
-      # Define Rect
-      r.x = cursor.float32
-      r.xw = r.x + 4 +
-        float32(item.width)
-      # Fill Rect
-      ctx.fill(r)
-      # Return Text Color
-      ctx.color theme.text
-    cursor += 2
-    ctx.text(cursor, 
-      self.rect.y + 2, item.name)
-    cursor += item.width + 2
-    inc(index) # Current Index
-
-method event(self: GUIMenuBar, state: ptr GUIState) =
-  case state.kind
-  of evMouseClick, evMouseMove:
-    var # Search Hovered Item
-      cursor = self.rect.x
-      index: int32
-    for item in mitems(self.items):
-      let space = cursor + item.width + 4
-      if state.mx > cursor and state.mx < space:
-        if state.kind == evMouseClick:
-          if item.menu.test(wVisible):
-            close(item.menu)
-            self.grab = false
-          else: # Open Popup
-            self.grab = true
-            open(item.menu)
-          item.menu.move(cursor,
-            self.rect.y + self.rect.h)
-        elif self.grab and self.hover >= 0 and
-        index != self.hover:
-          # Change Menu To Other
-          close(self.items[self.hover].menu)
-          open(item.menu)
-          item.menu.move(cursor,
-            self.rect.y + self.rect.h)
-        self.hover = index; break
-      # Next Menu
-      cursor = space
-      inc(index)
-  else: discard
-
-# -----------------------
-# TEST MISC WIDGETS STUFF
-# -----------------------
-
-type
-  Counter = object
-    clicked, released: int
-  GUIBlank = ref object of GUIWidget
-    frame: GUIWidget
-    texture: GLuint
-  GUIFondo = ref object of GUIWidget
-    color: uint32
-
-method draw(fondo: GUIFondo, ctx: ptr CTXRender) =
-  ctx.color if fondo.test(wHover):
-    fondo.color or 0xFF000000'u32
-  else: fondo.color
-  ctx.fill rect(fondo.rect)
-
-method event(fondo: GUIFondo, state: ptr GUIState) =
-  if state.kind == evMouseClick:
-    if not fondo.test(wHover):
-      fondo.close() # Close
-
-var coso: UTF8Input
-proc helloworld*(g, d: pointer) =
-  coso.text = "hello world"
-  echo "hello world"
-
-# ------------------------
-# LOAD TRIANGLE RASTERIZER
-# ------------------------
-
-type
-  CPUVertex {.packed.} = object
-    x, y: int32
-  SSEVertex {.packed.} = object
-    x, y: float32
-  CPUTriangle = array[3, CPUVertex]
-  SSETriangle = array[3, SSEVertex]
-
-
-{.compile: "painter/triangle.c".}
-{.compile: "painter/blend.c".}
+# LOAD SSE4.1
 {.passC: "-msse4.1".}
-proc triangle_draw(buffer: pointer, w, h: int32, v: ptr SSETriangle) {.importc: "triangle_draw".}
-proc triangle_naive(buffer: pointer, w, h: int32, v: ptr CPUTriangle) {.importc: "triangle_draw_naive".}
+
+# AABB / Sorting
+type
+  NBBox = object
+    xmin, xmax: float32
+    ymin, ymax: float32
+  NPoint = object
+    x, y: float32
+  NQuad = array[4, NPoint]
+
+type
+  # Voxel Transversal 32x32
+  VoxelT = ref object of GUIWidget
+    quad: NQuad
+    box: NBBox
+    # Test Grid
+    grid: array[1024, uint8]
+    # Hold Point
+    pivot: NQuad
+    mx, my: float32
+  # Test Image Tile
+  TTileImage = ref object of GUIWidget
+    mx, my: int32
+    ox, oy: int32
+    canvas: NCanvas
+    tex: GLuint
+    work: bool
+    # Voxel Test
+    voxel: VoxelT
+  TTMove = object
+    x, y: int32
+    image: GUITarget
+
+method draw(self: VoxelT, ctx: ptr CTXRender) =
+  var # Each Tile
+    r: GUIRect
+    cursor: int16
+  # Define Rect
+  r.x = self.rect.x
+  r.y = self.rect.y
+  r.w = 16; r.h = 16
+  # Draw Each Tile
+  for y in 0..<32:
+    for x in 0..<32:
+      ctx.color if self.grid[cursor] == 1:
+        0xFF2f2f7f.uint32
+      elif self.grid[cursor] > 1:
+        0xFF002f00.uint32
+      else: 0xFF2F2F2F.uint32
+      # Fill Tile
+      ctx.fill(r.rect)
+      # Next Grid Pos
+      inc(cursor); r.x += 16
+    r.x = self.rect.x
+    r.y += 16 # Next Row
+  # Draw Lines
+  let p = point(self.rect.x, self.rect.y)
+  ctx.color(high uint32)
+  ctx.line(
+    point(p.x + self.quad[0].x * 16, p.y + self.quad[0].y * 16),
+    point(p.x + self.quad[1].x * 16, p.y + self.quad[1].y * 16)
+  )
+  ctx.line(
+    point(p.x + self.quad[1].x * 16, p.y + self.quad[1].y * 16),
+    point(p.x + self.quad[2].x * 16, p.y + self.quad[2].y * 16)
+  )
+  ctx.line(
+    point(p.x + self.quad[2].x * 16, p.y + self.quad[2].y * 16),
+    point(p.x + self.quad[3].x * 16, p.y + self.quad[3].y * 16)
+  )
+  ctx.line(
+    point(p.x + self.quad[3].x * 16, p.y + self.quad[3].y * 16),
+    point(p.x + self.quad[0].x * 16, p.y + self.quad[0].y * 16)
+  )
+
+# ----------------------
+# !!! AABB RECTANGLE SORTING
+# ----------------------
+
+proc aabb(quad: NQuad): NBBox =
+  var # Iterator
+    i = 1
+    p = quad[0]
+  # Set XMax/XMin
+  result.xmin = p.x
+  result.xmax = p.x
+  # Set YMax/YMin
+  result.ymin = p.y
+  result.ymax = p.y
+  while i < 4:
+    p = quad[i]
+    # Check XMin/XMax
+    if p.x < result.xmin:
+      result.xmin = p.x
+    elif p.x > result.xmax:
+      result.xmax = p.x
+    # Check YMin/YMax
+    if p.y < result.ymin:
+      result.ymin = p.y
+    elif p.y > result.ymax:
+      result.ymax = p.y
+    # Next Point
+    inc(i)
+
+proc sort(quad: var NQuad, box: NBBox) =
+  var # Sorted
+    n: NQuad
+  for p in quad: # Sort Using AABB
+    if p.y == box.ymax: n[0] = p
+    elif p.x == box.xmin: n[1] = p
+    elif p.y == box.ymin: n[2] = p
+    elif p.x == box.xmax: n[3] = p
+  quad = n # Replace to Sorted
+
+# -----------------------------------
+# !!! A FAST VOXEL TRAVERSAL SCANLINE
+# -----------------------------------
+
+type # Voxel Traversal
+  NLane = object
+    min, max: int32
+  NScanline = object
+    # Voxel Count
+    n: int32
+    # Position
+    x, y: int16
+    # X, Y Steps
+    sx, sy: int8
+    # Voxel Traversal DDA
+    dx, dy, error: float32
+    # Dimensions
+    w, h: int16
+    # Scanline Lanes Buffer
+    lanes: array[64, NLane]
+
+# -- DDA Voxel Traversal
+proc line(dda: var NScanline, a, b: NPoint) =
+  let # Point Distances
+    dx = abs(b.x - a.x)
+    dy = abs(b.y - a.y)
+    # Floor X Coordinates
+    x1 = floor(a.x)
+    y1 = floor(a.y)
+    # Floor Y Coordinates
+    x2 = floor(b.x)
+    y2 = floor(b.y)
+  # Reset Count
+  dda.n = 1
+  # X Incremental
+  if dx == 0:
+    dda.sx = 0 # No X Step
+    dda.error = high(float32)
+  elif b.x > a.x:
+    dda.sx = 1 # Positive
+    dda.n += int32(x2 - x1)
+    dda.error = (x1 - a.x + 1) * dy
+  else:
+    dda.sx = -1 # Negative
+    dda.n += int32(x1 - x2)
+    dda.error = (a.x - x1) * dy
+  # Y Incremental
+  if dy == 0:
+    dda.sy = 0 # No Y Step
+    dda.error -= high(float32)
+  elif b.y > a.y:
+    dda.sy = 1 # Positive
+    dda.n += int32(y2 - y1)
+    dda.error -= (y1 - a.y + 1) * dx
+  else:
+    dda.sy = -1 # Negative
+    dda.n += int32(y1 - y2)
+    dda.error -= (a.y - y1) * dx
+  # Set Start Position
+  dda.x = int16(x1)
+  dda.y = int16(y1)
+  # Set DDA Deltas
+  dda.dx = dx
+  dda.dy = dy
+
+proc lane(dda: var NScanline): ptr NLane =
+  # Check Current Y Bounds
+  if dda.y >= 0 and dda.y < dda.h:
+    result = addr dda.lanes[dda.y]
+
+proc left(dda: var NScanline) =
+  var lane = dda.lane()
+  # Do DDA Loop
+  while dda.n > 0:
+    # Clamp to Bounds
+    if not isNil(lane):
+      lane.min = max(dda.x, 0)
+    # Next Lane
+    if dda.error > 0:
+      dda.y += dda.sy
+      dda.error -= dda.dx
+      # Lookup Lane
+      lane = dda.lane()
+    else: # Next X
+      dda.x += dda.sx
+      dda.error += dda.dy
+    # Next Voxel
+    dec(dda.n)
+
+proc right(dda: var NScanline) =
+  var lane = dda.lane()
+  # Do DDA Loop
+  while dda.n > 0:
+    # Clamp to Bounds
+    if not isNil(lane):
+      lane.max = 
+        min(dda.x, dda.w - 1)
+    # Next Lane
+    if dda.error > 0:
+      dda.y += dda.sy
+      dda.error -= dda.dx
+      # Lookup Lane
+      lane = dda.lane()
+    else: # Next X
+      dda.x += dda.sx
+      dda.error += dda.dy
+    # Next Voxel
+    dec(dda.n)
+
+# --------------------------
+# !!! Scanline Prototype Proc
+# --------------------------
+
+proc scanline(self: VoxelT) =
+  var # Voxel Scanline
+    lane: NLane
+    dda: NScanline # HEAVY!!!!
+    # Vertical Interval
+    y1 = floor(self.quad[2].y).int32
+    y2 = floor(self.quad[0].y).int32
+  # Clamp Intervals
+  if y1 < 0: y1 = 0
+  if y2 >= 32: y2 = 31
+  # Clear DDA / Set Outside
+  dda.w = 32; dda.h = 32
+  # Calculate Minimun/Left Lanes
+  dda.line(self.quad[0], self.quad[1]); dda.left()
+  dda.line(self.quad[2], self.quad[1]); dda.left()
+  # Calculate Maximun/Right Lanes
+  dda.line(self.quad[2], self.quad[3]); dda.right()
+  dda.line(self.quad[0], self.quad[3]); dda.right()
+  # Do Scanline of Lanes
+  while y1 <= y2:
+    lane = dda.lanes[y1]
+    #echo lane.repr
+    while lane.min <= lane.max:
+      # Fill Auxiliar Grid
+      self.grid[y1 shl 5 + lane.min] += 1
+      inc(lane.min) # Next Voxel
+    inc(y1) # Next Lane
 
 # ------------------
-# GUI BLANK METHODS
+# VOXEL TEST METHODS
 # ------------------
 
-method draw*(widget: GUIBlank, ctx: ptr CTXRender) =
-  ctx.color if widget.test(wHover):
-    0xFF7f7f7f'u32
-  else: 0xFFFFFFFF'u32
-  ctx.fill rect(widget.rect)
-  ctx.texture(rect widget.rect, widget.texture)
+#[
+method event(self: VoxelT, state: ptr GUIState) =
+  state.mx -= self.rect.x
+  state.my -= self.rect.y
+  if state.eventType == evMouseClick:
+    self.x1 = float32(state.mx) / 16
+    self.y1 = float32(state.my) / 16
+  elif self.test(wGrab):
+    self.x2 = float32(state.mx) / 16
+    self.y2 = float32(state.my) / 16
+    zeroMem(addr self.grid[0], 1024)
+]#
 
-method event*(widget: GUIBlank, state: ptr GUIState) =
-  #echo "cursor mx: ", state.mx, " cursor my: ", state.my
+proc newVoxelT(): VoxelT =
+  new result # Alloc
+  result.flags = wMouse
+  result.kind = wgFrame
+  result.minimum(256, 256)
+  # Left Side
+  result.quad[0].x = 0
+  result.quad[0].y = 8
+  # Top Side
+  result.quad[1].x = 8
+  result.quad[1].y = 0
+  # Right Side
+  result.quad[2].x = 16
+  result.quad[2].y = 10
+  # Bottom Side
+  result.quad[3].x = 8
+  result.quad[3].y = 16
+  # 1 - Calculate AABB
+  sort(result.quad, result.quad.aabb)
+  # 3 - Do Scanline
+  result.scanline()
+
+proc sum(a: NQuad, x, y: float32): NQuad =
+  for i in 0..3:
+    result[i].x = a[i].x + x
+    result[i].y = a[i].y + y
+  echo result.repr
+
+proc cb_move_voxel(g: pointer, w: ptr GUITarget) =
+  let self = cast[VoxelT](w[])
+  zeroMem(addr self.grid, sizeof(self.grid))
+  sort(self.quad, self.quad.aabb)
+  self.scanline()
+
+method event(self: VoxelT, state: ptr GUIState) =
   if state.kind == evMouseClick:
-    if not isNil(widget.frame) and test(widget.frame, wVisible):
-      close(widget.frame)
-    else:
-      pushTimer(widget.target, 1000)
-      widget.set(wFocus)
-  elif state.kind == evMouseRelease:
-    # Remove Timer
-    echo "w timer removed"
-    stopTimer(widget.target)
-  if widget.test(wGrab) and not isNil(widget.frame):
-    move(widget.frame, state.mx + 5, state.my + 5)
+    self.mx = float32 state.mx
+    self.my = float32 state.my
+    self.pivot = self.quad
+  elif self.test(wGrab):
+    self.quad = 
+      sum(self.pivot, 
+        (float32(state.mx) - self.mx) / 16, 
+        (float32(state.my) - self.my) / 16)
+    var t = self.target
+    pushCallback(cb_move_voxel, t)
 
-method timer*(widget: GUIBlank) =
-  echo "w timer open frame"
-  if widget.frame != nil:
-    open(widget.frame)
-  # Remove Timer
-  stopTimer(widget.target)
+# -----------------
+# TEST TILED CANVAS
+# -----------------
 
-method handle*(widget: GUIBlank, kind: GUIHandle) =
-  echo "handle done: ", kind.repr
-  echo "by: ", cast[uint](widget)
+method draw(self: TTileImage, ctx: ptr CTXRender) =
+  ctx.color(high uint32)
+  var r = rect(self.rect.x, self.rect.y, 
+    self.canvas.w + self.canvas.rw, 
+    self.canvas.h + self.canvas.rh)
+  # Draw Rect
+  ctx.fill(r)
+  ctx.texture(r, self.tex)
+  # Division Lines
+  discard """
+  ctx.color(0xFF000000'u32)
+  let
+    tw = self.canvas.tw - 1
+    th = self.canvas.th - 1
+  var s: int16
+  # Horizontal
+  for x in 0..tw:
+    s = cast[int16](x) shl 8
+    ctx.fill rect(r.x + s, r.y, 1, r.h)
+    #ctx.fill rect(r)
+  # Vertical
+  for x in 0..th:
+    s = cast[int16](x) shl 8
+    ctx.fill rect(r.x, r.y + s, r.w, 1)
+    #ctx.fill rect(r)
+  """
 
-proc blend*(dst, src: uint32): uint32{.importc: "blend_normal".}
-proc fill*(buffer: var seq[uint32], x, y, w, h: int32, color: uint32) =
-  var i, xi, yi: int32
-  yi = y
-  while i < h:
-    xi = x
-    while xi < w:
-      let col = buffer[yi * w + xi]
-      buffer[yi * w + xi] = blend(col, color)
-      inc(xi)
-    inc(i); inc(yi)
+proc newTTileImage(w, h: int16): TTileImage =
+  new result # Alloc Widget
+  result.flags = wMouse
+  result.canvas = newCanvas(w, h)
+  glGenTextures(1, addr result.tex)
+  glBindTexture(GL_TEXTURE_2D, result.tex)
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, cast[GLint](GL_NEAREST))
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, cast[GLint](GL_NEAREST))
+  glTexImage2D(GL_TEXTURE_2D, 0, cast[GLint](GL_RGBA8), 
+    result.canvas.cw, result.canvas.ch, 0, GL_RGBA, 
+    GL_UNSIGNED_BYTE, nil)
+  glBindTexture(GL_TEXTURE_2D, 0)
+  # Create new voxel
+  result.voxel = newVoxelT()
+  result.voxel.geometry(0, 0, 512, 512)
 
-proc exit(a, b: pointer) =
-  pushSignal(msgTerminate)
+proc refresh(self: TTileImage) =
+  glBindTexture(GL_TEXTURE_2D, self.tex)
+  glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 
+    self.canvas.cw, self.canvas.ch, GL_RGBA, 
+    GL_UNSIGNED_BYTE, addr self.canvas.buffer[0])
+  glBindTexture(GL_TEXTURE_2D, 0)
 
-proc world(a, b: pointer) =
-  echo "Hello World"
+proc cb_point(g: pointer, data: ptr TTMove) =
+  let self = cast[TTileImage](data.image)
+  var b, c, d: float32
+  self.canvas[4].x = data.x
+  self.canvas[4].y = data.y
+  self.canvas.stencil(self.canvas[4][])
+  b = cpuTime()
+  self.canvas.composite()
+  c = cpuTime()
+  self.refresh()
+  d = cpuTime()
+  echo "composite: ", c - b, "  upload: ", d - c
+  self.work = false
+
+method event(self: TTileImage, state: ptr GUIState) =
+  if state.kind == evMouseClick:
+    if (state.mods and ShiftMod) == 0:
+      self.mx = state.mx; self.my = state.my
+      self.ox = self.canvas[4].x
+      self.oy = self.canvas[4].y
+    elif self.voxel.test(wVisible):
+      self.voxel.close()
+    else: # Open On Cursor Position
+      self.voxel.open()
+      self.voxel.move(state.mx, state.my)
+  elif self.test(wGrab):
+    if not self.work:
+      var t = TTMove(
+        x: self.ox + state.mx - self.mx,
+        y: self.oy + state.my - self.my,
+        image: self.target)
+      pushCallback(cb_point, t)
+      self.work = true
+
+proc clear(tile: NTile, col: NPixel) =
+  var i: int32
+  while i < 4096:
+    tile[i] = col; inc(i)
+
+proc fill(canvas: var NCanvas, idx: int32, color: uint32) =
+  let layer = canvas[idx]
+  var i: int32
+  for y in 0..<canvas.ch shr 6:
+    for x in 0..<canvas.cw shr 6:
+      layer[].add(x.int16, y.int16)
+      clear(layer.tiles[i].buffer, color)
+      inc(i) # Next Tile
+
+#[
+proc fill(canvas: var NCanvas, idx, w, h: int32, color: uint32) =
+  let layer = canvas[idx]
+  var i: int32
+  #for y in 0..<w:
+  #  for x in 0..<h:
+  layer[].add(w.int16, h.int16)
+  clear(layer.tiles[i].buffer, color)
+  inc(i) # Next Tile
+]#
 
 when isMainModule:
-  var counter = Counter(
-    clicked: 0, 
-    released: 0
-  )
-  var win = newGUIWindow(1024, 600, addr counter)
-  var ft: FT2Library
-  var cpu_raster: GLuint
-  var cpu_pixels: seq[uint32]
-  var bolo, bala: bool
-  var equisde: byte
-  var val: Value
-  var val2: Value
-  var col = RGBColor(r: 50 / 255, g: 50 / 255, b: 50 / 255)
-  val2.interval(0, 100)
-  val.interval(0, 5)
-  val.lerp(0.5, true)
-  
-  # Generate CPU Raster
-  cpu_pixels.setLen(512 * 256)
-  glGenTextures(1, addr cpu_raster)
-  glBindTexture(GL_TEXTURE_2D, cpu_raster)
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, cast[GLint](GL_LINEAR))
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, cast[GLint](GL_NEAREST))
-  glTexImage2D(GL_TEXTURE_2D, 0, cast[GLint](GL_RGBA8), 512, 256, 
-    0, GL_RGBA, GL_UNSIGNED_BYTE, nil)
-  glBindTexture(GL_TEXTURE_2D, 0)
-
-  # Initialize Freetype2
-  if ft2_init(addr ft) != 0:
-    echo "ERROR: failed initialize FT2"
-  # Create a new Window
-  let root = new GUIFondo
-  block: # Create Menu Bar
-    var bar = newMenuBar()
-    var menu: GUIMenu
-    # Create a Menu
-    menu = newMenu()
-    menu.add("Hello World", world)
-    menu.add("Exit A", exit)
-    bar.add("File", menu)
-    # Create Other Menu
-    menu = newMenu()
-    menu.add("Hello World", world)
-    menu.add("Exit B", exit)
-    bar.add("Other", menu)
-    block: # SubMenu
-      var sub = newMenu()
-      sub.add("Hello Inside", world)
-      sub.add("Kill Program", exit)
-      menu.add("The Game", sub)
-    # Add Menu Bar to Root Widget
-    bar.geometry(20, 160, 200, bar.hint.h)
-    root.add(bar)
-  block: # Create Widgets
-    # Create two blanks
-    var
-      sub, blank: GUIBlank
-      con: GUIFondo
-    # Initialize Root
-    root.color = 0xFF323232'u32
-    # --- Blank #1 ---
-    blank = new GUIBlank
-    blank.geometry(300,150,512,256)
-    blank.texture = cpu_raster
-    root.add(blank)
-    # --- Blank #2 ---
-    blank = new GUIBlank
-    blank.geometry(20,20,100,100)
-    blank.texture = cpu_raster
-    block: # Menu Blank #2
-      con = new GUIFondo
-      con.color = 0xAA637a90'u32
-      con.rect.w = 200
-      con.rect.h = 100
-      # Sub-Blank #1
-      sub = new GUIBlank
-      sub.geometry(10,10,20,20)
-      con.add(sub)
-      # Sub-Blank #2
-      sub = new GUIBlank
-      sub.geometry(40,10,20,20)
-      block: # Sub Menu #1
-        let subcon = new GUIFondo
-        subcon.color = 0x72bdb88f'u32
-        subcon.rect.w = 300
-        subcon.rect.h = 80
-        # Sub-sub blank 1#
-        var subsub = new GUIBlank
-        subsub.geometry(10,10,80,20)
-        subcon.add(subsub)
-        # Sub-sub blank 2#
-        subsub = new GUIBlank
-        subsub.geometry(10,40,80,20)
-        subcon.add(subsub)
-        # Add Sub to Sub
-        block: # Sub Menu #1
-          let fondo = new GUIFondo
-          fondo.color = 0x64000000'u32
-          fondo.geometry(90, 50, 300, 80)
-          # Sub-sub blank 1#
-          var s = new GUIBlank
-          s.geometry(10,10,20,20)
-          fondo.add(s)
-          # Sub-sub blank 2#
-          s = new GUIBlank
-          s.geometry(10,40,20,20)
-          fondo.add(s)
-          # Add Fondo to sub
-          subcon.add(fondo)
-        # Add to Sub
-        subcon.kind = wgPopup
-        sub.frame = subcon
-      con.add(sub)
-      # Add Blank 2
-      con.kind = wgFrame
-      blank.frame = con
-    root.add(blank)
-    # Add a GUI Button
-    let button = newButton("Test Button CB", helloworld)
-    button.geometry(20, 200, 200, button.hint.h)
-    block: # Add Checkboxes
-      var check = newCheckbox("Check B", addr bolo)
-      check.geometry(20, 250, 100, check.hint.h)
-      root.add(check)
-      check = newCheckbox("Check A", addr bala)
-      check.geometry(120, 250, 100, check.hint.h)
-      root.add(check)
-    block: # Add Radio Buttons
-      var radio = newRadio("Radio B", 1, addr equisde)
-      radio.geometry(20, 300, 100, radio.hint.h)
-      root.add(radio)
-      radio = newRadio("Radio A", 2, addr equisde)
-      radio.geometry(120, 300, 100, radio.hint.h)
-      root.add(radio)
-    block: # Add TextBox
-      var textbox = newTextBox(addr coso)
-      textbox.geometry(20, 350, 200, textbox.hint.h)
-      root.add(textbox)
-    block: # Add Slider
-      var slider = newSlider(addr val)
-      slider.geometry(20, 400, 200, slider.hint.h)
-      root.add(slider)
-    block: # Add Scroll
-      var scroll = newScroll(addr val)
-      scroll.geometry(20, 450, 200, scroll.hint.h)
-      root.add(scroll)
-    block: # Add Scroll
-      var scroll = newScroll(addr val, true)
-      scroll.geometry(20, 480, scroll.hint.h, 200)
-      root.add(scroll)
-    block: # Add Scroll
-      var color = newColorBar(addr col)
-      color.geometry(50, 500, color.hint.w * 2, color.hint.h * 2)
-      root.add(color)
-      color = newColorBar(addr col)
-      color.geometry(300, 500, color.hint.w * 2, color.hint.h * 2)
-      root.add(color)
-    root.add(button)
-  # Create a random tooltip
-  var tooltip = new GUITooltip
-  tooltip.kind = wgTooltip
-  tooltip.rect.x = 40
-  tooltip.rect.y = 180
-  
-  # Draw a triangle
-  var tri: CPUTriangle
-  var sse: SSETriangle
-  block:
-    var vert: CPUVertex
-    vert.x = 0; vert.y = 0; tri[0] = vert
-    vert.x = 512; vert.y = 0; tri[1] = vert
-    vert.x = 256; vert.y = 256; tri[2] = vert
-  block:
-    var vert: SSEVertex
-    vert.x = 0; vert.y = 0; sse[0] = vert
-    vert.x = 512; vert.y = 0; sse[1] = vert
-    vert.x = 256; vert.y = 256; sse[2] = vert
-  var start, middle, finish: Time
-  start = getTime()
-  triangle_draw(addr cpu_pixels[0], 512, 256, addr sse)
-  middle = getTime()
-  triangle_naive(addr cpu_pixels[0], 512, 256, addr tri)
-  finish = getTime()
-  #echo "sse: ", middle - start, "\nnaive: ", finish - middle
-  fill(cpu_pixels, 0, 0, 512, 256, 0x1100FF00'u32)
-  # Put it to raster
-  glBindTexture(GL_TEXTURE_2D, cpu_raster)
-  glPixelStorei(GL_UNPACK_ALIGNMENT, 1)
-  glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 512, 256, 
-    GL_RGBA, GL_UNSIGNED_BYTE, addr cpu_pixels[0])
-  glPixelStorei(GL_UNPACK_ALIGNMENT, 4)
-  glBindTexture(GL_TEXTURE_2D, 0)
-  # Open Window
+  var # Create Window and GUI
+    win = newGUIWindow(1024, 600, nil)
+    root = newTTileImage(1024, 1024)
+  # Reload Canvas Texture
+  #root.clear(0xFF0000FF'u32)
+  root.canvas.add()
+  root.canvas.add()
+  root.canvas.add()
+  root.canvas.add()
+  root.canvas.add()
+  #let layer = root.canvas[0]
+  #layer[].add(1, 1)
+  #layer[].add(0, 0)
+  #layer[].add(2, 2)
+  #layer[].add(3, 3)
+  #layer[].add(3, 1)
+  #clear(layer.tiles[0].buffer, 0xBB00FF00'u32)
+  #clear(layer.tiles[1].buffer, 0xBBFFFF00'u32)
+  #clear(layer.tiles[2].buffer, 0xBB00FFFF'u32)
+  #clear(layer.tiles[3].buffer, 0xBB0000FF'u32)
+  #clear(layer.tiles[4].buffer, 0xBBFF00FF'u32)
+  root.canvas.fill(0, 0xFF00FF00'u32)
+  let layer = root.canvas[1]
+  layer.x = 64
+  layer.y = 64
+  root.canvas.fill(1, 0xFF0000FF'u32)
+  root.canvas.fill(2, 0xFF00FFFF'u32)
+  root.canvas.fill(3, 0xFFFFF0FF'u32)
+  root.canvas[3].x = 128
+  root.canvas[3].y = 128
+  root.canvas.fill(4, 0xBB000000'u32)
+  #root.canvas[0][].add(0, 0)
+  #root.canvas[0][].add(1, 1)
+  #clear(root.canvas[0].tiles[0].buffer, 0xBB000000'u32)
+  #clear(root.canvas[0].tiles[1].buffer, 0xBB000000'u32)
+  root.canvas.composite()
+  root.refresh()
+  # Run GUI Program
   if win.open(root):
-    pushTimer(tooltip.target, 1000)
     while true:
       win.handleEvents() # Input
       if win.handleSignals(): break
       win.handleTimers() # Timers
       # Render Main Program
-      glClearColor(0.5, 0.5, 0.5, 1.0)
+      glClearColor(0.6, 0.6, 0.6, 1.0)
       glClear(GL_COLOR_BUFFER_BIT or GL_DEPTH_BUFFER_BIT)
       # Render GUI
       win.render()
