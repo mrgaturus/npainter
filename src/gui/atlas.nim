@@ -116,8 +116,7 @@ proc addSkylineNode(atlas: CTXAtlas, idx: int32, x,y,w,h: int16) =
 proc pack*(atlas: CTXAtlas, w, h: int16): tuple[x, y: int16] =
   var # Initial Best Fits
     bestIDX = -1'i32
-    bestX = -1'i16
-    bestY = -1'i16
+    bestX, bestY = -1'i16
   block: # Find Best Fit
     var # Temporal Vars
       bestH = atlas.h

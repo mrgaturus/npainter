@@ -136,18 +136,18 @@ proc sort(quad: var NQuad, box: NBBox) =
 
 type # Voxel Traversal
   NLane = object
-    min, max: int32
+    min, max: int16
   NScanline = object
     # Voxel Count
     n: int32
+    # Dimensions
+    w, h: int16
     # Position
     x, y: int16
     # X, Y Steps
     sx, sy: int8
     # Voxel Traversal DDA
     dx, dy, error: float32
-    # Dimensions
-    w, h: int16
     # Scanline Lanes Buffer
     lanes: array[64, NLane]
 
@@ -294,17 +294,17 @@ proc newVoxelT(): VoxelT =
   result.kind = wgFrame
   result.minimum(256, 256)
   # Left Side
-  result.quad[0].x = 0
+  result.quad[0].x = -4
   result.quad[0].y = 8
   # Top Side
   result.quad[1].x = 8
-  result.quad[1].y = 0
+  result.quad[1].y = -4
   # Right Side
-  result.quad[2].x = 16
+  result.quad[2].x = 32
   result.quad[2].y = 10
   # Bottom Side
   result.quad[3].x = 8
-  result.quad[3].y = 16
+  result.quad[3].y = 32
   # 1 - Calculate AABB
   sort(result.quad, result.quad.aabb)
   # 3 - Do Scanline
