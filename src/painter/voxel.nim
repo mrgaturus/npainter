@@ -2,6 +2,7 @@
 # Used by Canvas Render and Brush Engine
 # -------------------------------
 # Convex Quads With Clockwise Order
+# Transformed With Affine Matrix
 # 0 -------------------- 1
 # |                      |
 # |                      |
@@ -11,9 +12,9 @@ from math import floor
 
 type
   # Primitives
-  NPoint = object
-    x, y: float32
-  NQuad = array[4, NPoint]
+  NPoint* = object
+    x*, y*: float32
+  NQuad* = array[4, NPoint]
   # Bounding Box
   NBoundBox = object
     xmin, xmax: float32
@@ -251,33 +252,6 @@ proc scanline*(dda: var NScanline, quad: NQuad, unit: float32) =
 # VOXEL TRAVERSAL SCANLINE ITERATOR
 # ---------------------------------
 
-proc voxels*(dda: var NScanline, quad: NQuad) =
-  var # Lane
-    lane: NLane
-    # Vertical Interval
-    y1 = floor(quad[2].y).int32
-    y2 = floor(quad[0].y).int32
-  # Clamp Intervals
-  if y1 < 0: y1 = 0
-  if y2 >= 32: y2 = 31
-  # Clear DDA / Set Outside
-  dda.w = 32; dda.h = 32
-  # Calculate Minimun/Left Lanes
-  dda.line(quad[0], quad[1]); dda.left()
-  dda.line(quad[2], quad[1]); dda.left()
-  # Calculate Maximun/Right Lanes
-  dda.line(quad[2], quad[3]); dda.right()
-  dda.line(quad[0], quad[3]); dda.right()
-  # Do Scanline of Lanes
-  while y1 <= y2:
-    lane = dda.lanes[y1]
-    #echo lane.repr
-    while lane.min <= lane.max:
-      # YIELD HERE <-----
-      # EX: self.grid[y1 shl 5 + lane.min] += 1
-      inc(lane.min) # Next Voxel
-    inc(y1) # Next Lane
-
 iterator voxels*(dda: var NScanline): tuple[x, y: int16] =
   var # Intervals
     y1 = dda.y1
@@ -287,7 +261,7 @@ iterator voxels*(dda: var NScanline): tuple[x, y: int16] =
   while y1 <= y2:
     lane = dda.lanes[y1]
     # Iterate Each X
-    while lane.min < lane.max:
+    while lane.min <= lane.max:
       yield (x: lane.min, y: y1)
       inc(lane.min) # Next X
     inc(y1) # Next Y
