@@ -32,7 +32,9 @@ void mat3_painter_inv(float* m, float x, float y, float s, float o) {
 }
 
 // [Matrix][Vector3] Multiplication
-void mat3_vec2(float* v, float* m) {
-  v[0] = (v[0] * m[0]) + (v[1] * m[1]) + m[2];
-  v[1] = (v[0] * m[3]) + (v[1] * m[4]) + m[5];
+void vec2_mat3(float* v, float* m) {
+  float x = v[0], y = v[1];
+  // Matrix-Vector Multiplication
+  v[0] = (x * m[0]) + (y * m[1]) + m[2];
+  v[1] = (x * m[3]) + (y * m[4]) + m[5];
 }
