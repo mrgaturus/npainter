@@ -15,17 +15,30 @@ import times
 
 # LOAD SSE4.1
 {.passC: "-msse4.1".}
+{.compile: "painter/algebra.c".}
 
 type
   # Voxel Transversal 32x32
+  NMatrix = array[9, float32]
+  NTracking = object
+    cx, cy: float32
+    x, y: float32
+    s, o: float32
+  TrackMode = enum
+    mTranslate, mScale, mRotate
   VoxelT = ref object of GUIWidget
-    quad: NQuad
+    # Test Matrix
+    mat, mat_inv: NMatrix
+    track, hold: NTracking
+    hold_o: float32
+    # Quad
+    pivot, pivot_inv, quad, quad_inv: NQuad
     dda: NScanline
     # Test Grid
     grid: array[1024, uint8]
     # Hold Point
-    pivot: NQuad
     mx, my: float32
+    mode: TrackMode
   # Test Image Tile
   TTileImage = ref object of GUIWidget
     mx, my: int32
@@ -38,6 +51,13 @@ type
   TTMove = object
     x, y: int32
     image: GUITarget
+
+
+# Matrix Operations
+proc mat3_canvas*(mat: var NMatrix, cx, cy, x, y, s, o: float32) {.importc.}
+proc mat3_canvas_inv*(mat: var NMatrix, cx, cy, x, y, s, o: float32) {.importc.}
+# Vector Operations
+proc vec2_mat3*(vec: var NPoint, mat: var NMatrix) {.importc.}
 
 method draw(self: VoxelT, ctx: ptr CTXRender) =
   var # Each Tile
@@ -61,7 +81,7 @@ method draw(self: VoxelT, ctx: ptr CTXRender) =
       inc(cursor); r.x += 16
     r.x = self.rect.x
     r.y += 16 # Next Row
-  # Draw Lines
+  # Draw Lines of Quad
   let p = point(self.rect.x, self.rect.y)
   ctx.color(high uint32)
   ctx.line(
@@ -80,6 +100,30 @@ method draw(self: VoxelT, ctx: ptr CTXRender) =
     point(p.x + self.quad[3].x * 16, p.y + self.quad[3].y * 16),
     point(p.x + self.quad[0].x * 16, p.y + self.quad[0].y * 16)
   )
+  # Draw Lines of Quad Inverse
+  #let p = point(self.rect.x, self.rect.y)
+  ctx.color(0xFF00FFFF'u32)
+  var rect = GUIRect(
+    x: 0, y: 0,
+    w: 16 * 16, h: 16 * 16)
+  ctx.push(rect)
+  ctx.line(
+    point(self.quad_inv[0].x * 16, self.quad_inv[0].y * 16),
+    point(self.quad_inv[1].x * 16, self.quad_inv[1].y * 16)
+  )
+  ctx.line(
+    point(self.quad_inv[1].x * 16, self.quad_inv[1].y * 16),
+    point(self.quad_inv[2].x * 16, self.quad_inv[2].y * 16)
+  )
+  ctx.line(
+    point(self.quad_inv[2].x * 16, self.quad_inv[2].y * 16),
+    point(self.quad_inv[3].x * 16, self.quad_inv[3].y * 16)
+  )
+  ctx.line(
+    point(self.quad_inv[3].x * 16, self.quad_inv[3].y * 16),
+    point(self.quad_inv[0].x * 16, self.quad_inv[0].y * 16)
+  )
+  ctx.pop()
 
 # ------------------
 # VOXEL TEST METHODS
@@ -103,49 +147,123 @@ proc test_scanline(self: VoxelT) =
   for x, y in self.dda.voxels:
     self.grid[y shl 5 + x] += 1
 
+proc test_mat(self: VoxelT) =
+  mat3_canvas(self.mat, 
+    self.track.cx, self.track.cy,
+    self.track.x, self.track.y,
+    self.track.s, self.track.o)
+  mat3_canvas_inv(self.mat_inv,
+    self.track.cx, self.track.cy,
+    self.track.x, self.track.y, 
+    self.track.s, self.track.o)
+  # Perform Quad Transform
+  self.quad = self.pivot
+  for p in mitems(self.quad):
+    p.vec2_mat3(self.mat)
+  # Perform Quad Inverse Transfrom
+  self.quad_inv = self.pivot
+  for p in mitems(self.quad_inv):
+    p.vec2_mat3(self.mat_inv)
+
 proc newVoxelT(): VoxelT =
   new result # Alloc
   result.flags = wMouse
   result.kind = wgFrame
   result.minimum(256, 256)
+  # ! Scale Allways 1
+  result.track.s = 1
   # Left Side
-  result.quad[0].x = 5
-  result.quad[0].y = 10
+  result.pivot[0].x = 0
+  result.pivot[0].y = 0
   # Top Side
-  result.quad[1].x = 20
-  result.quad[1].y = 10
+  result.pivot[1].x = 16
+  result.pivot[1].y = 0
   # Right Side
-  result.quad[2].x = 20
-  result.quad[2].y = 0
+  result.pivot[2].x = 16
+  result.pivot[2].y = 16
   # Bottom Side
-  result.quad[3].x = 5
-  result.quad[3].y = 0
+  result.pivot[3].x = 0
+  result.pivot[3].y = 16
+  # Inverted Quad
+  # Left Side
+  result.pivot_inv[0].x = 0
+  result.pivot_inv[0].y = 0
+  # Top Side
+  result.pivot_inv[1].x = 16
+  result.pivot_inv[1].y = 0
+  # Right Side
+  result.pivot_inv[2].x = 16
+  result.pivot_inv[2].y = 16
+  # Bottom Side
+  result.pivot_inv[3].x = 0
+  result.pivot_inv[3].y = 16
+  # Scale
+  result.track.cx = 8
+  result.track.cy = 8
   # 1 - Perform Scanline
+  result.quad = result.pivot
+  result.quad_inv = result.pivot_inv
   result.dda.dimensions(32, 32)
   result.test_scanline()
 
-proc sum(a: NQuad, x, y: float32): NQuad =
-  for i in 0..3:
-    result[i].x = a[i].x + x
-    result[i].y = a[i].y + y
+#proc sum(a: NQuad, x, y: float32): NQuad =
+#  for i in 0..3:
+#    result[i].x = a[i].x + x
+#    result[i].y = a[i].y + y
+
+proc translate(self: VoxelT, x, y: float32) =
+  self.track.x = self.hold.x + x
+  self.track.y = self.hold.y + y
+
+proc scale(self: VoxelT, s: float32) =
+  self.track.s = self.hold.s - (s / 10)
+  if self.track.s < 0.1:
+    self.track.s = 0.1
+
+proc rotate(self: VoxelT, o: float32) =
+  self.track.o = self.hold.o + o
+  echo "raw rotation: ", o
+  echo "rotation: ", self.track.o
 
 proc cb_move_voxel(g: pointer, w: ptr GUITarget) =
   let self = cast[VoxelT](w[])
   zeroMem(addr self.grid, sizeof(self.grid))
+  self.test_mat()
   self.test_scanline()
   #sort(self.quad, self.quad.aabb)
   #self.scanline()
+
+from math import arctan2
 
 method event(self: VoxelT, state: ptr GUIState) =
   if state.kind == evMouseClick:
     self.mx = float32 state.mx
     self.my = float32 state.my
-    self.pivot = self.quad
+    self.hold = self.track
+    # Track Mode
+    if (state.mods and ShiftMod) == ShiftMod:
+      self.mode = mScale
+    elif (state.mods and CtrlMod) == CtrlMod:
+      self.mode = mRotate
+      let # Obviusly will be cleaned
+        c = point(self.rect.w shr 1, self.rect.h shr 1)
+        p = point(state.mx - self.rect.x, state.my - self.rect.y)
+      self.hold_o = arctan2(c.y - p.y, c.x - p.x)
+    else: self.mode = mTranslate
+  if state.kind == evMouseRelease: discard
   elif self.test(wGrab):
-    self.quad = 
-      sum(self.pivot, 
+    case self.mode
+    of mTranslate:
+      translate(self,
         (float32(state.mx) - self.mx) / 16, 
         (float32(state.my) - self.my) / 16)
+    of mScale:
+      scale(self, (float32(state.my) - self.my) / 16)
+    of mRotate:
+      let # Obviusly will be cleaned
+        c = point(self.rect.w shr 1, self.rect.h shr 1)
+        p = point(state.mx - self.rect.x, state.my - self.rect.y)
+      rotate(self, arctan2(c.y - p.y, c.x - p.x) - self.hold_o)
     var t = self.target
     pushCallback(cb_move_voxel, t)
 

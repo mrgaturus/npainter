@@ -11,26 +11,20 @@ type
   NVertex = object
     x, y: int32
     u, v: uint16
-  NCorner* = object
-    x, y: float32
   # -- Tiled Canvas View
-  NScanline* = enum
-    scNone, scLeft, scRight
   NCanvasView = object
     # Shader Objects
     program: GLuint
-    uview, umodel: GLint
+    uView, uModel: GLint
     # OpenGL Objects
     vao, vbo, pbo: GLuint
     ping, pong: GLuint
-    # Canvas Target Addr
-    target: ptr NCanvas
     # Viewport Uniforms
     width, height: int32
-    mview: array[16, float32]
-    mmodel: array[9, float32]
-    # Tile Grid 16384x16384
-    grid: array[4096, bool]
+    mView: array[16, float32]
+    mModel: array[9, float32]
+    # Canvas Target Addr
+    target: ptr NCanvas
     # Textures and Vertexs
     verts: seq[NVertex]
     texts: seq[GLuint]
@@ -51,8 +45,8 @@ proc newCanvasView*(): NCanvasView =
   # -- Use Program for Define Uniforms
   glUseProgram(result.program)
   # Define Projection and Texture Uniforms
-  result.uview = glGetUniformLocation(result.program, "uView")
-  result.umodel = glGetUniformLocation(result.program, "uModel")
+  result.uView = glGetUniformLocation(result.program, "uView")
+  result.uModel = glGetUniformLocation(result.program, "uModel")
   # Set Default Uniform Value: Tile Texture
   glUniform1i glGetUniformLocation(result.program, "uTile"), 0
   # Unuse Program
@@ -95,11 +89,11 @@ proc viewport*(view: var NCanvasView, w, h: int32) =
   # Use Canvas Program
   glUseProgram(view.program)
   # Change View Projection Matrix
-  guiProjection(addr view.mview, 
+  guiProjection(addr view.mView, 
     float32 w, float32 h)
   # Upload View Projection Matrix
-  glUniformMatrix4fv(view.uview, 1, false,
-    cast[ptr float32](addr view.mview))
+  glUniformMatrix4fv(view.uView, 1, false,
+    cast[ptr float32](addr view.mView))
   # Unuse Canvas Program
   glUseProgram(0)
   # Save New Viewport Size

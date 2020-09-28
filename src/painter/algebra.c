@@ -1,9 +1,9 @@
-// -----------------------------
-// PAINTER FUNDAMENTAL TRANSFORM
-// -----------------------------
+// ------------------------------
+// PAINTER FUNDAMENTAL TRANSFORMS
+// ------------------------------
 
 // <- [Translate][Rotate][Scale] <-
-void mat3_painter(float* m, float x, float y, float s, float o) {
+void mat3_brush(float* m, float x, float y, float s, float o) {
   float cs, ss;
   cs = cos(o) * s;
   ss = sin(o) * s;
@@ -11,24 +11,42 @@ void mat3_painter(float* m, float x, float y, float s, float o) {
   m[0] = cs; m[1] = -ss; m[2] = x;
   m[3] = ss; m[4] =  cs; m[5] = y;
   // Transform Place Holder
-  m[6] = m[7] = 0; m[8] = 1;
+  m[6] = 0; m[7] = 0; m[8] = 1;
 }
 
-// -> [Translate][Rotate][Scale] ->
-void mat3_painter_inv(float* m, float x, float y, float s, float o) {
-  s = 1 / s;
-  // Cos & Sin Cache
+// <- [Translate][Translate -Center][Rotate][Scale][Translate Center] <-
+void mat3_canvas(float* m, float cx, float cy, float x, float y, float s, float o) {
+  // Rotation Precalculated
   float co, so, cs, ss;
   co = cos(o); so = sin(o);
   cs = co * s; ss = so * s;
-  // Set Matrix Transform
+  // Rotation Transform
+  m[0] = cs; m[1] = -ss;
+  m[3] = ss; m[4] = cs;
+  // Translation with Center Transform
+  m[2] = (so * cy - co * cx) * s + (x + cx);
+  m[5] = -(co * cy + so * cx) * s + (y + cy);
+  // Transform Place Holder
+  m[6] = 0; m[7] = 0; m[8] = 1;
+}
+
+// -> [Translate][Translate -Center][Rotate][Scale][Translate Center] ->
+void mat3_canvas_inv(float* m, float cx, float cy, float x, float y, float s, float o) {
+  // Inverted Scale
+  float os = s;
+  s = 1 / s;
+  // Rotation Precalculated
+  float co, so, cs, ss;
+  co = cos(o); so = sin(o);
+  cs = co * s; ss = so * s;
+  // Rotation Transform
   m[0] = cs; m[1] = ss;
   m[3] = -ss; m[4] = cs;
-  // Set Heavy Calculation Part
-  m[2] = -(co * x + so * y) * s;
-  m[5] = (so * x - co * y) * s;
+  // Translation with Center Transform
+  m[2] = ( cx * os - co * (x + cx) - so * (y + cy) ) * s;
+  m[5] = ( cy * os + so * (x + cx) - co * (y + cy) ) * s;
   // Transform Place Holder
-  m[6] = m[7] = 0; m[8] = 1;
+  m[6] = 0; m[7] = 0; m[8] = 1;
 }
 
 // [Matrix][Vector3] Multiplication
