@@ -76,12 +76,20 @@ method draw(self: VoxelT, ctx: ptr CTXRender) =
         0xFF002f00.uint32
       else: 0xFF2F2F2F.uint32
       # Fill Tile
-      ctx.fill(r.rect)
+      #ctx.fill(r.rect)
       # Next Grid Pos
       inc(cursor); r.x += 16
     r.x = self.rect.x
     r.y += 16 # Next Row
   # Draw Lines of Quad
+  ctx.color(uint32 0xFF232323)
+  ctx.fill rect(
+    self.rect.x, self.rect.y, 16 * 16, 16 * 16
+  )
+  ctx.color(0xFF00FFFF'u32)
+  ctx.line rect(
+    self.rect.x, self.rect.y, 16 * 16, 16 * 16
+  ), 1
   let p = point(self.rect.x, self.rect.y)
   ctx.color(high uint32)
   ctx.line(
@@ -102,11 +110,24 @@ method draw(self: VoxelT, ctx: ptr CTXRender) =
   )
   # Draw Lines of Quad Inverse
   #let p = point(self.rect.x, self.rect.y)
-  ctx.color(0xFF00FFFF'u32)
   var rect = GUIRect(
     x: 0, y: 0,
     w: 16 * 16, h: 16 * 16)
   ctx.push(rect)
+  # Draw Background
+  ctx.color(uint32 0xFF232323)
+  ctx.triangle(
+    point(self.quad_inv[0].x * 16, self.quad_inv[0].y * 16),
+    point(self.quad_inv[1].x * 16, self.quad_inv[1].y * 16),
+    point(self.quad_inv[2].x * 16, self.quad_inv[2].y * 16)
+  )
+  ctx.triangle(
+    point(self.quad_inv[2].x * 16, self.quad_inv[2].y * 16),
+    point(self.quad_inv[3].x * 16, self.quad_inv[3].y * 16),
+    point(self.quad_inv[0].x * 16, self.quad_inv[0].y * 16)
+  )
+  ctx.color(0xFF00FFFF'u32)
+  # Draw Lines
   ctx.line(
     point(self.quad_inv[0].x * 16, self.quad_inv[0].y * 16),
     point(self.quad_inv[1].x * 16, self.quad_inv[1].y * 16)
@@ -124,6 +145,10 @@ method draw(self: VoxelT, ctx: ptr CTXRender) =
     point(self.quad_inv[0].x * 16, self.quad_inv[0].y * 16)
   )
   ctx.pop()
+  ctx.color(high uint32)
+  ctx.line rect(
+    0, 0, 16 * 16, 16 * 16
+  ), 1
 
 # ------------------
 # VOXEL TEST METHODS
@@ -272,13 +297,13 @@ method event(self: VoxelT, state: ptr GUIState) =
 # -----------------
 
 method draw(self: TTileImage, ctx: ptr CTXRender) =
-  ctx.color(high uint32)
+  ctx.color(uint32 0xFF535353)
   var r = rect(self.rect.x, self.rect.y, 
     self.canvas.w + self.canvas.rw, 
     self.canvas.h + self.canvas.rh)
   # Draw Rect
   ctx.fill(r)
-  ctx.texture(r, self.tex)
+  #ctx.texture(r, self.tex)
   # Division Lines
   discard """
   ctx.color(0xFF000000'u32)

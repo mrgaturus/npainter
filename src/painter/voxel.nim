@@ -15,6 +15,7 @@ type
   NPoint* = object
     x*, y*: float32
   NQuad* = array[4, NPoint]
+  NMatrix* = array[9, float32]
   # Bounding Box
   NBoundBox = object
     xmin, xmax: float32
@@ -265,3 +266,15 @@ iterator voxels*(dda: var NScanline): tuple[x, y: int16] =
       yield (x: lane.min, y: y1)
       inc(lane.min) # Next X
     inc(y1) # Next Y
+
+# --------------------------
+# MATRIX & VECTOR OPERATIONS
+# --------------------------
+
+{.compile: "algebra.c".}
+# Matrix Transform Calculation
+proc mat3_brush*(mat: var NMatrix, x, y, s, o: float32) {.importc.}
+proc mat3_canvas*(mat: var NMatrix, cx, cy, x, y, s, o: float32) {.importc.}
+proc mat3_canvas_inv*(mat: var NMatrix, cx, cy, x, y, s, o: float32) {.importc.}
+# Vector-Matrix Multiplication
+proc vec2_mat3*(p: var NPoint, mat: var NMatrix) {.importc.}
