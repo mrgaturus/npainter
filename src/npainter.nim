@@ -9,13 +9,14 @@ import gui/[
   #timer
   ]
 import painter/[
-  canvas, voxel
+  canvas, 
+  voxel, 
+  view
 ]
 import times
 
 # LOAD SSE4.1
 {.passC: "-msse4.1".}
-{.compile: "painter/algebra.c".}
 
 type
   # Voxel Transversal 32x32
@@ -39,11 +40,15 @@ type
     # Hold Point
     mx, my: float32
     mode: TrackMode
+    view: ptr NCanvasView
   # Test Image Tile
   TTileImage = ref object of GUIWidget
     mx, my: int32
     ox, oy: int32
     canvas: NCanvas
+    track, hold: NTracking
+    hold_o: float32
+    mode: TrackMode
     tex: GLuint
     work: bool
     # Voxel Test
@@ -51,13 +56,6 @@ type
   TTMove = object
     x, y: int32
     image: GUITarget
-
-
-# Matrix Operations
-proc mat3_canvas*(mat: var NMatrix, cx, cy, x, y, s, o: float32) {.importc.}
-proc mat3_canvas_inv*(mat: var NMatrix, cx, cy, x, y, s, o: float32) {.importc.}
-# Vector Operations
-proc vec2_mat3*(vec: var NPoint, mat: var NMatrix) {.importc.}
 
 method draw(self: VoxelT, ctx: ptr CTXRender) =
   var # Each Tile
@@ -189,6 +187,26 @@ proc test_mat(self: VoxelT) =
   self.quad_inv = self.pivot
   for p in mitems(self.quad_inv):
     p.vec2_mat3(self.mat_inv)
+  # Set Transform
+  var mat, mat_inv: NMatrix
+  mat3_canvas(mat, 
+    512, 300,
+    self.track.x * 16, self.track.y * 16,
+    self.track.s, self.track.o)
+  mat3_canvas_inv(mat_inv,
+    512, 300,
+    self.track.x * 16, self.track.y * 16, 
+    self.track.s, self.track.o)
+  self.view[].transform(addr mat_inv[0])
+  self.view[].clear()
+  for y in 0..<4i32:
+    for x in 0..<4i32: 
+      self.view[].add(x, y)
+  #self.view[].add(1, 0)
+  #self.view[].add(1, 1)
+  #self.view[].add(1, 2)
+  #self.view[].add(1, 3)
+  self.view[].copy()
 
 proc newVoxelT(): VoxelT =
   new result # Alloc
@@ -250,10 +268,13 @@ proc rotate(self: VoxelT, o: float32) =
   echo "raw rotation: ", o
   echo "rotation: ", self.track.o
 
+var lock = false
 proc cb_move_voxel(g: pointer, w: ptr GUITarget) =
   let self = cast[VoxelT](w[])
   zeroMem(addr self.grid, sizeof(self.grid))
-  self.test_mat()
+  if lock:
+    self.test_mat()
+    lock = false
   self.test_scanline()
   #sort(self.quad, self.quad.aabb)
   #self.scanline()
@@ -290,17 +311,18 @@ method event(self: VoxelT, state: ptr GUIState) =
         p = point(state.mx - self.rect.x, state.my - self.rect.y)
       rotate(self, arctan2(c.y - p.y, c.x - p.x) - self.hold_o)
     var t = self.target
-    pushCallback(cb_move_voxel, t)
+    if not lock:
+      pushCallback(cb_move_voxel, t)
+      lock = true
 
 # -----------------
 # TEST TILED CANVAS
 # -----------------
 
 method draw(self: TTileImage, ctx: ptr CTXRender) =
-  ctx.color(uint32 0xFF535353)
+  ctx.color(uint32 0x00FFFFFF)
   var r = rect(self.rect.x, self.rect.y, 
-    self.canvas.w + self.canvas.rw, 
-    self.canvas.h + self.canvas.rh)
+    self.canvas.cw, self.canvas.ch)
   # Draw Rect
   ctx.fill(r)
   #ctx.texture(r, self.tex)
@@ -371,7 +393,7 @@ method event(self: TTileImage, state: ptr GUIState) =
     else: # Open On Cursor Position
       self.voxel.open()
       self.voxel.move(state.mx, state.my)
-  elif self.test(wGrab):
+  elif self.test(wGrab) and (state.mods and ShiftMod) == 0:
     if not self.work:
       var t = TTMove(
         x: self.ox + state.mx - self.mx,
@@ -408,6 +430,7 @@ proc fill(canvas: var NCanvas, idx, w, h: int32, color: uint32) =
 when isMainModule:
   var # Create Window and GUI
     win = newGUIWindow(1024, 600, nil)
+    eye = newCanvasView()
     root = newTTileImage(1024, 1024)
   # Reload Canvas Texture
   #root.clear(0xFF0000FF'u32)
@@ -416,6 +439,15 @@ when isMainModule:
   root.canvas.add()
   root.canvas.add()
   root.canvas.add()
+  root.voxel.view = addr eye
+  eye.viewport(1024, 600)
+  eye.target(addr root.canvas)
+  eye.unit(1) # Scale 1 For Now
+  # Set Proyection
+  block:
+    var mat: NMatrix
+    mat3_canvas(mat, 512, 300, 10, 10, 1.5, 0.2)
+    eye.transform(addr mat[0])
   #let layer = root.canvas[0]
   #layer[].add(1, 1)
   #layer[].add(0, 0)
@@ -441,8 +473,28 @@ when isMainModule:
   #root.canvas[0][].add(1, 1)
   #clear(root.canvas[0].tiles[0].buffer, 0xBB000000'u32)
   #clear(root.canvas[0].tiles[1].buffer, 0xBB000000'u32)
+  root.canvas.stencil(root.canvas[0][])
   root.canvas.composite()
   root.refresh()
+  eye.clear()
+  for y in 0..<4i32:
+    for x in 0..<4i32: 
+      eye.add(x, y)
+  #eye.add(1, 1)
+  #eye.add(1, 2)
+  #eye.add(1, 3)
+  #eye.add(1, 4)
+
+  #eye.add(2, 1)
+  #eye.add(2, 2)
+  #eye.add(2, 3)
+  #eye.add(2, 4)
+
+  #eye.add(3, 1)
+  #eye.add(3, 2)
+  #eye.add(3, 3)
+  #eye.add(3, 4)
+  eye.copy()
   # Run GUI Program
   if win.open(root):
     while true:
@@ -450,9 +502,10 @@ when isMainModule:
       if win.handleSignals(): break
       win.handleTimers() # Timers
       # Render Main Program
-      glClearColor(0.6, 0.6, 0.6, 1.0)
+      glClearColor(0.6, 0.6, 0.8, 1.0)
       glClear(GL_COLOR_BUFFER_BIT or GL_DEPTH_BUFFER_BIT)
       # Render GUI
+      eye.render()
       win.render()
   # Close Window
   win.close()

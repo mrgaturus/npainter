@@ -18,16 +18,15 @@ type
   # -- Tiled Canvas View
   NDirtyKind = enum
     drNone, drPartial, drComplete
-  NCanvasView = object
+  NCanvasView* = object
     # Shader Objects
     program: GLuint
-    uView, uModel: GLint
+    uPro, uModel: GLint
     # OpenGL Objects
     vao, vbo, pbo: GLuint
-    ping, pong: GLuint
     # Viewport Uniforms
     width, height: int32
-    mView: array[16, float32]
+    mPro: array[16, float32]
     # Canvas Target Addr
     canvas: ptr NCanvas
     # Stride Size
@@ -60,26 +59,20 @@ proc newCanvasView*(): NCanvasView =
   # -- Use Program for Define Uniforms
   glUseProgram(result.program)
   # Define Projection and Texture Uniforms
-  result.uView = glGetUniformLocation(result.program, "uView")
+  result.uPro = glGetUniformLocation(result.program, "uPro")
   result.uModel = glGetUniformLocation(result.program, "uModel")
   # Set Default Uniform Value: Tile Texture
   glUniform1i glGetUniformLocation(result.program, "uTile"), 0
   # Unuse Program
   glUseProgram(0)
-  # -- Generate Pixel Transfer PBOs
-  glGenBuffers(2, addr result.ping)
-  # Alloc Ping Pixel Buffer Object
-  glBindBuffer(GL_PIXEL_UNPACK_BUFFER, result.ping)
-  glBufferData(GL_PIXEL_UNPACK_BUFFER, 
-    65536 * sizeof(NPixel), nil, GL_STREAM_COPY)
-  # Alloc Pong Pixel Buffer Object
-  glBindBuffer(GL_PIXEL_UNPACK_BUFFER, result.pong)
+  # -- Generate Pixel Transfer PBO
+  glGenBuffers(1, addr result.pbo)
+  # Alloc Pixel Buffer Object
+  glBindBuffer(GL_PIXEL_UNPACK_BUFFER, result.pbo)
   glBufferData(GL_PIXEL_UNPACK_BUFFER, 
     65536 * sizeof(NPixel), nil, GL_STREAM_COPY)
   # Unbind Pixel Buffer Object
   glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0)
-  # Set Initial Current PBO
-  result.pbo = result.ping
   # -- Generate Vertex Buffer
   glGenVertexArrays(1, addr result.vao)
   glGenBuffers(1, addr result.vbo)
@@ -133,11 +126,11 @@ proc viewport*(view: var NCanvasView, w, h: int32) =
   # Use Canvas Program
   glUseProgram(view.program)
   # Change View Projection Matrix
-  guiProjection(addr view.mView, 
+  guiProjection(addr view.mPro, 
     float32 w, float32 h)
   # Upload View Projection Matrix
-  glUniformMatrix4fv(view.uView, 1, false,
-    cast[ptr float32](addr view.mView))
+  glUniformMatrix4fv(view.uPro, 1, false,
+    cast[ptr float32](addr view.mPro))
   # Unuse Canvas Program
   glUseProgram(0)
   # Save New Viewport Size
@@ -149,7 +142,7 @@ proc transform*(view: var NCanvasView, matrix: ptr float32) =
   # Use Canvas Program
   glUseProgram(view.program)
   # Upload View Transform Matrix
-  glUniformMatrix3fv(view.uModel, 1, false, matrix)
+  glUniformMatrix3fv(view.uModel, 1, true, matrix)
   # Unuse Canvas Program
   glUseProgram(0)
   # Invalidate View Tiles
@@ -168,6 +161,17 @@ proc alloc(view: var NCanvasView) =
     glBindTexture(GL_TEXTURE_2D, tex)
     glTexImage2D(GL_TEXTURE_2D, 0, cast[GLint](GL_RGBA8), 
       256, 256, 0, GL_RGBA, GL_UNSIGNED_BYTE, nil)
+    # Set Mig/Mag Filter
+    glTexParameteri(GL_TEXTURE_2D, 
+      GL_TEXTURE_MIN_FILTER, cast[GLint](GL_LINEAR))
+    glTexParameteri(GL_TEXTURE_2D, 
+      GL_TEXTURE_MAG_FILTER, cast[GLint](GL_NEAREST))
+    # Set UV Mapping Clamping
+    glTexParameteri(GL_TEXTURE_2D, 
+      GL_TEXTURE_WRAP_S, cast[GLint](GL_CLAMP_TO_EDGE))
+    glTexParameteri(GL_TEXTURE_2D, 
+      GL_TEXTURE_WRAP_T, cast[GLint](GL_CLAMP_TO_EDGE))
+    # Unbind Texture
     glBindTexture(GL_TEXTURE_2D, 0)
     # Add New Texture
     view.texts.add(tex)
@@ -187,7 +191,7 @@ proc copy(src: NMap, s, x, y, w, h: int32) =
   # Map Buffer Without Syncronization
   let dst = cast[NMap](glMapBufferRange(
     GL_PIXEL_UNPACK_BUFFER, 0, BUFFER_SIZE, 
-    GL_MAP_WRITE_BIT or GL_MAP_UNSYNCHRONIZED_BIT))
+    GL_MAP_WRITE_BIT or GL_MAP_INVALIDATE_BUFFER_BIT))
   var i, si, di: int32
   # Row Copy Iterator
   si = y * s + x
@@ -211,7 +215,8 @@ proc add*(view: var NCanvasView, x, y: int32) =
   if view.cursor == len(view.tiles):
     view.alloc() # Alloc New Tile
   block: # Set Tile Position
-    let tile = addr view.tiles[^1]
+    let tile = # Lookup From Cursor
+      addr view.tiles[view.cursor]
     tile.x = x; tile.y = y
   block: # Set Vertex Position
     let # Define Vertex Attribs
@@ -242,6 +247,7 @@ proc add*(view: var NCanvasView, x, y: int32) =
 proc copy*(view: var NCanvasView) =
   # Bind Array Buffer First
   glBindBuffer(GL_ARRAY_BUFFER, view.vbo)
+  glBindBuffer(GL_PIXEL_UNPACK_BUFFER, view.pbo)
   # TODO: Level of Detail
   let src = cast[NMap](
     addr view.canvas.buffer[0])
@@ -269,15 +275,10 @@ proc copy*(view: var NCanvasView) =
       GL_TEXTURE_2D, 0, 0, 0, 
       256, 256, GL_RGBA, 
       GL_UNSIGNED_BYTE, nil)
-    # Alternate PBO Ping-Pong
-    if view.pbo == view.ping:
-      view.pbo = view.pong
-    else: view.pbo = view.ping
-    # Next Tile
-    inc(i)
+    inc(i) # Next Tile
   # Copy Tile Vertex Buffer
   glBufferData(GL_ARRAY_BUFFER, 
-    sizeof(NVertex) * view.cursor, 
+    sizeof(NVertex) * view.cursor * 4, 
     addr view.verts[0], GL_STREAM_DRAW)
   # Unbind Texture, PBO, and VBO
   glBindTexture(GL_TEXTURE_2D, 0)
@@ -292,13 +293,13 @@ proc render*(view: var NCanvasView) =
   glUseProgram(view.program)
   glBindVertexArray(view.vao)
   # Draw Each Tile
-  var i: int32
+  var i, j: int32
   while i < view.cursor:
     # Bind Texture and Draw Tile Quad
     glBindTexture(GL_TEXTURE_2D, view.texts[i])
-    glDrawArrays(GL_TRIANGLE_STRIP, i shl 2, 4)
+    glDrawArrays(GL_TRIANGLE_STRIP, j, 4)
     # Next Tile
-    inc(i)
+    j += 4; inc(i)
   # Unbind Current State
   glBindTexture(GL_TEXTURE_2D, 0)
   glBindVertexArray(0)

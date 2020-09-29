@@ -24,8 +24,8 @@ type
     tiles*: seq[NLayerTile]
   # -- Canvas Object
   NCanvas* = object
-    w*, rw*, cw*: int32
-    h*, rh*, ch*: int32
+    w*, cw*: int32
+    h*, ch*: int32
     layers: seq[NLayer]
     # Canvas Buffer & Mask
     buffer*: seq[NPixel]
@@ -47,9 +47,6 @@ proc newCanvas*(w, h: int16): NCanvas =
   # Set Canvas Amortized Dimensions
   result.cw = (w + 63) and not 0x3f
   result.ch = (h + 63) and not 0x3f
-  # Set Residual Dimensions
-  result.rw = w and 0x3f
-  result.rh = h and 0x3f
   # Alloc Canvas Pixel Buffer
   setLen(result.buffer,
     result.cw * result.ch)
