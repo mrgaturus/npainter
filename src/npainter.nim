@@ -200,7 +200,7 @@ proc test_mat(self: VoxelT) =
   self.view[].transform(addr mat_inv[0])
   self.view[].clear()
   for y in 0..<4i32:
-    for x in 0..<4i32: 
+    for x in 0..<8i32: 
       self.view[].add(x, y)
   #self.view[].add(1, 0)
   #self.view[].add(1, 1)
@@ -431,7 +431,7 @@ when isMainModule:
   var # Create Window and GUI
     win = newGUIWindow(1024, 600, nil)
     eye = newCanvasView()
-    root = newTTileImage(1024, 1024)
+    root = newTTileImage(2048, 1024)
   # Reload Canvas Texture
   #root.clear(0xFF0000FF'u32)
   root.canvas.add()
@@ -477,9 +477,9 @@ when isMainModule:
   root.canvas.composite()
   root.refresh()
   eye.clear()
-  for y in 0..<4i32:
-    for x in 0..<4i32: 
-      eye.add(x, y)
+  #for y in 0..<16i32:
+  #  for x in 0..<16i32: 
+  eye.add(1, 1)
   #eye.add(1, 1)
   #eye.add(1, 2)
   #eye.add(1, 3)

@@ -70,7 +70,7 @@ proc newCanvasView*(): NCanvasView =
   # Alloc Pixel Buffer Object
   glBindBuffer(GL_PIXEL_UNPACK_BUFFER, result.pbo)
   glBufferData(GL_PIXEL_UNPACK_BUFFER, 
-    65536 * sizeof(NPixel), nil, GL_STREAM_COPY)
+    65536 * sizeof(NPixel), nil, GL_STREAM_DRAW)
   # Unbind Pixel Buffer Object
   glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0)
   # -- Generate Vertex Buffer
