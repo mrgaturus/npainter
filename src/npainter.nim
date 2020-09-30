@@ -345,7 +345,7 @@ method event(self: TTileImage, state: ptr GUIState) =
     glEnable(GL_BLEND)
     glBlendEquation(GL_FUNC_ADD)
     glBlendFuncSeparate(GL_DST_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_ONE, GL_ONE_MINUS_SRC_ALPHA)
-    self.engine[].transform(x,y,1,0)
+    self.engine[].transform(x,y,0.02,0)
     self.engine[].draw()
     self.engine[].finish()
 
