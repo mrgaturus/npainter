@@ -11,9 +11,9 @@ import gui/[
 import painter/[
   canvas, 
   voxel, 
-  view
+  view,
+  brush
 ]
-import times
 
 # LOAD SSE4.1
 {.passC: "-msse4.1".}
@@ -46,16 +46,13 @@ type
     mx, my: int32
     ox, oy: int32
     canvas: NCanvas
-    track, hold: NTracking
+    engine: ptr NBrushEngine
     hold_o: float32
     mode: TrackMode
     tex: GLuint
     work: bool
     # Voxel Test
     voxel: VoxelT
-  TTMove = object
-    x, y: int32
-    image: GUITarget
 
 method draw(self: VoxelT, ctx: ptr CTXRender) =
   var # Each Tile
@@ -320,87 +317,37 @@ method event(self: VoxelT, state: ptr GUIState) =
 # -----------------
 
 method draw(self: TTileImage, ctx: ptr CTXRender) =
-  ctx.color(uint32 0x00FFFFFF)
+  ctx.color(uint32 0xFF232323)
   var r = rect(self.rect.x, self.rect.y, 
     self.canvas.cw, self.canvas.ch)
   # Draw Rect
   ctx.fill(r)
-  #ctx.texture(r, self.tex)
-  # Division Lines
-  discard """
-  ctx.color(0xFF000000'u32)
-  let
-    tw = self.canvas.tw - 1
-    th = self.canvas.th - 1
-  var s: int16
-  # Horizontal
-  for x in 0..tw:
-    s = cast[int16](x) shl 8
-    ctx.fill rect(r.x + s, r.y, 1, r.h)
-    #ctx.fill rect(r)
-  # Vertical
-  for x in 0..th:
-    s = cast[int16](x) shl 8
-    ctx.fill rect(r.x, r.y + s, r.w, 1)
-    #ctx.fill rect(r)
-  """
+  ctx.color(high uint32)
+  ctx.texture(rect(0,0,2048,2048), self.tex)
 
 proc newTTileImage(w, h: int16): TTileImage =
   new result # Alloc Widget
   result.flags = wMouse
   result.canvas = newCanvas(w, h)
-  glGenTextures(1, addr result.tex)
-  glBindTexture(GL_TEXTURE_2D, result.tex)
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, cast[GLint](GL_NEAREST))
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, cast[GLint](GL_NEAREST))
-  glTexImage2D(GL_TEXTURE_2D, 0, cast[GLint](GL_RGBA8), 
-    result.canvas.cw, result.canvas.ch, 0, GL_RGBA, 
-    GL_UNSIGNED_BYTE, nil)
-  glBindTexture(GL_TEXTURE_2D, 0)
   # Create new voxel
   result.voxel = newVoxelT()
   result.voxel.geometry(0, 0, 512, 512)
 
-proc refresh(self: TTileImage) =
-  glBindTexture(GL_TEXTURE_2D, self.tex)
-  glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 
-    self.canvas.cw, self.canvas.ch, GL_RGBA, 
-    GL_UNSIGNED_BYTE, addr self.canvas.buffer[0])
-  glBindTexture(GL_TEXTURE_2D, 0)
-
-proc cb_point(g: pointer, data: ptr TTMove) =
-  let self = cast[TTileImage](data.image)
-  var b, c, d: float32
-  self.canvas[4].x = data.x
-  self.canvas[4].y = data.y
-  self.canvas.stencil(self.canvas[4][])
-  b = cpuTime()
-  self.canvas.composite()
-  c = cpuTime()
-  self.refresh()
-  d = cpuTime()
-  echo "composite: ", c - b, "  upload: ", d - c
-  self.work = false
-
 method event(self: TTileImage, state: ptr GUIState) =
-  if state.kind == evMouseClick:
-    if (state.mods and ShiftMod) == 0:
-      self.mx = state.mx; self.my = state.my
-      self.ox = self.canvas[4].x
-      self.oy = self.canvas[4].y
-    elif self.voxel.test(wVisible):
-      self.voxel.close()
-    else: # Open On Cursor Position
-      self.voxel.open()
-      self.voxel.move(state.mx, state.my)
-  elif self.test(wGrab) and (state.mods and ShiftMod) == 0:
-    if not self.work:
-      var t = TTMove(
-        x: self.ox + state.mx - self.mx,
-        y: self.oy + state.my - self.my,
-        image: self.target)
-      pushCallback(cb_point, t)
-      self.work = true
+  if self.test(wGrab):
+    #let
+    #  x = state.mx.float32 / 512 * 2048
+    #  y = (512 - state.my).float32 / 512 * 2048
+    let
+      x = state.mx.float32
+      y = 2048 - state.my.float32
+    self.engine[].begin()
+    glEnable(GL_BLEND)
+    glBlendEquation(GL_FUNC_ADD)
+    glBlendFuncSeparate(GL_DST_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_ONE, GL_ONE_MINUS_SRC_ALPHA)
+    self.engine[].transform(x,y,1,0)
+    self.engine[].draw()
+    self.engine[].finish()
 
 proc clear(tile: NTile, col: NPixel) =
   var i: int32
@@ -416,22 +363,12 @@ proc fill(canvas: var NCanvas, idx: int32, color: uint32) =
       clear(layer.tiles[i].buffer, color)
       inc(i) # Next Tile
 
-#[
-proc fill(canvas: var NCanvas, idx, w, h: int32, color: uint32) =
-  let layer = canvas[idx]
-  var i: int32
-  #for y in 0..<w:
-  #  for x in 0..<h:
-  layer[].add(w.int16, h.int16)
-  clear(layer.tiles[i].buffer, color)
-  inc(i) # Next Tile
-]#
-
 when isMainModule:
   var # Create Window and GUI
     win = newGUIWindow(1024, 600, nil)
     eye = newCanvasView()
-    root = newTTileImage(2048, 1024)
+    engine = newBrushEngine()
+    root = newTTileImage(1024, 1024)
   # Reload Canvas Texture
   #root.clear(0xFF0000FF'u32)
   root.canvas.add()
@@ -475,26 +412,23 @@ when isMainModule:
   #clear(root.canvas[0].tiles[1].buffer, 0xBB000000'u32)
   root.canvas.stencil(root.canvas[0][])
   root.canvas.composite()
-  root.refresh()
   eye.clear()
-  #for y in 0..<16i32:
-  #  for x in 0..<16i32: 
   eye.add(1, 1)
-  #eye.add(1, 1)
-  #eye.add(1, 2)
-  #eye.add(1, 3)
-  #eye.add(1, 4)
-
-  #eye.add(2, 1)
-  #eye.add(2, 2)
-  #eye.add(2, 3)
-  #eye.add(2, 4)
-
-  #eye.add(3, 1)
-  #eye.add(3, 2)
-  #eye.add(3, 3)
-  #eye.add(3, 4)
   eye.copy()
+  # Configure Engine
+  engine.begin()
+  glEnable(GL_BLEND)
+  glBlendEquation(GL_FUNC_ADD)
+  glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
+  engine.test()
+  engine.clear()
+  engine.transform(1024,1024,1,0)
+  engine.draw()
+  engine.transform(980,980,1,0)
+  engine.draw()
+  engine.finish()
+  root.tex = engine.tex
+  root.engine = addr engine
   # Run GUI Program
   if win.open(root):
     while true:

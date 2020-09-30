@@ -1,15 +1,16 @@
 # RGBA8 Pixel Format
-# 256x256 Tiled Canvas
+# 256x256 Tiled Canvas View
 # 64x64   Tiled Layers
 
 type
   # -- Primitive Types
   NPixel* = uint32 # RGBA8 Pixel
   NTile* = ref array[4096, NPixel]
+  NMap* = ptr UncheckedArray[NPixel]
   # -- Layer Objects
-  NLayerBlend = enum
+  NLayerBlend* = enum
     lbNormal
-  NLayerFlags = enum
+  NLayerFlags* = enum
     lfHidden,
     lfLocked,
     lfClipAlpha, # TODO

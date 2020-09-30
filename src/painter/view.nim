@@ -9,7 +9,6 @@ import canvas
 
 type
   # -- Primitives
-  NMap = ptr UncheckedArray[NPixel]
   NVertex {.packed.} = object
     x, y: float32
     u, v: uint16
@@ -179,8 +178,8 @@ proc alloc(view: var NCanvasView) =
   view.verts.setLen(view.verts.len + 4)
   view.tiles.setLen(view.tiles.len + 1)
 
-# Vertex Definition
-proc vertex(vp: var NVertex, x, y: float32, u, v: uint16) =
+# Canvas View Vertex Definition
+proc vertex*(vp: var NVertex, x, y: float32, u, v: uint16) =
   # Set Position
   vp.x = x; vp.y = y
   # Set Texture Coordinates
