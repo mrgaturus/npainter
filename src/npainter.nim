@@ -8,15 +8,30 @@ import gui/[
   event
   #timer
   ]
+from omath import Value, interval, toFloat
+from gui/widgets/slider import newSlider
 import painter/[
   canvas, 
   voxel, 
   view,
-  brush
+  trash
 ]
+
+import nimPNG
 
 # LOAD SSE4.1
 {.passC: "-msse4.1".}
+
+# Triangle Raster
+{.compile: "painter/triangle.c".}
+type
+  RPoint = object
+    x, y: float32
+    u, v: float32
+  RTriangle = object
+    a, b, c: RPoint
+
+proc rasterize(pixels, mask: cstring, w, h: int32, s: var RTriangle, xmin, xmax, ymin, ymax: int32) {.importc, cdecl.}
 
 type
   # Voxel Transversal 32x32
@@ -45,11 +60,13 @@ type
   TTileImage = ref object of GUIWidget
     mx, my: int32
     ox, oy: int32
+    val: Value
     canvas: NCanvas
-    engine: ptr NBrushEngine
+    engine: ptr NTrashEngine
     hold_o: float32
     mode: TrackMode
     tex: GLuint
+    tex_sw: GLuint
     work: bool
     # Voxel Test
     voxel: VoxelT
@@ -321,9 +338,12 @@ method draw(self: TTileImage, ctx: ptr CTXRender) =
   var r = rect(self.rect.x, self.rect.y, 
     self.canvas.cw, self.canvas.ch)
   # Draw Rect
-  ctx.fill(r)
+  #ctx.fill(r)
   ctx.color(high uint32)
-  ctx.texture(rect(0,0,2048,2048), self.tex)
+  #ctx.texture(rect(0,0,2048,2048), self.tex)
+  r = rect(80, 80, 256, 256)
+  ctx.fill(r)
+  ctx.texture(r, self.tex_sw)
 
 proc newTTileImage(w, h: int16): TTileImage =
   new result # Alloc Widget
@@ -345,7 +365,7 @@ method event(self: TTileImage, state: ptr GUIState) =
     glEnable(GL_BLEND)
     glBlendEquation(GL_FUNC_ADD)
     glBlendFuncSeparate(GL_DST_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_ONE, GL_ONE_MINUS_SRC_ALPHA)
-    self.engine[].transform(x,y,0.02,0)
+    self.engine[].transform(x,y,self.val.toFloat,0)
     self.engine[].draw()
     self.engine[].finish()
 
@@ -367,7 +387,7 @@ when isMainModule:
   var # Create Window and GUI
     win = newGUIWindow(1024, 600, nil)
     eye = newCanvasView()
-    engine = newBrushEngine()
+    engine = newTrashEngine()
     root = newTTileImage(1024, 1024)
   # Reload Canvas Texture
   #root.clear(0xFF0000FF'u32)
@@ -427,8 +447,53 @@ when isMainModule:
   engine.transform(980,980,1,0)
   engine.draw()
   engine.finish()
+  # Test SDF Alpha
+  var p = loadPNG32("sdf.png")
+  var coso: seq[uint8]
+  coso.setLen(p.width*p.height)
+  var i = 0
+  while i < p.width*p.height:
+    coso[i] = p.data[i * 4].uint8
+    i += 1
+  engine.mask(cast[pointer](addr coso[0]))
+  #discard savePNG32("sdf.png", coso, p.width, p.height)
+  # --------
   root.tex = engine.tex
   root.engine = addr engine
+  block: # Slider
+    root.val.interval(0, 1)
+    let slider = newSlider(addr root.val, 4)
+    slider.geometry(20, 20, 500, slider.hint.h)
+    root.add slider
+  # Test Software Rasterizer
+  var pixels: seq[uint32]
+  pixels.setLen(1024*1024)
+  var triangle: RTriangle
+  triangle.a = RPoint(x: 0, y: 0, u: 0, v: 0)
+  triangle.b = RPoint(x: 1024, y: 0, u: 1, v: 0)
+  triangle.c = RPoint(x: 1024, y: 1024, u: 1, v: 1)
+  rasterize(cast[cstring](addr pixels[0]), cast[cstring](addr coso[0]), 1024, 1024, triangle, 0, 1024, 0, 1024)
+  triangle.a = RPoint(x: 1024, y: 1024, u: 1, v: 1)
+  triangle.b = RPoint(x: 0, y: 1024, u: 0, v: 1)
+  triangle.c = RPoint(x: 0, y: 0, u: 0, v: 0)
+  #from times import cpuTime
+  #let tt = cpuTime() + 1
+  #var count: int32
+  #while cpuTime() < tt:
+  #  rasterize(cast[cstring](addr pixels[0]), cast[cstring](addr coso[0]), 1024, 1024, triangle, 0, 1024, 0, 1024)
+  #  inc(count)
+  #echo "CPU Brush Engine FPS: ", count
+  # Generate Texture
+  glGenTextures(1, addr root.tex_sw)
+  glBindTexture(GL_TEXTURE_2D, root.tex_sw)
+  glTexImage2D(GL_TEXTURE_2D, 0, cast[GLint](GL_RGBA8), 
+    256, 256, 0, GL_RGBA, GL_UNSIGNED_BYTE, addr pixels[0])
+  # Set Mig/Mag Filter
+  glTexParameteri(GL_TEXTURE_2D, 
+    GL_TEXTURE_MIN_FILTER, cast[GLint](GL_NEAREST))
+  glTexParameteri(GL_TEXTURE_2D, 
+    GL_TEXTURE_MAG_FILTER, cast[GLint](GL_NEAREST))
+  glBindTexture(GL_TEXTURE_2D, 0)
   # Run GUI Program
   if win.open(root):
     while true:

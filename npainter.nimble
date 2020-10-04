@@ -10,3 +10,4 @@ bin           = @["npainter"]
 # Dependencies
 requires "nim >= 1.0.6"
 requires "x11"
+requires "nimPNG"
