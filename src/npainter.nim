@@ -24,6 +24,7 @@ import nimPNG
 
 # Triangle Raster
 {.compile: "painter/triangle.c".}
+{.compile: "painter/sdf.c".}
 type
   RPoint = object
     x, y: float32
@@ -32,6 +33,8 @@ type
     a, b, c: RPoint
 
 proc rasterize(pixels, mask: cstring, w, h: int32, s: var RTriangle, xmin, xmax, ymin, ymax: int32) {.importc, cdecl.}
+proc sdt_dead_reckoning(width, height: uint32, threshold: uint8, image: cstring, distances: ptr float32) {.importc.}
+proc sdt_minificate(distances: ptr float32, stride, n: int32) {.importc.}
 
 type
   # Voxel Transversal 32x32
@@ -338,9 +341,9 @@ method draw(self: TTileImage, ctx: ptr CTXRender) =
   var r = rect(self.rect.x, self.rect.y, 
     self.canvas.cw, self.canvas.ch)
   # Draw Rect
-  #ctx.fill(r)
+  ctx.fill(r)
   ctx.color(high uint32)
-  #ctx.texture(rect(0,0,2048,2048), self.tex)
+  ctx.texture(rect(0,0,2048,2048), self.tex)
   r = rect(80, 80, 256, 256)
   ctx.fill(r)
   ctx.texture(r, self.tex_sw)
@@ -456,7 +459,27 @@ when isMainModule:
     coso[i] = p.data[i * 4].uint8
     i += 1
   engine.mask(cast[pointer](addr coso[0]))
-  #discard savePNG32("sdf.png", coso, p.width, p.height)
+  # Test SDF Creation
+  block:
+    var p = loadPNG32("input.png")
+    if p.width == 1024 and p.height == 1024:
+      var 
+        c: seq[uint8]
+        dists: seq[float32]
+      c.setLen(1024*1024*4)
+      for i in 0..<(1024*1024):
+        c[i] = p.data[i * 4].uint8
+      dists.setLen(1024*1024)
+      sdt_dead_reckoning(1024, 1024, 16, cast[cstring](addr c[0]), addr dists[0])
+      sdt_minificate(addr dists[0], 1024, 3)
+      for i in 0..<(128*128):
+        let alpha = 
+          255 - clamp(dists[i] + 128, 0, 255).uint8
+        c[i * 4] = alpha
+        c[i * 4 + 1] = alpha
+        c[i * 4 + 2] = alpha
+        c[i * 4 + 3] = 0xFF
+      discard savePNG32("output.png", c, 128, 128)
   # --------
   root.tex = engine.tex
   root.engine = addr engine
@@ -468,7 +491,11 @@ when isMainModule:
   # Test Software Rasterizer
   var pixels: seq[uint32]
   pixels.setLen(1024*1024)
+  #from times import cpuTime
+  #let tt = cpuTime() + 1
+  var count: int32
   var triangle: RTriangle
+  #while cpuTime() < tt:
   triangle.a = RPoint(x: 0, y: 0, u: 0, v: 0)
   triangle.b = RPoint(x: 1024, y: 0, u: 1, v: 0)
   triangle.c = RPoint(x: 1024, y: 1024, u: 1, v: 1)
@@ -476,23 +503,20 @@ when isMainModule:
   triangle.a = RPoint(x: 1024, y: 1024, u: 1, v: 1)
   triangle.b = RPoint(x: 0, y: 1024, u: 0, v: 1)
   triangle.c = RPoint(x: 0, y: 0, u: 0, v: 0)
-  #from times import cpuTime
-  #let tt = cpuTime() + 1
-  #var count: int32
-  #while cpuTime() < tt:
-  #  rasterize(cast[cstring](addr pixels[0]), cast[cstring](addr coso[0]), 1024, 1024, triangle, 0, 1024, 0, 1024)
-  #  inc(count)
+  rasterize(cast[cstring](addr pixels[0]), cast[cstring](addr coso[0]), 1024, 1024, triangle, 0, 1024, 0, 1024)
+  inc(count)
   #echo "CPU Brush Engine FPS: ", count
   # Generate Texture
   glGenTextures(1, addr root.tex_sw)
   glBindTexture(GL_TEXTURE_2D, root.tex_sw)
   glTexImage2D(GL_TEXTURE_2D, 0, cast[GLint](GL_RGBA8), 
-    256, 256, 0, GL_RGBA, GL_UNSIGNED_BYTE, addr pixels[0])
+    1024, 1024, 0, GL_RGBA, GL_UNSIGNED_BYTE, addr pixels[0])
   # Set Mig/Mag Filter
   glTexParameteri(GL_TEXTURE_2D, 
-    GL_TEXTURE_MIN_FILTER, cast[GLint](GL_NEAREST))
+    GL_TEXTURE_MIN_FILTER, cast[GLint](GL_LINEAR_MIPMAP_NEAREST))
   glTexParameteri(GL_TEXTURE_2D, 
     GL_TEXTURE_MAG_FILTER, cast[GLint](GL_NEAREST))
+  glGenerateMipmap(GL_TEXTURE_2D)
   glBindTexture(GL_TEXTURE_2D, 0)
   # Run GUI Program
   if win.open(root):
