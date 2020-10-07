@@ -11,11 +11,6 @@ typedef struct {
   point_t a, b, c;
 } triangle_t;
 
-// NAIVE IMPLEMENTATION
-float linear(float a, float b, float t) {
-  return a + (b - a) * t;
-}
-
 float bilinear(uint8_t* mask, float u, float v) {
   float x1, x2, y1, y2;
   // Locate on mask
@@ -46,55 +41,62 @@ float smoothstep(float x, float a, float b) {
   return t * t * (3.0 - 2.0 * t);
 }
 
-float orient2D(point_t a, point_t b, point_t c) {
-  return (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x);
-}
-
 void rasterize(uint32_t* pixels, uint8_t* mask, int w, int h, triangle_t* s, int xmin, int xmax, int ymin, int ymax) {
+  float a0, a1, a2;
+  float b0, b1, b2;
+  float c0, c1, c2;
+  // Edge Equations
   float w0, w1, w2;
   float w0_row, w1_row, w2_row;
-  // Area Barycentrics
-  float area, wa0, wa1, wa2;
-  // Prepare Incremental Walkers
-  float a01 = s->a.y - s->b.y, b01 = s->b.x - s->a.x;
-  float a12 = s->b.y - s->c.y, b12 = s->c.x - s->b.x;
-  float a20 = s->c.y - s->a.y, b20 = s->a.x - s->c.x;
-  // Barycentric at Corner
-  point_t p = { xmin, ymin };
-  w0_row = orient2D(s->b, s->c, p);
-  w1_row = orient2D(s->c, s->a, p);
-  w2_row = orient2D(s->a, s->b, p);
+  // Barycentric
+  float area;
+  // Tie Breaker
+  int tie_ac;
 
-  area = 1 / orient2D(s->a, s->b, s->c);
+  // Define a*x delta
+  a0 = s->b.y - s->c.y;
+  a1 = s->c.y - s->a.y;
+  a2 = s->a.y - s->b.y;
+  // Define b*y delta
+  b0 = s->c.x - s->b.x;
+  b1 = s->a.x - s->c.x;
+  b2 = s->b.x - s->a.x;
+  // Define c for Barycentric Interpolation
+  c0 = (s->b.x * s->c.y) - (s->c.x * s->b.y); 
+  c1 = (s->c.x * s->a.y) - (s->a.x * s->c.y); 
+  c2 = (s->a.x * s->b.y) - (s->b.x * s->a.y);
+  // Evaluate Edge Equations at xmin, ymin
+  w0_row = xmin * a0 + ymin * b0 + c0;
+  w1_row = xmin * a1 + ymin * b1 + c1;
+  w2_row = xmin * a2 + ymin * b2 + c2;
+  // Check Tie Breaker for Edge AC
+  tie_ac = (a1 != 0) ? a1 > 0 : b1 > 0;
+
+  // Rasterize Each Pixel
   for (int y = ymin; y <= ymax; y++) {
-    // Start Row
+    // Set X yo Y
     w0 = w0_row;
     w1 = w1_row;
     w2 = w2_row;
-
     for (int x = xmin; x <= xmax; x++) {
-      // Check if is inside all edges
-      if (w0 >= 0 && w1 >= 0 && w2 >= 0) {
-        // Calculate UV using triangle area
-        wa0 = w0 * area; wa1 = w1 * area; wa2 = w2 * area;
-        float u = wa0 * s->a.u + wa1 * s->b.u + wa2 * s->c.u;
-        float v = wa0 * s->a.v + wa1 * s->b.v + wa2 * s->c.v;
-        // Put Interpolated Pixel
-        float alpha = bilinear(mask, u, v) / 255;
-        alpha = smoothstep(alpha, 0.5, 0.5 + 0.003);
-        uint32_t c = (uint32_t)(alpha * 255);
-        pixels[y * h + x] = c << 24;
+      // Check if is inside or not and Check tie breaker
+      if (w0 >= 0 && ( w1 > 0 || (w1 == 0 && tie_ac) ) && w2 >= 0) {
+        if (pixels[y * h + x] == 0x00) {
+          pixels[y * h + x] = 0xFF << 24 | 0xAB;
+        } else {
+          pixels[y * h + x] = 0xFF << 24;
+        }
       }
 
-      // Step Right
-      w0 += a12;
-      w1 += a20;
-      w2 += a01;
+      // Step X
+      w0 += a0;
+      w1 += a1;
+      w2 += a2;
     }
-
-    // Step Row
-    w0_row += b12;
-    w1_row += b20;
-    w2_row += b01;
+    // Step Y
+    w0_row += b0;
+    w1_row += b1;
+    w2_row += b2;
   }
+  
 }

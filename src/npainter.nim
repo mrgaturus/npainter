@@ -341,10 +341,10 @@ method draw(self: TTileImage, ctx: ptr CTXRender) =
   var r = rect(self.rect.x, self.rect.y, 
     self.canvas.cw, self.canvas.ch)
   # Draw Rect
-  ctx.fill(r)
+  #ctx.fill(r)
   ctx.color(high uint32)
-  ctx.texture(rect(0,0,2048,2048), self.tex)
-  r = rect(80, 80, 256, 256)
+  #ctx.texture(rect(0,0,2048,2048), self.tex)
+  r = rect(80, 80, 512, 512)
   ctx.fill(r)
   ctx.texture(r, self.tex_sw)
 
@@ -491,26 +491,37 @@ when isMainModule:
   # Test Software Rasterizer
   var pixels: seq[uint32]
   pixels.setLen(1024*1024)
-  #from times import cpuTime
-  #let tt = cpuTime() + 1
-  var count: int32
   var triangle: RTriangle
-  #while cpuTime() < tt:
-  triangle.a = RPoint(x: 0, y: 0, u: 0, v: 0)
-  triangle.b = RPoint(x: 1024, y: 0, u: 1, v: 0)
-  triangle.c = RPoint(x: 1024, y: 1024, u: 1, v: 1)
-  rasterize(cast[cstring](addr pixels[0]), cast[cstring](addr coso[0]), 1024, 1024, triangle, 0, 1024, 0, 1024)
-  triangle.a = RPoint(x: 1024, y: 1024, u: 1, v: 1)
-  triangle.b = RPoint(x: 0, y: 1024, u: 0, v: 1)
-  triangle.c = RPoint(x: 0, y: 0, u: 0, v: 0)
-  rasterize(cast[cstring](addr pixels[0]), cast[cstring](addr coso[0]), 1024, 1024, triangle, 0, 1024, 0, 1024)
-  inc(count)
-  #echo "CPU Brush Engine FPS: ", count
+  const SCALE = 255
+  when defined(benchmark):
+    from times import cpuTime
+    let tt = cpuTime() + 1
+    var count: int32
+    while cpuTime() < tt:
+      triangle.a = RPoint(x: 0, y: 0, u: 0, v: 0)
+      triangle.b = RPoint(x: SCALE, y: 0, u: 1, v: 0)
+      triangle.c = RPoint(x: SCALE, y: SCALE, u: 1, v: 1)
+      rasterize(cast[cstring](addr pixels[0]), cast[cstring](addr coso[0]), SCALE + 1, SCALE + 1, triangle, 0, SCALE, 0, SCALE)
+      triangle.a = RPoint(x: SCALE, y: SCALE, u: 1, v: 1)
+      triangle.b = RPoint(x: 0, y: SCALE, u: 0, v: 1)
+      triangle.c = RPoint(x: 0, y: 0, u: 0, v: 0)
+      rasterize(cast[cstring](addr pixels[0]), cast[cstring](addr coso[0]), SCALE + 1, SCALE + 1, triangle, 0, SCALE, 0, SCALE)
+      inc(count)
+    echo "CPU Brush Engine FPS: ", count
+  else:
+      triangle.a = RPoint(x: 0, y: 0, u: 0, v: 0)
+      triangle.b = RPoint(x: SCALE, y: 0, u: 1, v: 0)
+      triangle.c = RPoint(x: SCALE, y: SCALE, u: 1, v: 1)
+      rasterize(cast[cstring](addr pixels[0]), cast[cstring](addr coso[0]), SCALE + 1, SCALE + 1, triangle, 0, SCALE, 0, SCALE)
+      triangle.a = RPoint(x: SCALE, y: SCALE, u: 1, v: 1)
+      triangle.b = RPoint(x: 0, y: SCALE, u: 0, v: 1)
+      triangle.c = RPoint(x: 0, y: 0, u: 0, v: 0)
+      rasterize(cast[cstring](addr pixels[0]), cast[cstring](addr coso[0]), SCALE + 1, SCALE + 1, triangle, 0, SCALE, 0, SCALE)
   # Generate Texture
   glGenTextures(1, addr root.tex_sw)
   glBindTexture(GL_TEXTURE_2D, root.tex_sw)
   glTexImage2D(GL_TEXTURE_2D, 0, cast[GLint](GL_RGBA8), 
-    1024, 1024, 0, GL_RGBA, GL_UNSIGNED_BYTE, addr pixels[0])
+    SCALE + 1, SCALE + 1, 0, GL_RGBA, GL_UNSIGNED_BYTE, addr pixels[0])
   # Set Mig/Mag Filter
   glTexParameteri(GL_TEXTURE_2D, 
     GL_TEXTURE_MIN_FILTER, cast[GLint](GL_LINEAR_MIPMAP_NEAREST))
