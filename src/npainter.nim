@@ -492,7 +492,7 @@ when isMainModule:
   var pixels: seq[uint32]
   pixels.setLen(1024*1024)
   var triangle: RTriangle
-  const SCALE = 32
+  const SCALE = 128
   when defined(benchmark):
     from times import cpuTime
     let tt = cpuTime() + 1
