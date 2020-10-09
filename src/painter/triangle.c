@@ -18,6 +18,7 @@ typedef struct {
 // TRIANGLE EDGE EQUATION HELPERS
 // ------------------------------
 
+// Partial Covered Block
 void _mm_edge_4(__m128* xmm_w, __m128* xmm_a, __m128* xmm_b, point_t a, point_t b, int xmin, int ymin) {
   float w0, a0, b0, c0;
   // Incrementals
@@ -35,6 +36,32 @@ void _mm_edge_4(__m128* xmm_w, __m128* xmm_a, __m128* xmm_b, point_t a, point_t 
   *xmm_b = _mm_set1_ps(b0);
 }
 
+void _mm_parameter_4(__m128* xmm_z0, __m128* xmm_z1, __m128* xmm_z2, point_t v[3], float z[3]) {
+  float c0, c1, c2;
+  // Define c for Triangle Area
+  c0 = (v[1].x * v[2].y) - (v[2].x * v[1].y);
+  c1 = (v[2].x * v[0].y) - (v[0].x * v[2].y);
+  c2 = (v[0].x * v[1].y) - (v[1].x * v[0].y);
+
+  float area = 1 / (c0 + c1 + c2);
+  // Divide Parameters by area and store 4
+  *xmm_z0 = _mm_set1_ps(z[0] * area);
+  *xmm_z1 = _mm_set1_ps(z[1] * area);
+  *xmm_z2 = _mm_set1_ps(z[2] * area);
+}
+
+__m128 _mm_tie_4(__m128 xmm_a, __m128 xmm_b) {
+  __m128 xmm_zero, xmm_a0, xmm_b0;
+  xmm_zero = _mm_setzero_ps();
+  // Check A > 0 and B > 0
+  xmm_a0 = _mm_cmpgt_ps(xmm_a, xmm_zero);
+  xmm_b0 = _mm_cmpgt_ps(xmm_b, xmm_zero);
+  // Calculate Tie Breaker Mask
+  return _mm_blendv_ps(xmm_a0, xmm_b0,
+    _mm_cmpeq_ps(xmm_a, xmm_zero));
+}
+
+// Fully Covered Block
 void _mm_gradient_4(__m128* xmm_z0, __m128* xmm_az, __m128* xmm_bz, point_t v[3], float z[3], int xmin, int ymin) {
   float a0, a1, a2;
   float b0, b1, b2;
@@ -67,17 +94,6 @@ void _mm_gradient_4(__m128* xmm_z0, __m128* xmm_az, __m128* xmm_bz, point_t v[3]
   *xmm_bz = _mm_set1_ps(b0);
 }
 
-__m128 _mm_tie_4(__m128 xmm_a, __m128 xmm_b) {
-  __m128 xmm_zero, xmm_a0, xmm_b0;
-  xmm_zero = _mm_setzero_ps();
-  // Check A > 0 and B > 0
-  xmm_a0 = _mm_cmpgt_ps(xmm_a, xmm_zero);
-  xmm_b0 = _mm_cmpgt_ps(xmm_b, xmm_zero);
-  // Calculate Tie Breaker Mask
-  return _mm_blendv_ps(xmm_a0, xmm_b0,
-    _mm_cmpeq_ps(xmm_a, xmm_zero));
-}
-
 // -------------------------------
 // BILINEAR 2D TRIANGLE RASTERIZER
 // -------------------------------
@@ -91,14 +107,10 @@ void rasterize(uint32_t* pixels, uint8_t* mask, int stride, triangle_t* v, int x
   __m128 xmm_a0, xmm_a1, xmm_a2;
   __m128 xmm_b0, xmm_b1, xmm_b2;
   // Triangle Parameter Equations
-  __m128 xmm_u, xmm_u0, xmm_ua, xmm_ub;
-  __m128 xmm_v, xmm_v0, xmm_va, xmm_vb;
-
-  // Edge Equation Positions
-  __m128 xmm_x, xmm_y;
-  // Edge Equation Loop
+  __m128 xmm_u, xmm_u0, xmm_u1, xmm_u2;
+  //__m128 xmm_v, xmm_v0, xmm_v1, xmm_v2;
+  // Edge Equation Loop XMMs
   __m128 xmm_aux, xmm_tie, xmm_test;
-  // Pixel Shader Strides
   __m128i xmm_src, xmm_dest, xmm_cast;
 
   // Prepare Edge Equations by four positions
@@ -106,7 +118,7 @@ void rasterize(uint32_t* pixels, uint8_t* mask, int stride, triangle_t* v, int x
   _mm_edge_4(&xmm_row1, &xmm_a1, &xmm_b1, v->p[2], v->p[0], xmin, ymin);
   _mm_edge_4(&xmm_row2, &xmm_a2, &xmm_b2, v->p[0], v->p[1], xmin, ymin);
   // Prepare Parameters Interpolation by four positions
-  _mm_gradient_4(&xmm_u0, &xmm_ua, &xmm_ub, v->p, v->u, xmin, ymin);
+  _mm_parameter_4(&xmm_u0, &xmm_u1, &xmm_u2, v->p, v->u);
 
   // Prepare Tie Breaker of AC Edge
   xmm_tie = _mm_tie_4(xmm_a1, xmm_b1);
@@ -136,13 +148,11 @@ void rasterize(uint32_t* pixels, uint8_t* mask, int stride, triangle_t* v, int x
         xmm_aux = _mm_or_ps(xmm_aux, xmm_tie);
         xmm_test = _mm_and_ps(xmm_test, xmm_aux);
 
-        // Convert Current Position
-        xmm_x = _mm_set1_ps((float) x);
-        xmm_y = _mm_set1_ps((float) y);
         // Calculate U Interpolation
-        xmm_aux = _mm_mul_ps(xmm_ua, xmm_x);
-        xmm_u = _mm_add_ps(xmm_u0, xmm_aux);
-        xmm_aux = _mm_mul_ps(xmm_ub, xmm_y);
+        xmm_u = _mm_mul_ps(xmm_u0, xmm_w0);
+        xmm_aux = _mm_mul_ps(xmm_u1, xmm_w1);
+        xmm_u = _mm_add_ps(xmm_u, xmm_aux);
+        xmm_aux = _mm_mul_ps(xmm_u2, xmm_w2);
         xmm_u = _mm_add_ps(xmm_u, xmm_aux);
 
         // Load Pixels And Do Pixel Shader
