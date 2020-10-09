@@ -24,17 +24,17 @@ import nimPNG
 
 # Triangle Raster
 {.compile: "painter/triangle.c".}
-{.compile: "painter/sdf.c".}
 type
   RPoint = object
     x, y: float32
-    u, v: float32
   RTriangle = object
-    a, b, c: RPoint
+    p: array[3, RPoint]
+    # Parameters
+    u: array[3, float32]
+    v: array[3, float32]
 
-proc rasterize(pixels, mask: cstring, stride: int32, s: var RTriangle, xmin, ymin, xmax, ymax: int32) {.importc, cdecl.}
-proc sdt_dead_reckoning(width, height: uint32, threshold: uint8, image: cstring, distances: ptr float32) {.importc.}
-proc sdt_minificate(distances: ptr float32, stride, n: int32) {.importc.}
+
+proc rasterize(pixels, mask: cstring, stride: int32, v: var RTriangle, xmin, ymin, xmax, ymax: int32) {.importc, cdecl.}
 
 type
   # Voxel Transversal 32x32
@@ -343,7 +343,7 @@ method draw(self: TTileImage, ctx: ptr CTXRender) =
   # Draw Rect
   #ctx.fill(r)
   ctx.color(high uint32)
-  #ctx.texture(rect(0,0,2048,2048), self.tex)
+  ctx.texture(rect(0,0,2048,2048), self.tex)
   r = rect(80, 80, 512, 512)
   ctx.fill(r)
   ctx.texture(r, self.tex_sw)
@@ -385,6 +385,10 @@ proc fill(canvas: var NCanvas, idx: int32, color: uint32) =
       layer[].add(x.int16, y.int16)
       clear(layer.tiles[i].buffer, color)
       inc(i) # Next Tile
+      
+proc point(s: var RTriangle, i: int32, x, y, u, v: float32) =
+  s.p[i] = RPoint(x: x, y: y)
+  s.u[i] = u; s.v[i] = v
 
 when isMainModule:
   var # Create Window and GUI
@@ -459,27 +463,6 @@ when isMainModule:
     coso[i] = p.data[i * 4].uint8
     i += 1
   engine.mask(cast[pointer](addr coso[0]))
-  # Test SDF Creation
-  block:
-    var p = loadPNG32("input.png")
-    if p.width == 1024 and p.height == 1024:
-      var 
-        c: seq[uint8]
-        dists: seq[float32]
-      c.setLen(1024*1024*4)
-      for i in 0..<(1024*1024):
-        c[i] = p.data[i * 4].uint8
-      dists.setLen(1024*1024)
-      sdt_dead_reckoning(1024, 1024, 16, cast[cstring](addr c[0]), addr dists[0])
-      sdt_minificate(addr dists[0], 1024, 3)
-      for i in 0..<(128*128):
-        let alpha = 
-          255 - clamp(dists[i] + 128, 0, 255).uint8
-        c[i * 4] = alpha
-        c[i * 4 + 1] = alpha
-        c[i * 4 + 2] = alpha
-        c[i * 4 + 3] = 0xFF
-      discard savePNG32("output.png", c, 128, 128)
   # --------
   root.tex = engine.tex
   root.engine = addr engine
@@ -492,31 +475,31 @@ when isMainModule:
   var pixels: seq[uint32]
   pixels.setLen(1024*1024)
   var triangle: RTriangle
-  const SCALE = 128
+  const SCALE = 1024
   when defined(benchmark):
     from times import cpuTime
     let tt = cpuTime() + 1
     var count: int32
     while cpuTime() < tt:
-      triangle.a = RPoint(x: 0, y: 0, u: 0, v: 0)
-      triangle.b = RPoint(x: SCALE, y: 0, u: 1, v: 0)
-      triangle.c = RPoint(x: SCALE, y: SCALE, u: 1, v: 1)
+      triangle.point(0, 0, 0, 0, 0)
+      triangle.point(1, SCALE, 0, 1, 0)
+      triangle.point(2, SCALE, SCALE, 1, 1)
       rasterize(cast[cstring](addr pixels[0]), cast[cstring](addr coso[0]), SCALE, triangle, 0, 0, SCALE, SCALE)
-      triangle.a = RPoint(x: SCALE, y: SCALE, u: 1, v: 1)
-      triangle.b = RPoint(x: 0, y: SCALE, u: 0, v: 1)
-      triangle.c = RPoint(x: 0, y: 0, u: 0, v: 0)
+      triangle.point(0, SCALE, SCALE, 1, 1)
+      triangle.point(1, 0, SCALE, 0, 1)
+      triangle.point(2, 0, 0, 0, 0)
       rasterize(cast[cstring](addr pixels[0]), cast[cstring](addr coso[0]), SCALE, triangle, 0, 0, SCALE, SCALE)
-      inc(count)
+      inc count
     echo "CPU Brush Engine FPS: ", count
   else:
-      triangle.a = RPoint(x: 0, y: 0, u: 0, v: 0)
-      triangle.b = RPoint(x: SCALE, y: 0, u: 1, v: 0)
-      triangle.c = RPoint(x: SCALE, y: SCALE, u: 1, v: 1)
-      rasterize(cast[cstring](addr pixels[0]), cast[cstring](addr coso[0]), SCALE, triangle, 0, 0, SCALE, SCALE)
-      triangle.a = RPoint(x: SCALE, y: SCALE, u: 1, v: 1)
-      triangle.b = RPoint(x: 0, y: SCALE, u: 0, v: 1)
-      triangle.c = RPoint(x: 0, y: 0, u: 0, v: 0)
-      rasterize(cast[cstring](addr pixels[0]), cast[cstring](addr coso[0]), SCALE, triangle, 0, 0, SCALE, SCALE)
+    triangle.point(0, 0, 0, 0, 0)
+    triangle.point(1, SCALE, 0, 1, 0)
+    triangle.point(2, SCALE, SCALE, 1, 1)
+    rasterize(cast[cstring](addr pixels[0]), cast[cstring](addr coso[0]), SCALE, triangle, 0, 0, SCALE, SCALE)
+    triangle.point(0, SCALE, SCALE, 1, 1)
+    triangle.point(1, 0, SCALE, 0, 1)
+    triangle.point(2, 0, 0, 0, 0)
+    rasterize(cast[cstring](addr pixels[0]), cast[cstring](addr coso[0]), SCALE, triangle, 0, 0, SCALE, SCALE)
   # Generate Texture
   glGenTextures(1, addr root.tex_sw)
   glBindTexture(GL_TEXTURE_2D, root.tex_sw)

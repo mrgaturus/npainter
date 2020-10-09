@@ -77,7 +77,7 @@ proc newTrashEngine*(): NTrashEngine =
       GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, result.tex, 0)
     # Define Stencil Selection Texture
     glBindTexture(GL_TEXTURE_2D, result.mask)
-    glTexImage2D(GL_TEXTURE_2D, 0, cast[GLint](GL_R8), 
+    glTexImage2D(GL_TEXTURE_2D, 0, cast[GLint](GL_R16), 
       128, 128, 0, GL_RED, GL_UNSIGNED_BYTE, nil)
     # Set Mig/Mag Filter
     glTexParameteri(GL_TEXTURE_2D, 
