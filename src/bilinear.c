@@ -77,7 +77,7 @@ int bilinear_mapping(quad_t* q, vec2_t p, vec2_t* uv) {
       u = (h.x - f.x * v) / (e.x + g.x * v);
 
     // If not inside, test positive solution
-    if ( !(v > 0.0 && v < 1.0 && u > 0.0 && u < 1.0) ) {
+    if (v <= 0.0 || v >= 1.0 || u <= 0.0 || u >= 1.0) {
       v = (-k1 + w) / (2.0 * k2);
 
       d = (e.y + g.y * v);
