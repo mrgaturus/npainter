@@ -38,7 +38,11 @@ void debug_quad(quad_t* q) {
   printf("quad 4: x %f, y %f\n\n", q->v[3].x, q->v[3].y);
 }
 
-int bilinear_mapping(quad_t* q, vec2_t p, vec2_t* uv) {
+// ------------------
+// Bilinear Transform
+// ------------------
+
+int bilinear_distort(quad_t* q, vec2_t p, vec2_t* uv) {
   vec2_t e, f, g, h;
   // TODO: Precalculate Some
   e = vec2_sub(q->v[1], q->v[0]);
@@ -95,5 +99,59 @@ int bilinear_mapping(quad_t* q, vec2_t p, vec2_t* uv) {
   }
 
   // Not Inside
+  return 0;
+}
+
+// ---------------------
+// Perspective Transform
+// ---------------------
+
+int perspective_distort(quad_t* q, vec2_t p, vec2_t* uv) {
+  vec2_t d1, d2, s;
+  d1 = vec2_sub(q->v[1], q->v[2]);
+  d2 = vec2_sub(q->v[3], q->v[2]);
+  s = vec2_add(
+    vec2_sub(q->v[0], q->v[1]),
+    vec2_sub(q->v[2], q->v[3])
+  );
+
+  // Homography Coeffients
+  float det, g, h, a, b, c, d, e, f;
+  
+  det = vec2_cross(d1, d2);
+  g = vec2_cross(s, d2) / det;
+  h = vec2_cross(d1, s) / det;
+
+  a = q->v[1].x * (1.0 + g) - q->v[0].x;
+  b = q->v[3].x * (1.0 + h) - q->v[0].x;
+  c = q->v[0].x;
+
+  d = q->v[1].y * (1.0 + g) - q->v[0].y;
+  e = q->v[3].y * (1.0 + h) - q->v[0].y;
+  f = q->v[0].y;
+
+  // Inverse Homography Coeffients
+  float A, B, C, D, E, F, G, H, I;
+  A = e - f * h;
+  B = c * h - b;
+  C = b * f - c * e;
+
+  D = f * g - d;
+  E = a - c * g;
+  F = c * d - a * f;
+
+  G = d * h - e * g;
+  H = b * g - a * h;
+  I = a * e - b * d;
+
+  float denom, u, v;
+  denom = (G * p.x + H * p.y + I);
+  u = (A * p.x + B * p.y + C) / denom;
+  v = (D * p.x + E * p.y + F) / denom;
+
+  if (u > 0.0 && u < 1.0 && v > 0.0 && v < 1.0) {
+    uv->x = u; uv->y = v;
+    return 1;
+  }
   return 0;
 }
