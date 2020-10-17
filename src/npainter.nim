@@ -11,10 +11,14 @@ type
     quad: CaQuad
     buffer: array[1280*720*4, uint16]
     grab: ptr CaVector
+    color: uint32
+    amout: float
     busy: bool
 
 {.compile: "painter/distort.c".}
+proc both_distort(q: var CaQuad, p: CaVector, uv: var CaVector, t: float): int32 {.importc.}
 proc bilinear_distort(q: var CaQuad, p: CaVector, uv: var CaVector): int32 {.importc.}
+proc perspective_check(q: var CaQuad): int32 {.importc.}
 proc perspective_distort(q: var CaQuad, p: CaVector, uv: var CaVector): int32 {.importc.}
 proc checkboard(uv: CaVector): uint16 {.importc.}
 #proc debug_quad(q: var CaQuad) {.importc.}
@@ -27,10 +31,27 @@ method draw(self: GUICanvas, ctx: ptr CTXRender) =
   var r = rect(0, 0, 1280, 720)
   ctx.fill(r)
   ctx.texture(r, self.tex)
-  ctx.color(uint32 0xFF230023)
+  ctx.color(self.color)
   for v in self.quad.v:
     r = rect(int32 v.x - 5, int32 v.y - 5, 10, 10)
     ctx.fill(r)
+  ## Draw Lines
+  ctx.line(
+    point(self.quad.v[0].x, self.quad.v[0].y),
+    point(self.quad.v[1].x, self.quad.v[1].y)
+  )
+  ctx.line(
+    point(self.quad.v[1].x, self.quad.v[1].y),
+    point(self.quad.v[2].x, self.quad.v[2].y)
+  )
+  ctx.line(
+    point(self.quad.v[2].x, self.quad.v[2].y),
+    point(self.quad.v[3].x, self.quad.v[3].y)
+  )
+  ctx.line(
+    point(self.quad.v[3].x, self.quad.v[3].y),
+    point(self.quad.v[0].x, self.quad.v[0].y)
+  )
   self.busy = false
 
 proc check(self: GUICanvas, x, y: int32): ptr CaVector =
@@ -45,24 +66,32 @@ proc check(self: GUICanvas, x, y: int32): ptr CaVector =
 method event(self: GUICanvas, state: ptr GUIState) =
   if state.kind == evMouseClick:
     self.grab = check(self, state.mx, state.my)
-  elif self.test(wGrab) and not isNil(self.grab) and not self.busy:
+  elif self.test(wGrab) and not self.busy:
     zeroMem(addr self.buffer[0], 1280*720*4*sizeof(uint16))
-    self.grab.x = state.mx.float32
-    self.grab.y = state.my.float32
+    if not isNil(self.grab):
+      self.grab.x = state.mx.float32
+      self.grab.y = state.my.float32
+    else: 
+      echo "reached amout"
+      self.amout = (state.mx.float / 512).clamp(0.0, 1.0)
     var p, uv: CaVector
-    for y in 0..<720:
-      for x in 0..<1280:
-        p.xy(x.float32, y.float32)
-        if bilinear_distort(self.quad, p, uv) == 1:
-          self.buffer[(y * 1280 + x) * 4] = uint16(65535 * uv.x)
-          self.buffer[(y * 1280 + x) * 4 + 1] = uint16(65535 * uv.y)
-          self.buffer[(y * 1280 + x) * 4 + 3] = checkboard(uv)
-          self.buffer[(y * 1280 + x) * 4 + 3] = checkboard(uv)
+    if perspective_check(self.quad) == 1:
+      for y in 0..<720:
+        for x in 0..<1280:
+          p.xy(x.float32, y.float32)
+          if both_distort(self.quad, p, uv, self.amout) == 1:
+            self.buffer[(y * 1280 + x) * 4] = uint16(65535 * uv.x)
+            self.buffer[(y * 1280 + x) * 4 + 1] = uint16(65535 * uv.y)
+            self.buffer[(y * 1280 + x) * 4 + 3] = checkboard(uv)
+            self.buffer[(y * 1280 + x) * 4 + 3] = checkboard(uv)
+          #elif bilinear_distort(self.quad, p, uv) == 1:
+            #self.buffer[(y * 1280 + x) * 4 + 3] = checkboard(uv)
+      self.color = uint32 0xFF2B2B2B
+    else: self.color = uint32 0xFF0000FF
     glBindTexture(GL_TEXTURE_2D, self.tex)
     glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 1280, 720, 
       GL_RGBA, GL_UNSIGNED_SHORT, addr self.buffer[0])
     glBindTexture(GL_TEXTURE_2D, 0)
-    #debug_quad(self.quad);
     self.busy = true
 
 when isMainModule:
@@ -80,6 +109,7 @@ when isMainModule:
     quad.v[2].xy(800, 500)
     quad.v[3].xy(500, 500)
     root.quad = quad
+    root.color = uint32 0xFF2B2B2B
   # -- Draw Quad
   var p, uv: CaVector
   for y in 0..<720:
