@@ -1,7 +1,17 @@
+// Prototype Bilinear-Perspective Distort
+// TODO: Precalculate Matrices
 #include <math.h>
 
+// Border Rounding Constants
+#define E_BORDER 8192
+#define E_BORDER_DIV 0.0001220703125
+
+// -----------------------
+// TODO: Move to algebra.c
+// -----------------------
+
 typedef struct {
-  float x, y;
+  double x, y;
 } vec2_t;
 
 typedef struct {
@@ -34,72 +44,6 @@ void debug_quad(quad_t* q) {
   printf("quad 4: x %f, y %f\n\n", q->v[3].x, q->v[3].y);
 }
 
-// ------------------
-// Bilinear Transform All-Cases
-// ------------------
-
-/*
-int bilinear_distort(quad_t* q, vec2_t p, vec2_t* uv) {
-  vec2_t e, f, g, h;
-  // TODO: Precalculate Some
-  e = vec2_sub(q->v[1], q->v[0]);
-  f = vec2_sub(q->v[3], q->v[0]);
-  g = vec2_add(
-    vec2_sub(q->v[0], q->v[1]),
-    vec2_sub(q->v[2], q->v[3])
-  );
-  h = vec2_sub(p, q->v[0]);
-
-  double k0, k1, k2;
-  k2 = vec2_cross(g, f);
-  k1 = vec2_cross(e, f) + vec2_cross(h, g);
-  k0 = vec2_cross(h, e);
-
-  double v, u, d;
-  if (k2 == 0.0) {
-    v = -k0 / k1;
-    
-    d = (e.x + g.x * v);
-    if (d != 0.0)
-      u = (h.x - f.x * v) / d;
-    else
-      u = (h.y - f.y * v) / (e.y + g.y * v);
-  } else {
-    double w = k1 * k1 - 4.0 * k0 * k2;
-    if (w < 0.0) return 0;
-
-    w = sqrt(w);
-    v = (-k1 - w) / (2.0 * k2);
-
-    d = (e.y + g.y * v);
-    if (d != 0.0)
-      u = (h.y - f.y * v) / d;
-    else
-      u = (h.x - f.x * v) / (e.x + g.x * v);
-
-    // If not inside, test positive solution
-    if (v <= 0.0 || v >= 1.0 || u <= 0.0 || u >= 1.0) {
-      v = (-k1 + w) / (2.0 * k2);
-
-      d = (e.y + g.y * v);
-      if (d != 0.0)
-        u = (h.y - f.y * v) / d;
-      else
-        u = (h.x - f.x * v) / (e.x + g.x * v);
-    }
-  }
-
-  // Test if is inside UV quad
-  if (v > 0.0 && v < 1.0 && u > 0.0 && u < 1.0) {
-    uv->x = u; uv->y = v;
-    return 1;
-  }
-
-  // Not Inside
-  return 0;
-}
-*/
-
 // ----------------------------
 // Convex Perspective Transform
 // ----------------------------
@@ -122,7 +66,7 @@ int perspective_check(quad_t* q) {
   return 0;
 }
 
-int perspective_distort(quad_t* q, vec2_t p, vec2_t* uv) {
+void perspective_distort(quad_t* q, vec2_t p, vec2_t* uv) {
   vec2_t d1, d2, s;
   d1 = vec2_sub(q->v[1], q->v[2]);
   d2 = vec2_sub(q->v[3], q->v[2]);
@@ -132,22 +76,22 @@ int perspective_distort(quad_t* q, vec2_t p, vec2_t* uv) {
   );
 
   // Homography Coeffients
-  float det, g, h, a, b, c, d, e, f;
+  double det, g, h, a, b, c, d, e, f;
   
   det = vec2_cross(d1, d2);
   g = vec2_cross(s, d2) / det;
   h = vec2_cross(d1, s) / det;
 
-  a = q->v[1].x * (1.0 + g) - q->v[0].x;
-  b = q->v[3].x * (1.0 + h) - q->v[0].x;
+  a = q->v[1].x + g * q->v[1].x - q->v[0].x;
+  b = q->v[3].x + h * q->v[3].x - q->v[0].x;
   c = q->v[0].x;
 
-  d = q->v[1].y * (1.0 + g) - q->v[0].y;
-  e = q->v[3].y * (1.0 + h) - q->v[0].y;
+  d = q->v[1].y + g * q->v[1].y - q->v[0].y;
+  e = q->v[3].y + h * q->v[3].y - q->v[0].y;
   f = q->v[0].y;
 
   // Inverse Homography Coeffients
-  float A, B, C, D, E, F, G, H, I;
+  double A, B, C, D, E, F, G, H, I;
   A = e - f * h;
   B = c * h - b;
   C = b * f - c * e;
@@ -160,17 +104,16 @@ int perspective_distort(quad_t* q, vec2_t p, vec2_t* uv) {
   H = b * g - a * h;
   I = a * e - b * d;
 
-  float denom, u, v;
+  double denom, u, v;
   denom = (G * p.x + H * p.y + I);
   u = (A * p.x + B * p.y + C) / denom;
   v = (D * p.x + E * p.y + F) / denom;
 
-  if (u > 0.0 && u < 1.0 && v > 0.0 && v < 1.0) {
-    uv->x = u; uv->y = v;
-    return 1;
-  }
-
-  return 0;
+  // Avoid Losing 1px border
+  u = round(u * E_BORDER) * E_BORDER_DIV;
+  v = round(v * E_BORDER) * E_BORDER_DIV;
+  // Check Inside Later
+  uv->x = u; uv->y = v;
 }
 
 // -------------------------
@@ -194,42 +137,33 @@ void bilinear_distort(quad_t* q, vec2_t p, vec2_t* uv) {
   k0 = vec2_cross(h, e);
 
   double v, u, d;
-  if (k2 == 0.0) {
+  if (k2 == 0.0)
     v = -k0 / k1;
-    
-    d = (e.x + g.x * v);
-    if (d != 0.0)
-      u = (h.x - f.x * v) / d;
-    else
-      u = (h.y - f.y * v) / (e.y + g.y * v);
-  } else {
+  else {
     double w = k1 * k1 - 4.0 * k0 * k2;
     if (w < 0.0) return;
 
     w = sqrt(w);
+    // Calculate Negative Solution
     v = (-k1 - w) / (2.0 * k2);
-
-    d = (e.y + g.y * v);
-    if (d != 0.0)
-      u = (h.y - f.y * v) / d;
-    else
-      u = (h.x - f.x * v) / (e.x + g.x * v);
-
-    // If not inside, test positive solution
-    if (v <= 0.0 || v >= 1.0 || u <= 0.0 || u >= 1.0) {
+    // If Outside, Positive solution
+    if (v < 0.0 || v > 1.0)
       v = (-k1 + w) / (2.0 * k2);
-
-      d = (e.y + g.y * v);
-      if (d != 0.0)
-        u = (h.y - f.y * v) / d;
-      else
-        u = (h.x - f.x * v) / (e.x + g.x * v);
-    }
   }
 
-  // Guaranted Inside
-  uv->x = u; 
-  uv->y = v;
+  d = (e.x + g.x * v);
+  if (d != 0.0)
+    u = (h.x - f.x * v) / d;
+  else {
+    d = (e.y + g.y * v);
+    u = (h.y - f.y * v) / d;
+  }
+
+  // Avoid Losing 1px border
+  u = round(u * E_BORDER) * E_BORDER_DIV;
+  v = round(v * E_BORDER) * E_BORDER_DIV;
+  // Check Inside Later
+  uv->x = u; uv->y = v;
 }
 
 // -------------------------------------
@@ -237,18 +171,22 @@ void bilinear_distort(quad_t* q, vec2_t p, vec2_t* uv) {
 // -------------------------------------
 
 int both_distort(quad_t* q, vec2_t p, vec2_t* uv, double t) {
-  int inside;
   vec2_t uv_p, uv_b;
 
-  // Calculate Transforms
-  inside = perspective_distort(q, p, &uv_p);
-  if (inside) {
-    // Bilinear Guaranted Inside
-    bilinear_distort(q, p, &uv_b);
-    // Interpolate Both Transforms
-    uv->x = uv_b.x + t * (uv_p.x - uv_b.x);
-    uv->y = uv_b.y + t * (uv_p.y - uv_b.y);
-  }
+  // Calculate Perspective
+  perspective_distort(q, p, &uv_p);
+  if (uv_p.x < 0.0 || uv_p.x > 1.0 || uv_p.y < 0.0 || uv_p.y > 1.0)
+    return 0; // Not Inside Perspective
 
-  return inside;
+  // Calculate Inverse Bilinear
+  bilinear_distort(q, p, &uv_b);
+  if (uv_b.x < 0.0 || uv_b.x > 1.0 || uv_b.y < 0.0 || uv_b.y > 1.0)
+    return 0; // Not Inside Inverse Bilinear
+
+  // Interpolate Both Transforms
+  uv->x = uv_b.x + t * (uv_p.x - uv_b.x);
+  uv->y = uv_b.y + t * (uv_p.y - uv_b.y);
+
+  // Inside
+  return 1;
 }
