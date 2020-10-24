@@ -3,8 +3,8 @@
 #include <math.h>
 
 // Border Rounding Constants
-#define E_BORDER 8192
-#define E_BORDER_DIV 0.0001220703125
+#define E_BORDER 1000
+#define E_BORDER_DIV 0.001
 
 // -----------------------
 // TODO: Move to algebra.c
