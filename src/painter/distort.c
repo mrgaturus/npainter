@@ -1,10 +1,9 @@
 // Prototype Bilinear-Perspective Distort
 // TODO: Precalculate Matrices
+// TODO: Optimize when affine
+// TODO: Semi-SIMD Perspective
+// TODO: Semi-SIMD Interval Check
 #include <math.h>
-
-// Border Rounding Constants
-#define E_BORDER 1000
-#define E_BORDER_DIV 0.001
 
 // -----------------------
 // TODO: Move to algebra.c
@@ -30,20 +29,6 @@ float vec2_cross(vec2_t a, vec2_t b) {
   return a.x * b.y - a.y * b.x;
 }
 
-// DEBUG ONLY
-unsigned short checkboard(vec2_t uv) {
-  const double M = 5;
-  double p = (fmod(uv.x * M, 1.0) > 0.5) ^ (fmod(uv.y * M, 1.0) < 0.5);
-  return (unsigned short) (p * 65535);
-}
-
-void debug_quad(quad_t* q) {
-  printf("quad 1: x %f, y %f\n", q->v[0].x, q->v[0].y);
-  printf("quad 2: x %f, y %f\n", q->v[1].x, q->v[1].y);
-  printf("quad 3: x %f, y %f\n", q->v[2].x, q->v[2].y);
-  printf("quad 4: x %f, y %f\n\n", q->v[3].x, q->v[3].y);
-}
-
 // ----------------------------
 // Convex Perspective Transform
 // ----------------------------
@@ -56,13 +41,18 @@ int perspective_check(quad_t* q) {
   if (cross != 0.0) {
     vec2_t c = vec2_sub(q->v[3], q->v[2]);
 
-    double s, t;
-    s = vec2_cross(a, c) / cross;
-    t = vec2_cross(b, c) / cross;
+    double u, v;
+    u = vec2_cross(a, c) / cross;
+    v = vec2_cross(b, c) / cross;
+    // Avoid Almost Invalid Artifacts
+    u = round(u * 100) * 0.01;
+    v = round(v * 100) * 0.01;
 
-    return s > 0.0 && s < 1.0 && t > 0.0 && t < 1.0;
+    // Check if Transform is Valid
+    return u > 0.0 && u < 1.0 && v > 0.0 && v < 1.0;
   }
   
+  // Invalid Transform
   return 0;
 }
 
@@ -109,9 +99,6 @@ void perspective_distort(quad_t* q, vec2_t p, vec2_t* uv) {
   u = (A * p.x + B * p.y + C) / denom;
   v = (D * p.x + E * p.y + F) / denom;
 
-  // Avoid Losing 1px border
-  u = round(u * E_BORDER) * E_BORDER_DIV;
-  v = round(v * E_BORDER) * E_BORDER_DIV;
   // Check Inside Later
   uv->x = u; uv->y = v;
 }
@@ -159,9 +146,6 @@ void bilinear_distort(quad_t* q, vec2_t p, vec2_t* uv) {
     u = (h.y - f.y * v) / d;
   }
 
-  // Avoid Losing 1px border
-  u = round(u * E_BORDER) * E_BORDER_DIV;
-  v = round(v * E_BORDER) * E_BORDER_DIV;
   // Check Inside Later
   uv->x = u; uv->y = v;
 }
@@ -175,13 +159,13 @@ int both_distort(quad_t* q, vec2_t p, vec2_t* uv, double t) {
 
   // Calculate Perspective
   perspective_distort(q, p, &uv_p);
-  if (uv_p.x < 0.0 || uv_p.x > 1.0 || uv_p.y < 0.0 || uv_p.y > 1.0)
+  if (uv_p.x < -0.005 || uv_p.x > 1.005 || uv_p.y < -0.005 || uv_p.y > 1.005)
     return 0; // Not Inside Perspective
 
   // Calculate Inverse Bilinear
   bilinear_distort(q, p, &uv_b);
-  if (uv_b.x < 0.0 || uv_b.x > 1.0 || uv_b.y < 0.0 || uv_b.y > 1.0)
-    return 0; // Not Inside Inverse Bilinear
+  if (uv_b.x < -0.005 || uv_b.x > 1.005 || uv_b.y < -0.005 || uv_b.y > 1.005)
+    return 0; // Not Inside Bilinear
 
   // Interpolate Both Transforms
   uv->x = uv_b.x + t * (uv_p.x - uv_b.x);

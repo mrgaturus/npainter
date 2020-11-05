@@ -20,25 +20,77 @@ proc load(file: string): CaImage =
   result.h = image.height
   result.buffer = image.data
 
+proc `[]`(img: CaImage, x, y: int): CaPixel =
+  if x < img.w and x >= 0 and y < img.h and y >= 0:
+    result = cast[CaRGBA8](
+      unsafeAddr img.buffer[(y * img.w + x) shl 2])[]
+  #else:
+  #  result[2] = 0xFF
+  #  result[3] = 0xFF
+
 proc nearest(img: CaImage, u, v: float): CaPixel =
   let 
-    pos_u = u * float(img.w - 1)
-    pos_v = v * float(img.h - 1)
+    pos_u = u * float(img.w)
+    pos_v = v * float(img.h)
     # Pixel Sampling
-    x = floor(pos_u + 0.5)
-    y = floor(pos_v + 0.5)
   var
-    x1 = x.int
-    y1 = y.int
+    x1 = floor(pos_u).int
+    y1 = floor(pos_v).int
   # Skip Outside
   let
-    m00 = cast[CaRGBA8](unsafeAddr img.buffer[(y1 * img.w + x1) * 4])
+    m00 = img[x1, y1]
   # Perform Interpolation
   result[0] = m00[0]
   result[1] = m00[1]
   result[2] = m00[2]
   result[3] = m00[3]
   #result[3] = ((c0 + c1 + c2 + c3) div 4).uint8
+
+proc bilinear(img: CaImage, u, v: float): CaPixel =
+  let
+    pos_u = u * float(img.w) - 0.5
+    pos_v = v * float(img.h) - 0.5
+    x1 = floor(pos_u)
+    y1 = floor(pos_v)
+    # Interpolator
+    su = int32((pos_u - x1) * 255)
+    sv = int32((pos_v - y1) * 255)
+  var
+    # Castings
+    xx1 = x1.int
+    yy1 = y1.int
+    xx2 = xx1 + 1
+    yy2 = yy1 + 1
+  let
+    # Pixel Elements
+    m00 = img[xx1, yy1]
+    m10 = img[xx2, yy1]
+    m01 = img[xx1, yy2]
+    m11 = img[xx2, yy2]
+  # Interpolate Elements
+  var 
+    a, b: int32
+    c00, c10, c01, c11: int32
+  # Interpolate Red
+  c00 = m00[0].int32; c10 = m10[0].int32; c01 = m01[0].int32; c11 = m11[0].int32
+  a = c00 + su * (c10 - c00) div 255
+  b = c01 + su * (c11 - c01) div 255
+  result[0] = uint8(a + sv * (b - a) div 255)
+  # Interpolate Green
+  c00 = m00[1].int32; c10 = m10[1].int32; c01 = m01[1].int32; c11 = m11[1].int32
+  a = c00 + su * (c10 - c00) div 255
+  b = c01 + su * (c11 - c01) div 255
+  result[1] = uint8(a + sv * (b - a) div 255)
+  # Interpolate Blue
+  c00 = m00[2].int32; c10 = m10[2].int32; c01 = m01[2].int32; c11 = m11[2].int32
+  a = c00 + su * (c10 - c00) div 255
+  b = c01 + su * (c11 - c01) div 255
+  result[2] = uint8(a + sv * (b - a) div 255)
+  # Interpolate Alpha
+  c00 = m00[3].int32; c10 = m10[3].int32; c01 = m01[3].int32; c11 = m11[3].int32
+  a = c00 + su * (c10 - c00) div 255
+  b = c01 + su * (c11 - c01) div 255
+  result[3] = uint8(a + sv * (b - a) div 255)
 
 # ---------------
 # Distortion Test
@@ -51,7 +103,7 @@ type
     v: array[4, CaVector]
   GUICanvas = ref object of GUIWidget
     tex: GLuint
-    quad, quad_n: CaQuad
+    quad: CaQuad
     buffer: array[1280*720*4, uint8]
     grab: ptr CaVector
     color: uint32
@@ -61,26 +113,15 @@ type
 
 {.compile: "painter/distort.c".}
 proc both_distort(q: var CaQuad, p: CaVector, uv: var CaVector, t: float): int32 {.importc.}
-#proc bilinear_distort(q: var CaQuad, p: CaVector, uv: var CaVector): int32 {.importc.}
+proc checkboard(uv: var CaVector): uint8 {.importc, used.}
 proc perspective_check(q: var CaQuad): int32 {.importc.}
-proc perspective_distort(q: var CaQuad, p: CaVector, uv: var CaVector): int32 {.importc.}
-proc checkboard(uv: CaVector): uint16 {.importc.}
-#proc debug_quad(q: var CaQuad) {.importc.}
 
-#[
-proc normalize(v: var CaVector, w, h: float) =
-  v.x /= w; v.y /= h
-
-proc normalize(q: var CaQuad, w, h: float) =
-  for q in mitems(q.v):
-    q.normalize(w, h)
-]#
 proc xy(v: var CaVector, x, y: float) {.inline.} =
   v.x = x; v.y = y
 
 method draw(self: GUICanvas, ctx: ptr CTXRender) =
   ctx.color(uint32 0xFFFFFFFF)
-  var r = rect(0, 0, 2560, 1440)
+  var r = rect(0, 0, 1280, 720)
   ctx.fill(r)
   ctx.texture(r, self.tex)
   ctx.color(self.color)
@@ -125,40 +166,28 @@ method event(self: GUICanvas, state: ptr GUIState) =
     if not isNil(self.grab):
       self.grab.x = state.mx.float32
       self.grab.y = state.my.float32
-      self.quad_n = self.quad
     else: 
       echo "reached amout"
-      self.amout = (state.mx.float / 512).clamp(0.0001, 0.9999)
+      self.amout = (state.mx.float / 512).clamp(0, 0.85)
     var p, uv: CaVector
     if perspective_check(self.quad) == 1:
       for y in 0..<720:
         for x in 0..<1280:
           p.xy(x.float, y.float)
-          if both_distort(self.quad_n, p, uv, self.amout) == 1:
-            let pixel = nearest(self.image, uv.x, uv.y)
-            #let 
-            #  checker = checkboard(uv)
-            #if (uv.x * 65535) == 65535 or (uv.x * 65535) == 65535: continue
+          if both_distort(self.quad, p, uv, self.amout) == 1:
+            let pixel = bilinear(self.image, uv.x, uv.y)
+            if x == 2 and y == 2:
+              echo uv.repr
             self.buffer[(y * 1280 + x) * 4] = pixel[0]
             self.buffer[(y * 1280 + x) * 4 + 1] = pixel[1]
             self.buffer[(y * 1280 + x) * 4 + 2] = pixel[2]
             self.buffer[(y * 1280 + x) * 4 + 3] = pixel[3]
-
-            #self.buffer[(y * 1280 + x) * 4 + 3] = 0xFF
-            #elif u == 0 or v == 0:
-            #  self.buffer[(y * 1280 + x) * 4] = 0
-            #  self.buffer[(y * 1280 + x) * 4 + 2] = 0xFFFF
-            #elif checker > 32768:
-            #  self.buffer[(y * 1280 + x) * 4] = u
-            #  self.buffer[(y * 1280 + x) * 4 + 1] = v
-            #self.buffer[(y * 1280 + x) * 4 + 3] = 0xFFFF
-          #elif bilinear_distort(self.quad, p, uv) == 1:
-            #self.buffer[(y * 1280 + x) * 4 + 3] = checkboard(uv)
       self.color = uint32 0xFF2B2B2B
     else: self.color = uint32 0xFF0000FF
     glBindTexture(GL_TEXTURE_2D, self.tex)
     glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 1280, 720, 
       GL_RGBA, GL_UNSIGNED_BYTE, addr self.buffer[0])
+    #glGenerateMipmap(GL_TEXTURE_2D)
     glBindTexture(GL_TEXTURE_2D, 0)
     self.busy = true
 
@@ -175,33 +204,25 @@ when isMainModule:
   block:
     var 
       quad: CaQuad
-    quad.v[0].xy(20.0, 1.0)
-    quad.v[1].xy(float(img.w), 1.0)
-    quad.v[2].xy(float(img.w), float(img.h))
-    quad.v[3].xy(1.0, float(img.h))
+    quad.v[0].xy(0.5, 0.5)
+    quad.v[1].xy(float(img.w) + 0.5, 0.5)
+    quad.v[2].xy(float(img.w) + 0.5, float(img.h) + 0.5)
+    quad.v[3].xy(0.5, float(img.h) + 0.5)
     root.quad = quad
-    root.quad_n = quad
     root.color = uint32 0xFF2B2B2B
-  # -- Draw Quad
-  var p, uv: CaVector
-  for y in 0..<720:
-    for x in 0..<1280:
-      p.xy(x.float32, y.float32)
-      if perspective_distort(root.quad, p, uv) == 1:
-        let checker = checkboard(uv)
-        if checker > 32768:
-          root.buffer[(y * 1280 + x) * 4] = uint8(255 * uv.x)
-          root.buffer[(y * 1280 + x) * 4 + 1] = uint8(255 * uv.y)
-        root.buffer[(y * 1280 + x) * 4 + 3] = 0xFF
   # -- Draw Texture
+  #var uv: CaVector
+  echo img.w, img.h
   for x in 1..img.w:
     for y in 1..img.h:
-      let u = x - 1
-      let v = y - 1
-      root.buffer[(y * 1280 + x) * 4] = img.buffer[(v * img.w + u) * 4].uint8
-      root.buffer[(y * 1280 + x) * 4 + 1] = img.buffer[(v * img.w + u) * 4 + 1].uint8
-      root.buffer[(y * 1280 + x) * 4 + 2] = img.buffer[(v * img.w + u) * 4 + 2].uint8
-      root.buffer[(y * 1280 + x) * 4 + 3] = img.buffer[(v * img.w + u) * 4 + 3].uint8
+      #uv.xy((x.float - 1) / (img.w.float - 1), (y.float - 1) / (img.h.float - 1))
+      #if x == 2 and y == 2:
+      #  echo uv.repr
+      let pixel = root.image[x - 1, y - 1]
+      root.buffer[(y * 1280 + x) * 4] = pixel[0]
+      root.buffer[(y * 1280 + x) * 4 + 1] = pixel[1]
+      root.buffer[(y * 1280 + x) * 4 + 2] = pixel[2]
+      root.buffer[(y * 1280 + x) * 4 + 3] = pixel[3]
   glBindTexture(GL_TEXTURE_2D, root.tex)
   glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 1280, 720, 
     GL_RGBA, GL_UNSIGNED_SHORT, addr root.buffer[0])
@@ -216,6 +237,7 @@ when isMainModule:
     GL_TEXTURE_MIN_FILTER, cast[GLint](GL_NEAREST))
   glTexParameteri(GL_TEXTURE_2D, 
     GL_TEXTURE_MAG_FILTER, cast[GLint](GL_NEAREST))
+  #glGenerateMipmap(GL_TEXTURE_2D)
   glBindTexture(GL_TEXTURE_2D, 0)
   # Open Window
   if win.open(root):
