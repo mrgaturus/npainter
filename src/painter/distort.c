@@ -31,9 +31,9 @@ float vec2_cross(vec2_t a, vec2_t b) {
   return a.x * b.y - a.y * b.x;
 }
 
-// ----------------------------
-// Convex Perspective Transform
-// ----------------------------
+// ---------------------------------
+// Perspective Validity & Kind Check
+// ---------------------------------
 
 int perspective_check(quad_t* q) {
   vec2_t a = vec2_sub(q->v[1], q->v[3]);
@@ -58,6 +58,10 @@ int perspective_check(quad_t* q) {
   // Invalid Transform
   return 0;
 }
+
+// ----------------------------
+// Convex Perspective Transform
+// ----------------------------
 
 int perspective_distort(quad_t* q, vec2_t p, vec2_t* uv) {
   vec2_t d1, d2, s;
@@ -111,98 +115,9 @@ int perspective_distort(quad_t* q, vec2_t p, vec2_t* uv) {
   return 0;
 }
 
-// -------------------------
-// Convex Bilinear Transform
-// -------------------------
-
-int bilinear_distort(quad_t* q, vec2_t p, vec2_t* uv) {
-  vec2_t e, f, g, h;
-  // TODO: Precalculate Some
-  e = vec2_sub(q->v[1], q->v[0]);
-  f = vec2_sub(q->v[3], q->v[0]);
-  g = vec2_add(
-    vec2_sub(q->v[0], q->v[1]),
-    vec2_sub(q->v[2], q->v[3])
-  );
-  h = vec2_sub(p, q->v[0]);
-
-  double k0, k1, k2;
-  k2 = vec2_cross(g, f);
-  k1 = vec2_cross(e, f) + vec2_cross(h, g);
-  k0 = vec2_cross(h, e);
-
-  double v, u, d;
-  if (k2 == 0.0) {
-    v = -k0 / k1;
-
-    if (fabs(d = e.x + g.x * v) > 0.01)
-      u = (h.x - f.x * v) / d;
-    else {
-      d = (e.y + g.y * v);
-      u = (h.y - f.y * v) / d;
-    }
-  } else {
-    double w = k1 * k1 - 4.0 * k0 * k2;
-    if (w < 0.0) return 0;
-
-    w = sqrt(w);
-    // Calculate Negative Solution
-    v = (-k1 - w) / (2.0 * k2);
-    d = e.x + g.x * v; if (d != 0.0)
-      u = (h.x - f.x * v) / d;
-    else {
-      d = (e.y + g.y * v);
-      u = (h.y - f.y * v) / d;
-    }
-
-    // If outside, calculate positive solution, otherwise return
-    if (u < MIN_UV || u > MAX_UV || v < MIN_UV || v > MAX_UV) {
-      //printf("second solution detected %f %f\n", u, v);
-      v = (-k1 + w) / (2.0 * k2);
-      d = e.x + g.x * v; if (d != 0.0)
-        u = (h.x - f.x * v) / d;
-      else {
-        d = (e.y + g.y * v);
-        u = (h.y - f.y * v) / d;
-      }
-    } else {
-      uv->x = u;
-      uv->y = v;
-      return 1;
-    }
-  }
-
-  // Check if is inside UV Quad
-  if (u >= MIN_UV && u <= MAX_UV && v >= MIN_UV && v <= MAX_UV) {
-    uv->x = u; uv->y = v; return 1;
-  }
-
-  // Not Inside
-  return 0;
-}
-
-// -------------------------------------
-// Interpolate Between Convex Transforms
-// -------------------------------------
-
-int both_distort(quad_t* q, vec2_t p, vec2_t* uv, double t) {
-  vec2_t uv_p, uv_b;
-
-  // Calculate and Check Perspective && Bilinear Transforms
-  if (perspective_distort(q, p, &uv_p) && bilinear_distort(q, p, &uv_b)) {
-  //  // Interpolate Both Transforms
-    uv->x = uv_b.x + t * (uv_p.x - uv_b.x);
-    uv->y = uv_b.y + t * (uv_p.y - uv_b.y);
-    // Inside UV Quad
-    return 1;
-  }
-  
-  //return bilinear_distort(q, p, uv);
-}
-
-// --------------------
-// Experimental Distort
-// --------------------
+// ----------------------------------
+// Convex Inverse Bilinear - Positive
+// ----------------------------------
 
 int bilinear_positive(quad_t* q, vec2_t p, vec2_t* uv) {
   vec2_t e, f, g, h;
@@ -235,9 +150,10 @@ int bilinear_positive(quad_t* q, vec2_t p, vec2_t* uv) {
     if (w < 0.0) return 0;
 
     w = sqrt(w);
-    // Calculate Negative Solution
     v = (-k1 + w) / (2.0 * k2);
-    d = e.x + g.x * v; if (d != 0.0)
+
+    d = e.x + g.x * v; 
+    if (fabs(d) > 0.01)
       u = (h.x - f.x * v) / d;
     else {
       d = (e.y + g.y * v);
@@ -253,6 +169,26 @@ int bilinear_positive(quad_t* q, vec2_t p, vec2_t* uv) {
   // Not Inside
   return 0;
 }
+
+int both_positive(quad_t* q, vec2_t p, vec2_t* uv, double t) {
+  vec2_t uv_p, uv_b;
+
+  // Calculate and Check Perspective && Bilinear Transforms
+  if (perspective_distort(q, p, &uv_p) && bilinear_positive(q, p, &uv_b)) {
+    // Interpolate Both Transforms
+    uv->x = uv_b.x + t * (uv_p.x - uv_b.x);
+    uv->y = uv_b.y + t * (uv_p.y - uv_b.y);
+    // Inside UV Quad
+    return 1;
+  }
+
+  // Not Inside
+  return 0;
+}
+
+// ----------------------------------
+// Convex Inverse Bilinear - Negative
+// ----------------------------------
 
 int bilinear_negative(quad_t* q, vec2_t p, vec2_t* uv) {
   vec2_t e, f, g, h;
@@ -285,9 +221,10 @@ int bilinear_negative(quad_t* q, vec2_t p, vec2_t* uv) {
     if (w < 0.0) return 0;
 
     w = sqrt(w);
-    // Calculate Negative Solution
     v = (-k1 - w) / (2.0 * k2);
-    d = e.x + g.x * v; if (d != 0.0)
+
+    d = e.x + g.x * v; 
+    if (fabs(d) > 0.01)
       u = (h.x - f.x * v) / d;
     else {
       d = (e.y + g.y * v);
@@ -304,28 +241,12 @@ int bilinear_negative(quad_t* q, vec2_t p, vec2_t* uv) {
   return 0;
 }
 
-int both_positive(quad_t* q, vec2_t p, vec2_t* uv, double t) {
-  vec2_t uv_p, uv_b;
-
-  // Calculate and Check Perspective && Bilinear Transforms
-  if (perspective_distort(q, p, &uv_p) && bilinear_positive(q, p, &uv_b)) {
-  //  // Interpolate Both Transforms
-    uv->x = uv_b.x + t * (uv_p.x - uv_b.x);
-    uv->y = uv_b.y + t * (uv_p.y - uv_b.y);
-    // Inside UV Quad
-    return 1;
-  }
-
-  // Not Inside
-  return 0;
-}
-
 int both_negative(quad_t* q, vec2_t p, vec2_t* uv, double t) {
   vec2_t uv_p, uv_b;
 
   // Calculate and Check Perspective && Bilinear Transforms
   if (perspective_distort(q, p, &uv_p) && bilinear_negative(q, p, &uv_b)) {
-  //  // Interpolate Both Transforms
+    // Interpolate Both Transforms
     uv->x = uv_b.x + t * (uv_p.x - uv_b.x);
     uv->y = uv_b.y + t * (uv_p.y - uv_b.y);
     // Inside UV Quad

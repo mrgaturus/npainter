@@ -26,8 +26,8 @@ proc `[]`(img: CaImage, x, y: int): CaPixel =
     result = cast[CaRGBA8](
       unsafeAddr img.buffer[(y * img.w + x) shl 2])[]
   #else:
-  #  result[2] = 0xFF
-  #  result[3] = 0xFF
+    #  result[2] = 0xFF
+    #  result[3] = 0xFF
 
 proc nearest(img: CaImage, u, v: float): CaPixel =
   let 
@@ -113,7 +113,6 @@ type
     image: CaImage
 
 {.compile: "painter/distort.c".}
-proc both_distort(q: var CaQuad, p: CaVector, uv: var CaVector, t: float): int32 {.importc.}
 proc both_positive(q: var CaQuad, p: CaVector, uv: var CaVector, t: float): int32 {.importc.}
 proc both_negative(q: var CaQuad, p: CaVector, uv: var CaVector, t: float): int32 {.importc.}
 proc checkboard(uv: var CaVector): uint8 {.importc, used.}
@@ -162,6 +161,188 @@ proc check(self: GUICanvas, x, y: int32): ptr CaVector =
       echo "reached"
       result = addr v
 
+# ----------------------
+# Edge Antialiasing Hack
+# ----------------------
+
+proc subpixel(self: GUICanvas, x, y: int) =
+  let orient = perspective_check(self.quad)
+  if orient > 0:
+    let distort =
+      if orient == 1: both_negative
+      else: both_positive
+    var uv, sp: CaVector
+    var subpixel: CaSubPixel
+    for sx in 0..<8:
+      let dsx = (sx.float + 0.5) * 0.125 - 0.5
+      for sy in 0..<8:
+        let dsy = (sy.float + 0.5) * 0.125 - 0.5
+        sp.xy(x.float + dsx, y.float + dsy)
+        if distort(self.quad, sp, uv, self.amout) == 1:
+          let pixel = bilinear(self.image, uv.x, uv.y)
+          subpixel[0] += pixel[0]
+          subpixel[1] += pixel[1]
+          subpixel[2] += pixel[2]
+          subpixel[3] += pixel[3]
+    # Compute Pixel Average
+    subpixel[0] = subpixel[0] shr 6
+    subpixel[1] = subpixel[1] shr 6
+    subpixel[2] = subpixel[2] shr 6
+    subpixel[3] = subpixel[3] shr 6
+      # Replace Pixel
+    self.buffer[(y * 1280 + x) * 4] = subpixel[0].uint8
+    self.buffer[(y * 1280 + x) * 4 + 1] = subpixel[1].uint8
+    self.buffer[(y * 1280 + x) * 4 + 2] = subpixel[2].uint8
+    self.buffer[(y * 1280 + x) * 4 + 3] = subpixel[3].uint8
+
+proc line(self: GUICanvas, x0, y0, x1, y1: float) = 
+  var 
+    dx, dy, xdir: int
+    sx0, sy0, sx1, sy1: int
+    # Wu Errors
+    error_temp: int
+    error_acc: int
+    error_adj: int
+  # Top to Bottom
+  if y0 > y1:
+    sx0 = x1.int
+    sy0 = y1.int
+    sx1 = x0.int
+    sy1 = y0.int
+  else: # No Changed
+    sx0 = x0.int
+    sy0 = y0.int
+    sx1 = x1.int
+    sy1 = y1.int
+  # Initial Pixel
+  self.subpixel(sx0, sy0)
+  # Calculate Deltas
+  dx = sx1 - sx0
+  dy = sy1 - sy0
+  # X Direction
+  if dx >= 0:
+    xdir = 1
+  else:
+    xdir = -1
+    dx = -dx
+  # Skip Straight
+  if dy == 0: return
+  if dx == 0: return
+  if dx == dy: return
+  # Perform Wu Line
+  if dy > dx:
+    error_adj = (dx shl 16) div dy
+    while (dec(dy); dy) != 0:
+      error_temp = error_acc
+      error_acc = cast[uint16](
+        error_acc + error_adj).int
+      # Step Line X and Y
+      if error_acc <= error_temp:
+        sx0 += xdir
+      inc(sy0)
+      # Put Subpixel
+      self.subpixel(sx0, sy0)
+      self.subpixel(sx0 + xdir, sy0)
+  else: # Other Direction
+    error_adj = (dy shl 16) div dx
+    while (dec(dx); dx) != 0:
+      error_temp = error_acc
+      error_acc = cast[uint16](
+        error_acc + error_adj).int
+      # Step Line X and Y
+      if error_acc <= error_temp:
+        inc(sy0)
+      sx0 += xdir
+      # Put Subpixel
+      self.subpixel(sx0, sy0)
+      self.subpixel(sx0, sy0 + 1)
+  # Draw Final Pixel
+  self.subpixel(sx1, sy1)
+
+# -------------------------------------------
+# Aproximated Partial Derivative LOD Sampling
+# -------------------------------------------
+
+proc subpixel(self: GUICanvas, x, y: float, size: int): CaPixel =
+  let orient = perspective_check(self.quad)
+  if orient > 0:
+    let 
+      distort =
+        if orient == 1: both_negative
+        else: both_positive
+      rcp = 1.0 / float(size)
+    var uv, sp: CaVector
+    var subpixel: CaSubPixel
+    for sx in 0..<size:
+      let dsx = sx.float * rcp
+      for sy in 0..<size:
+        let dsy = sy.float * rcp
+        sp.xy(x + dsx, y + dsy)
+        if distort(self.quad, sp, uv, self.amout) == 1:
+          result = bilinear(self.image, uv.x, uv.y)
+          subpixel[0] += result[0]
+          subpixel[1] += result[1]
+          subpixel[2] += result[2]
+          subpixel[3] += result[3]
+    # Compute Pixel Average
+    let area = (size * size).uint
+    result[0] = (subpixel[0] div area).uint8
+    result[1] = (subpixel[1] div area).uint8
+    result[2] = (subpixel[2] div area).uint8
+    result[3] = (subpixel[3] div area).uint8
+
+proc subpixel(self: GUICanvas, x, y, lod: float): CaPixel =
+  let # Calculate Lod Parts
+    lod_i = ceil(lod).int
+    lod_fract = lod - floor(lod)
+  var # Calculate Both Subpixels
+    a = self.subpixel(x, y, lod_i)
+    b = self.subpixel(x, y, lod_i + 1)
+  # Trilinear Interpolate Both Pixels
+  var a_aux, b_aux: float
+  a_aux = a[0].float; b_aux = b[0].float
+  result[0] = uint8 ( (a_aux + lod_fract * (b_aux - a_aux)) )
+  a_aux = a[1].float; b_aux = b[1].float
+  result[1] = uint8 ( (a_aux + lod_fract * (b_aux - a_aux)) )
+  a_aux = a[2].float; b_aux = b[2].float
+  result[2] = uint8 ( (a_aux + lod_fract * (b_aux - a_aux)) )
+  a_aux = a[3].float; b_aux = b[3].float
+  result[3] = uint8 ( (a_aux + lod_fract * (b_aux - a_aux)) )
+
+proc derivative(self: GUICanvas, x, y: float): CaPixel =
+  var
+    sp, uv: CaVector
+    points: array[4, CaVector]
+    dudv: array[4, float]
+    dsx, dsy: float
+  let orient = perspective_check(self.quad)
+  if orient > 0:
+    let distort =
+      if orient == 1: both_negative
+      else: both_positive
+    for sy in 0..<2:
+      dsx = 0
+      for sx in 0..<2:
+        sp.xy(x.float + dsx, y.float + dsy)
+        if distort(self.quad, sp, uv, self.amout) == 1:
+          points[sy shl 1 + sx] = uv
+        else: return
+        dsx += 1.0
+      dsy += 1.0
+  # Partial Derivative
+  dudv[0] = (points[2].x - points[3].x) * self.image.w.float #dudx
+  dudv[1] = (points[2].y - points[3].y) * self.image.h.float #dvdx
+  dudv[2] = (points[1].x - points[3].x) * self.image.w.float #dudy
+  dudv[3] = (points[1].y - points[3].y) * self.image.h.float #dvdy
+  var lod = max(
+    dudv[0] * dudv[0] + dudv[1] * dudv[1],
+    dudv[2] * dudv[2] + dudv[3] * dudv[3])
+  lod = log2(lod) * 0.5
+  #echo "-- lol, ", lod
+  if lod <= 0.0:
+    result = bilinear(self.image, points[0].x, points[0].y)
+  else: result = subpixel(self, x, y, lod)
+
 proc cb_distort(g: pointer, w: ptr GUITarget) =
   let self = cast[GUICanvas](w[])
   var p, uv: CaVector
@@ -173,30 +354,12 @@ proc cb_distort(g: pointer, w: ptr GUITarget) =
       else: both_positive
     for y in 0..<720:
       for x in 0..<1280:
-        when defined(subpixel):
-          var sp: CaVector
-          var subpixel: CaSubPixel
-          for sx in 0..<8:
-            let dsx = (sx.float + 0.5) * 0.125 - 0.5
-            for sy in 0..<8:
-              let dsy = (sy.float + 0.5) * 0.125 - 0.5
-              sp.xy(x.float + dsx, y.float + dsy)
-              if distort(self.quad, sp, uv, self.amout) == 1:
-                pixel = bilinear(self.image, uv.x, uv.y)
-                subpixel[0] += pixel[0]
-                subpixel[1] += pixel[1]
-                subpixel[2] += pixel[2]
-                subpixel[3] += pixel[3]
-          # Compute Pixel Average
-          subpixel[0] = subpixel[0] shr 6
-          subpixel[1] = subpixel[1] shr 6
-          subpixel[2] = subpixel[2] shr 6
-          subpixel[3] = subpixel[3] shr 6
-            # Replace Pixel
-          self.buffer[(y * 1280 + x) * 4] = subpixel[0].uint8
-          self.buffer[(y * 1280 + x) * 4 + 1] = subpixel[1].uint8
-          self.buffer[(y * 1280 + x) * 4 + 2] = subpixel[2].uint8
-          self.buffer[(y * 1280 + x) * 4 + 3] = subpixel[3].uint8
+        when defined(area):
+          let pixel = derivative(self, x.float, y.float)
+          self.buffer[(y * 1280 + x) * 4] = pixel[0]
+          self.buffer[(y * 1280 + x) * 4 + 1] = pixel[1]
+          self.buffer[(y * 1280 + x) * 4 + 2] = pixel[2]
+          self.buffer[(y * 1280 + x) * 4 + 3] = pixel[3]
         else:
           p.xy(x.float, y.float)
           if distort(self.quad, p, uv, self.amout) == 1:
@@ -205,6 +368,19 @@ proc cb_distort(g: pointer, w: ptr GUITarget) =
             self.buffer[(y * 1280 + x) * 4 + 1] = pixel[1]
             self.buffer[(y * 1280 + x) * 4 + 2] = pixel[2]
             self.buffer[(y * 1280 + x) * 4 + 3] = pixel[3]
+    # Antialiasing Edges
+    self.line(
+      self.quad.v[0].x, self.quad.v[0].y, 
+      self.quad.v[1].x, self.quad.v[1].y)
+    self.line(
+      self.quad.v[1].x, self.quad.v[1].y, 
+      self.quad.v[2].x, self.quad.v[2].y)
+    self.line(
+      self.quad.v[2].x, self.quad.v[2].y, 
+      self.quad.v[3].x, self.quad.v[3].y)
+    self.line(
+      self.quad.v[3].x, self.quad.v[3].y, 
+      self.quad.v[0].x, self.quad.v[0].y)
     self.color = uint32 0xFF2B2B2B
   else: self.color = uint32 0xFF0000FF
   glBindTexture(GL_TEXTURE_2D, self.tex)
@@ -223,11 +399,12 @@ method event(self: GUICanvas, state: ptr GUIState) =
       self.grab.x = state.mx.float32
       self.grab.y = state.my.float32
     else:
-      self.amout = (state.mx.float / 512).clamp(0.05, 0.75)
+      self.amout = (state.mx.float / 512).clamp(0.05, 0.85)
     if not self.busy:
       var target = self.target
       pushCallback(cb_distort, target)
       self.busy = true
+  else: echo self.derivative(state.mx.float, state.my.float)
 
 when isMainModule:
   var win = # -- Create GUIWindow
