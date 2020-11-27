@@ -5,8 +5,8 @@
 // TODO: Semi-SIMD Interval Check
 #include <math.h>
 
-#define MIN_UV -0.0005
-#define MAX_UV  1.0005
+#define MIN_UV -0.05
+#define MAX_UV  1.05
 // -----------------------
 // TODO: Move to algebra.c
 // -----------------------
