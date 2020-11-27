@@ -145,7 +145,7 @@ proc lanczos2_weight(x: float): float =
     result = 1.0
   elif x_abs < 2.0:
     x_abs *= 3.14159265358979323846
-    result = sin(x_abs) * sin(x_abs / 2.0) / (x_abs * x_abs / 2.0)
+    result = sin(x_abs) * sin(x_abs * 0.5) / (x_abs * x_abs * 0.5)
 
 proc lanczos2(img: CaImage, u, v: float): CaPixel =
   let
@@ -346,7 +346,7 @@ proc cb_distort(g: pointer, w: ptr GUITarget) =
         else:
           p.xy(x.float, y.float)
           if distort(self.quad, p, uv, self.amout) == 1:
-            pixel = lanczos2(self.image, uv.x, uv.y)
+            pixel = bilinear(self.image, uv.x, uv.y)
             self.buffer[(y * 1280 + x) * 4] = pixel[0]
             self.buffer[(y * 1280 + x) * 4 + 1] = pixel[1]
             self.buffer[(y * 1280 + x) * 4 + 2] = pixel[2]
