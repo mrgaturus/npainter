@@ -73,7 +73,7 @@ proc circle(self: GUICanvas, x, y, d: float32) =
     yi = floor(y - d * 0.5).int32.clamp(0, 720)
     yd = ceil(y + d * 0.5).int32.clamp(0, 720)
     # Antialiasing Gamma Coeffient
-    gamma = (6.0 - log2(d) * 0.5 - 0.5) * inverse
+    gamma = (6.0 - log2(d) * 0.5) * (inverse * 0.6)
     # Smoothstep Coeffients
     edge_a = 0.5
     edge_div = 
@@ -94,7 +94,7 @@ proc circle(self: GUICanvas, x, y, d: float32) =
       dist = clamp(dist, 0.0, 1.0)
       dist = dist * dist * (3.0 - 2.0 * dist)
       let 
-        color = (32765.0 * dist).int16
+        d_alpha = (32765.0 * dist * 0.25).int16
         s_alpha = 32765 - self.buffer[(yn * 1280 + xn) * 4 + 3]
       # Blend Color - Can be SIMDfied
       self.buffer[(yn * 1280 + xn) * 4] = 
@@ -104,7 +104,7 @@ proc circle(self: GUICanvas, x, y, d: float32) =
       self.buffer[(yn * 1280 + xn) * 4 + 2] = 
         blend(self.buffer[(yn * 1280 + xn) * 4 + 2], 0, s_alpha)
       self.buffer[(yn * 1280 + xn) * 4 + 3] = 
-        blend(self.buffer[(yn * 1280 + xn) * 4 + 3], color shr 2, s_alpha)
+        blend(self.buffer[(yn * 1280 + xn) * 4 + 3], d_alpha, s_alpha)
       inc(xn) # Next Pixel
     inc(yn) # Next Row
   # -- Copy To Texture
@@ -229,7 +229,7 @@ when isMainModule:
   glBindTexture(GL_TEXTURE_2D, 0)
   # -- Put The Circle and Copy
   root.flags = wMouse
-  root.size = 500
+  root.size = 10
   # -- Open Window
   if win.open(root):
     while true:
