@@ -4,9 +4,8 @@ import gui/[
   window, 
   widget, 
   render, 
-  #container, 
-  event
-  #timer
+  event,
+  signal
   ]
 from omath import Value, interval, toFloat
 from gui/widgets/slider import newSlider

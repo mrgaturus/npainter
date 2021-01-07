@@ -1,6 +1,8 @@
 import ../widget, ../render
 from ../event import 
-  GUIState, GUIEvent, GUICallback, pushCallback
+  GUIState, GUIEvent
+from ../signal import 
+  GUICallback, pushCallback
 from ../config import metrics, theme
 from ../atlas import width
 

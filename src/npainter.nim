@@ -1,4 +1,4 @@
-import gui/[window, widget, render, event]
+import gui/[window, widget, render, event, signal]
 import libs/gl
 import math
 from omath import fastSqrt
@@ -73,7 +73,7 @@ proc circle(self: GUICanvas, x, y, d: float32) =
     yi = floor(y - d * 0.5).int32.clamp(0, 720)
     yd = ceil(y + d * 0.5).int32.clamp(0, 720)
     # Antialiasing Gamma Coeffient
-    gamma = (6.0 - log2(d) * 0.5) * (inverse * 0.6)
+    gamma = (6.0 - log2(d) * 0.5) * (inverse * 0.5)
     # Smoothstep Coeffients
     edge_a = 0.5
     edge_div = 
@@ -229,7 +229,7 @@ when isMainModule:
   glBindTexture(GL_TEXTURE_2D, 0)
   # -- Put The Circle and Copy
   root.flags = wMouse
-  root.size = 10
+  root.size = 2.5
   # -- Open Window
   if win.open(root):
     while true:

@@ -1,6 +1,7 @@
 # Global Values for GUI Creation
 
 type
+  # Theme Color Scheme
   CFGColors* = object
     # -- Core Widget Colors --
     text*, disabledText*: uint32 # Icons Included
@@ -13,18 +14,23 @@ type
     # -- Container/Frame Colors --
     bgContainer*, bgFrame*: uint32
     bgHeader*, bgHeaderFocus*: uint32
+  # Font Metrics
   CFGMetrics* = object
     # -- Window Dimensions --
     width*, height*: int32
     # -- Font and Glyph Metrics --
     ascender*, descender*, baseline*: int16
     fontSize*, iconSize*: int32
-    # -- Font Hidden Metrics --
-    opaque*: pointer
+  # Runtime Globals
+  CFGOpaque* = object
+    queue*, atlas*: pointer
+    # User Data Pointer
+    user*: pointer
 
 var # Global State
   theme*: CFGColors
   metrics*: CFGMetrics
+  opaque*: CFGOpaque
   # -- Custom Flags --
   cflags*: uint
 

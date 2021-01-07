@@ -1,5 +1,6 @@
-from event import 
-  GUIState, GUISignal, GUITarget,
+from event import GUIState
+from signal import
+  GUISignal, GUITarget,
   WidgetSignal, pushSignal
 from render import 
   CTXRender, GUIRect, push, pop

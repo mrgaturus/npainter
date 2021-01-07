@@ -1,7 +1,7 @@
 import times
 import libs/gl
 import libs/ft2
-import gui/[window, widget, render, event, timer]
+import gui/[window, widget, render, event, signal, timer]
 from gui/widgets/button import newButton
 from gui/widgets/check import newCheckbox
 from gui/widgets/radio import newRadio
@@ -293,11 +293,11 @@ type
   SSETriangle = array[3, SSEVertex]
 
 
-{.compile: "painter/triangle.c".}
+#{.compile: "painter/triangle.c".}
 {.compile: "painter/blend.c".}
 {.passC: "-msse4.1".}
-proc triangle_draw(buffer: pointer, w, h: int32, v: ptr SSETriangle) {.importc: "triangle_draw".}
-proc triangle_naive(buffer: pointer, w, h: int32, v: ptr CPUTriangle) {.importc: "triangle_draw_naive".}
+proc triangle_draw(buffer: pointer, w, h: int32, v: ptr SSETriangle) = discard
+proc triangle_naive(buffer: pointer, w, h: int32, v: ptr CPUTriangle) = discard
 
 # ------------------
 # GUI BLANK METHODS

@@ -1,4 +1,4 @@
-import gui/[window, widget, render, event]
+import gui/[window, widget, render, event, signal]
 import libs/gl
 
 when isMainModule:

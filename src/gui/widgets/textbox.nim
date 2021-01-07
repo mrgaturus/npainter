@@ -7,9 +7,11 @@ import ../widget, ../render, ../../utf8
 from ../config import metrics, theme
 from ../atlas import width, index
 from ../event import
-  UTF8Nothing, UTF8Keysym,
-  GUIState, GUIEvent, pushSignal, 
-  WindowSignal, msgOpenIM, msgCloseIM
+  GUIState, GUIEvent,
+  UTF8Nothing, UTF8Keysym
+from ../signal import
+  pushSignal, WindowSignal,
+  msgOpenIM, msgCloseIM
 
 type
   GUITextBox = ref object of GUIWidget

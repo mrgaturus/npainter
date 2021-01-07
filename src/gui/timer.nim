@@ -2,7 +2,7 @@
 from posix import 
   CLOCK_MONOTONIC, Time, Timespec,
   clock_gettime, nanosleep
-from event import GUITarget
+from signal import GUITarget
 from widget import GUIWidget
 
 type

@@ -1,8 +1,9 @@
-# Import Modules
 import ../logger
+# Import Libraries
 import ../libs/egl
 import x11/xlib, x11/x
-import widget, event, render
+# Import Modules
+import widget, event, signal, render
 # Import Somes
 from timer import 
   walkTimers, sleep
@@ -44,6 +45,8 @@ type
     # Main Window
     ctx: CTXRender
     state: GUIState
+    queue: GUIQueue
+    # Root Widget
     root: GUIWidget
     # Last Widgets
     frame: GUIWidget
@@ -132,8 +135,6 @@ proc createEGL(win: var GUIWindow) =
   win.eglSur = eglSur
 
 proc newGUIWindow*(w, h: int32, global: pointer): GUIWindow =
-  if not isNil(metrics.opaque): # Check if there is an instance
-    log(lvWarning, "window already created, software malformed")
   # Create new X11 Display
   result.display = XOpenDisplay(nil)
   if isNil(result.display):
@@ -151,7 +152,7 @@ proc newGUIWindow*(w, h: int32, global: pointer): GUIWindow =
   # Create CTX Renderer
   result.ctx = newCTXRender()
   # Alloc GUI Signal Queue
-  newQueue(global)
+  result.queue = newGUIQueue(global)
 
 # -----------------------
 # WINDOW OPEN/CLOSE PROCS
@@ -176,7 +177,7 @@ proc open*(win: var GUIWindow, root: GUIWidget): bool =
 
 proc close*(win: var GUIWindow) =
   # Dispose Queue
-  disposeQueue()
+  dispose(win.queue)
   # Dispose UTF8Buffer
   dealloc(win.state.utf8str)
   # Dispose EGL
@@ -495,7 +496,7 @@ proc handleEvents*(win: var GUIWindow) =
             event(found, state)
 
 proc handleSignals*(win: var GUIWindow): bool =
-  for signal in pollQueue():
+  for signal in poll(win.queue):
     case signal.kind
     of sCallback:
       signal.call()

@@ -1,5 +1,5 @@
 from math import sqrt, ceil, nextPowerOfTwo
-from config import metrics
+from config import metrics, opaque
 
 import ../libs/gl
 import ../libs/ft2
@@ -292,7 +292,7 @@ proc newCTXAtlas*(): CTXAtlas =
     # Set Icon Metric side*side
     metrics.iconSize = icons.size
     # Set Opaque For Text Metric Calc
-    metrics.opaque = cast[pointer](result)
+    opaque.atlas = cast[pointer](result)
   # 2 -- Render Selected Charset
   renderFallback(result)
   renderCharset(result, csLatin)
@@ -421,13 +421,13 @@ proc icon*(atlas: CTXAtlas, id: uint16): ptr TEXIcon =
 
 proc width*(str: string): int32 =
   let atlas = # Get Atlas from Global
-    cast[CTXAtlas](metrics.opaque)
+    cast[CTXAtlas](opaque.atlas)
   for rune in runes16(str):
     result += atlas.glyph(rune).advance
 
 proc width*(str: string, e: int32): int32 =
   let atlas = # Get Atlas from Global
-    cast[CTXAtlas](metrics.opaque)
+    cast[CTXAtlas](opaque.atlas)
   var # Iterator
     i: int32
     rune: uint16
@@ -437,7 +437,7 @@ proc width*(str: string, e: int32): int32 =
 
 proc index*(str: string, w: int32): int32 =
   let atlas = # Get Atlas from Global
-    cast[CTXAtlas](metrics.opaque)
+    cast[CTXAtlas](opaque.atlas)
   var # Iterator
     i: int32
     rune: uint16
