@@ -124,7 +124,7 @@ method draw(self: GUIColorBar, ctx: ptr CTXRender) =
     ctx.color(BLACK); ctx.line(rect, 1)
 
 method event(self: GUIColorBar, state: ptr GUIState) =
-  if state.kind == evMouseClick:
+  if state.kind == evCursorClick:
     let delta = state.mx - self.rect.x
     self.status =
       if delta < self.rect.w - 25: gSquare

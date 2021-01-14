@@ -79,9 +79,6 @@ proc createXWindow(x11: PDisplay, w, h: uint32): Window =
   attr.event_mask =
     KeyPressMask or
     KeyReleaseMask or
-    ButtonPressMask or
-    ButtonReleaseMask or
-    PointerMotionMask or
     StructureNotifyMask
   # Get Default Root Window From Display
   let root = DefaultRootWindow(x11)
@@ -143,9 +140,11 @@ proc newGUIWindow*(w, h: int32, global: pointer): GUIWindow =
   result.xID = # With Initial Dimensions
     createXWindow(result.display, uint32 w, uint32 h)
   metrics.width = w; metrics.height = h
-  # Create X11 Input Manager
-  result.createXIM() # UTF8
-  result.state.utf8buffer(32)
+  # Create X11 Input Method
+  result.createXIM()
+  # Create GUI Event State
+  result.state = newGUIState(
+    result.display, result.xID)
   # Create EGL Context
   result.createEGL() # Disable VSync
   discard eglSwapInterval(result.eglDsp, 0)
@@ -238,7 +237,7 @@ proc elevate(win: var GUIWindow, widget: GUIWidget) =
 # -- Find Widget by State
 proc find(win: var GUIWindow, state: ptr GUIState): GUIWidget =
   case state.kind
-  of evMouseMove, evMouseClick, evMouseRelease, evMouseAxis:
+  of evCursorMove, evCursorClick, evCursorRelease:
     if not isNil(win.hover) and test(win.hover, wGrab):
       result = win.hover
       # Check Grabbed Point On Area
@@ -297,21 +296,27 @@ proc find(win: var GUIWindow, state: ptr GUIState): GUIWidget =
         win.root # Fallback
       else: win.focus # Use Focus
 
-# -- Grab Widget
-proc grab(win: var GUIWindow, widget: GUIWidget, kind: GUIEvent): bool =
-  if kind == evMouseClick:
+# -- Prepare Widget before event
+proc prepare(win: var GUIWindow, widget: GUIWidget, kind: GUIEvent): bool =
+  case kind
+  of evCursorMove:
+    widget.test(wMouse)
+  of evCursorClick:
     # Grab Current Widget
     widget.flags.set(wGrab)
     # Elevate if is a Frame
     let frame = widget.outside
     if frame.kind == wgFrame:
       elevate(win, frame)
-  elif kind == evMouseRelease:
+    # Check if is able
+    widget.test(wMouse)
+  of evCursorRelease:
     # Ungrab Current Widget
     widget.flags.clear(wGrab)
-  # Check If Can Handle Event
-  widget.test(wMouse) or 
-    kind < evMouseClick
+    # Check if is able
+    widget.test(wMouse)
+  of evKeyDown, evKeyUp:
+    widget.test(wKeyboard)
 
 # -- Step Focus
 proc step(win: var GUIWindow, back: bool) =
@@ -492,7 +497,7 @@ proc handleEvents*(win: var GUIWindow) =
           let found = find(win, state)
           # Check if can handle
           if not isNil(found) and
-          win.grab(found, state.kind):
+          win.prepare(found, state.kind):
             event(found, state)
 
 proc handleSignals*(win: var GUIWindow): bool =

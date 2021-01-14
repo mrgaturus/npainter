@@ -130,7 +130,7 @@ method draw(self: GUIMenu, ctx: ptr CTXRender) =
 
 method event(self: GUIMenu, state: ptr GUIState) =
   case state.kind
-  of evMouseClick, evMouseMove:
+  of evCursorClick, evCursorMove:
     if self.test(wHover):
       var # Search Hovered Item
         index: int32
@@ -140,7 +140,7 @@ method event(self: GUIMenu, state: ptr GUIState) =
         if state.my > cursor and state.my < space:
           case item.kind
           of mkMenu: # Submenu
-            if state.kind == evMouseMove and index != self.submenu:
+            if state.kind == evCursorMove and index != self.submenu:
               if self.submenu >= 0 and self.items[self.submenu].kind == mkMenu:
                 close(self.items[self.submenu].menu)
               # Open new Submenu
@@ -148,7 +148,7 @@ method event(self: GUIMenu, state: ptr GUIState) =
               item.menu.move(self.rect.x + self.rect.w - 1, cursor - 2)
               self.submenu = index
           of mkAction: # Callback
-            if state.kind == evMouseClick:
+            if state.kind == evCursorClick:
               pushCallback(item.cb)
               self.close()
               if not isNil(self.bar):
@@ -161,7 +161,7 @@ method event(self: GUIMenu, state: ptr GUIState) =
     elif not isNil(self.bar) and # Use Menu Bar
     pointOnArea(self.bar, state.mx, state.my):
       self.bar.event(state)
-    elif state.kind == evMouseClick:
+    elif state.kind == evCursorClick:
       self.close() # Close Menu
       if not isNil(self.bar):
         self.bar.grab = false
@@ -222,14 +222,14 @@ method draw(self: GUIMenuBar, ctx: ptr CTXRender) =
 
 method event(self: GUIMenuBar, state: ptr GUIState) =
   case state.kind
-  of evMouseClick, evMouseMove:
+  of evCursorClick, evCursorMove:
     var # Search Hovered Item
       cursor = self.rect.x
       index: int32
     for item in mitems(self.items):
       let space = cursor + item.width + 4
       if state.mx > cursor and state.mx < space:
-        if state.kind == evMouseClick:
+        if state.kind == evCursorClick:
           if item.menu.test(wVisible):
             close(item.menu)
             self.grab = false
@@ -271,7 +271,7 @@ method draw(fondo: GUIFondo, ctx: ptr CTXRender) =
   ctx.fill rect(fondo.rect)
 
 method event(fondo: GUIFondo, state: ptr GUIState) =
-  if state.kind == evMouseClick:
+  if state.kind == evCursorClick:
     if not fondo.test(wHover):
       fondo.close() # Close
 
@@ -311,17 +311,30 @@ method draw*(widget: GUIBlank, ctx: ptr CTXRender) =
   ctx.texture(rect widget.rect, widget.texture)
 
 method event*(widget: GUIBlank, state: ptr GUIState) =
-  #echo "cursor mx: ", state.mx, " cursor my: ", state.my
-  if state.kind == evMouseClick:
+  case state.kind
+  of evCursorClick:
+    if state.key == MiddleButton:
+      echo "middle button xdd"
     if not isNil(widget.frame) and test(widget.frame, wVisible):
       close(widget.frame)
     else:
       pushTimer(widget.target, 1000)
       widget.set(wFocus)
-  elif state.kind == evMouseRelease:
+  of evCursorRelease:
     # Remove Timer
     echo "w timer removed"
     stopTimer(widget.target)
+  of evKeyDown:
+    echo "tool kind: ", state.tool
+    echo " -- mouse  x: ", state.mx
+    echo " -- stylus x: ", state.px
+    echo ""
+    echo " -- mouse  y: ", state.my
+    echo " -- stylus y: ", state.py
+    echo ""
+    echo " -- pressure: ", state.pressure
+    echo ""
+  else: discard
   if widget.test(wGrab) and not isNil(widget.frame):
     move(widget.frame, state.mx + 5, state.my + 5)
 

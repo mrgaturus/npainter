@@ -82,14 +82,14 @@ method event(self: GUITextBox, state: ptr GUIState) =
       of UTF8Nothing, UTF8Keysym: discard
       else: insert(self.input, 
         state.utf8str, state.utf8size)
-  elif state.kind == evMouseClick:
+  elif state.kind == evCursorClick:
     # Get Cursor Position
     self.input.cursor = index(self.input.text,
       state.mx - self.rect.x + self.wo - 4)
     # Focus Textbox
     self.set(wFocus)
   # Mark Text Input as Dirty
-  if state.kind < evMouseRelease:
+  if state.kind in {evKeyDown, evKeyUp}:
     self.input.changed = true
 
 method handle(widget: GUITextBox, kind: GUIHandle) =
