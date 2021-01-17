@@ -16,8 +16,9 @@ type # Buffer Data
     size*: int16 # size*size
     count*, len*: int32
     buffer*: UncheckedArray[byte]
-const # Common Paths
+const
   shaderPath = "data/glsl/"
+  # Font and Icons Atlas
   fontPath = "data/font.ttf"
   iconsPath = "data/icons.dat"
 
@@ -35,12 +36,12 @@ if ft2_init(addr freetype) != 0:
 # GUI FONT & ICONS LOADING PROCS
 # ------------------------------
 
-proc newFont*(size: int32): FT2Face =
+proc newFont*(): FT2Face =
   # Load Default Font File using FT2 Loader
   if ft2_newFace(freetype, fontPath, 0, addr result) != 0:
     log(lvError, "failed loading font file: ", fontPath)
-  # Set Size With 96 of DPI, system DPI handling is bad
-  if ft2_setCharSize(result, 0, size shl 6, 96, 96) != 0:
+  # Set Size With 96 of DPI, DPI Awareness is confusing
+  if ft2_setCharSize(result, 0, 9 shl 6, 96, 96) != 0:
     log(lvWarning, "font size was setted not properly")
 
 proc newIcons*(): BUFIcons =

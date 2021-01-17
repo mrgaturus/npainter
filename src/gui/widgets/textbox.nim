@@ -60,7 +60,7 @@ method draw(self: GUITextBox, ctx: ptr CTXRender) =
   # Draw Current Text
   ctx.text( # Offset X and Clip
     self.rect.x - self.wo + 4,
-    self.rect.y - metrics.descender, 
+    self.rect.y + metrics.ascender shr 1,
     rect(self.rect), self.input.text)
 
 method event(self: GUITextBox, state: ptr GUIState) =
@@ -89,8 +89,8 @@ method event(self: GUITextBox, state: ptr GUIState) =
     # Focus Textbox
     self.set(wFocus)
   # Mark Text Input as Dirty
-  if state.kind in {evKeyDown, evKeyUp}:
-    self.input.changed = true
+  if state.kind in {evKeyDown, evCursorClick}:
+    self.input.changed = true # TODO: use CRC32
 
 method handle(widget: GUITextBox, kind: GUIHandle) =
   case kind # Un/Focus X11 Input Method

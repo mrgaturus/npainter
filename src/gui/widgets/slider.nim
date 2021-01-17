@@ -19,8 +19,7 @@ proc newSlider*(value: ptr Value, decimals = 0i8): GUISlider =
   # Widget Standard Flag
   result.flags = wMouse
   # Set Minimun Size
-  result.minimum(0, metrics.fontSize - 
-    metrics.descender)
+  result.minimum(0, metrics.fontSize)
   # Set Widget Attributes
   result.value = value
   result.decimals = decimals

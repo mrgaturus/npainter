@@ -278,11 +278,11 @@ proc renderOnDemand(atlas: CTXAtlas, code: uint16): ptr TEXGlyph =
 
 proc newCTXAtlas*(): CTXAtlas =
   new result # Create Object
-  # 1 -- Load Icons And Face
+  # 1 -- Load Icons
   let icons = newIcons()
   result.icons.setLen(icons.count)
-  # 1.5 -- Set Font and Global Metrics
-  result.face = newFont(10); block:
+  # 1.5 -- Load Font and Metrics
+  result.face = newFont(); block:
     let m = addr result.face.size.metrics
     # Set Font Metrics in pixel units
     metrics.fontSize = cast[int16](m.height shr 6)
