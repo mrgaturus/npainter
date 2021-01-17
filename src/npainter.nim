@@ -9,17 +9,19 @@ type
   GUICanvas = ref object of GUIWidget
     buffer: array[1280*720*4, int16] # Fix15
     buffer_copy: array[1280*720*4, uint8]
-    # Brush Basic Attributes
+    # -- Brush Basic Attributes
     size, hard, rough: float
-    # Previous Positions
-    prev_x, prev_y: float 
-    prev_t, skip_t: float
-    # Stroke Points
+    # -- Previous Positions
+    prev_x, prev_y, prev_t: float 
+    # Elapsed Distance
+    distance: float
+    # -- Stroke Points
     points: seq[BrushPoint]
-    # OpenGL Test Texture
+    # -- OpenGL Test Texture
     tex: GLuint
-    # Busy Indicator
-    busy, skip: bool
+    # -- Busy Indicator
+    busy: bool
+    handle: uint
 
 # ------------------------
 # Simple Buffer Copy Procs
@@ -73,7 +75,7 @@ proc circle(self: GUICanvas, x, y, d: float32) =
     yi = floor(y - d * 0.5).int32.clamp(0, 720)
     yd = ceil(y + d * 0.5).int32.clamp(0, 720)
     # Antialiasing Gamma Coeffient
-    gamma = (6.0 - log2(d) * 0.5) * (inverse * 0.75)
+    gamma = (6.0 - log2(d) * 0.5) * (inverse * 0.5)
     # Smoothstep Coeffients
     edge_a = 0.5
     edge_div = 
@@ -120,16 +122,18 @@ proc brush_line(self: GUICanvas, a, b: BrushPoint, t_start: float32): float32 =
     dy = b.y - a.y
     # Line Length
     length = sqrt(dx * dx + dy * dy)
+  # Avoid Zero Length
+  if length == 0.0:
+    return t_start
+  let # Calculate Steps
     t_step = 0.025 / length
     # Pressure Start
     press_st = a.press
     # Pressure Distance
     press_dist = b.press - press_st
-  var 
+  var # Loop Variables
     t = t_start / length
     press, size: float32
-  # Skip First Point Ever
-  t += self.skip_t * t_step
   # Draw Each Stroke Point
   while t < 1.0:
     # Calculate Pressure at this point
@@ -141,16 +145,16 @@ proc brush_line(self: GUICanvas, a, b: BrushPoint, t_start: float32): float32 =
       a.y + dy * t, 
       size)
     # Step to next point
-    t += max(size * t_step, 0.0001)
-  # Remove t skipper
-  self.skip_t = 0.0
+    t += size * t_step
   # Return Remainder
   result = length * (t - 1.0)
 
 proc cb_brush_dispatch(g: pointer, w: ptr GUITarget) =
-  let self = cast[GUICanvas](w[])
-  # Draw Point Lines or One Point
-  if len(self.points) > 1:
+  let 
+    self = cast[GUICanvas](w[])
+    count = len(self.points)
+  # Draw Point Line
+  if count > 1:
     var a, b: BrushPoint
     for i in 1..<len(self.points):
       a = self.points[i - 1]
@@ -158,13 +162,15 @@ proc cb_brush_dispatch(g: pointer, w: ptr GUITarget) =
       # Draw Brush Line
       self.prev_t = brush_line(
         self, a, b, self.prev_t)
-  elif len(self.points) == 1:
-    self.skip_t = 0
-  # Set Prev Point for Next
-  if len(self.points) > 0:
+  # Just Draw Point
+  elif count == 1:
+    let a = self.points[0]
+    self.circle(a.x, a.y, 
+      self.size * a.press)
+  # Set Last Point
+  if count > 1:
     # Set Last Point to First
     self.points[0] = self.points[^1]
-    # Reset Points
     setLen(self.points, 1)
   # Stop Begin Busy
   self.busy = false
@@ -182,36 +188,55 @@ proc cb_clear(g: pointer, w: ptr GUITarget) =
     0, 0, 1280, 720, GL_RGBA, GL_UNSIGNED_BYTE, 
     addr self.buffer_copy[0])
   glBindTexture(GL_TEXTURE_2D, 0)
+  # Recover Status
+  self.busy = false
 
 method event(self: GUICanvas, state: ptr GUIState) =
-  # Perform Brush Path
-  if state.kind == evCursorClick and 
-    state.key == RightButton:
-    var target = self.target
-    pushCallback(cb_clear, target)
-  elif self.test(wGrab):
+  # If clicked, reset points
+  if state.kind == evCursorClick:
+    # Prototype Clearing
+    if state.key == RightButton:
+      if not self.busy:
+        var target = self.target
+        pushCallback(cb_clear, target)
+        # Avoid Repeat
+        self.busy = true
+    else: # Prepare Path
+      self.prev_t = 0.0
+      setLen(self.points, 0)
+      # Set Full Elapsed
+      self.distance = 
+        self.size * 0.025
+      # Set Prev Position
+      self.prev_x = state.px
+      self.prev_y = state.py
+      # If is mouse, force
+      if state.tool == devMouse:
+        state.kind = evCursorMove
+    # Store Who Clicked
+    self.handle = state.key
+  # -- Perform Brush Path, if is moving
+  if self.test(wGrab) and 
+  state.kind == evCursorMove and 
+  self.handle == LeftButton:
     let
       x = state.px
       y = state.py
       # Minimun Distance
       min_dist = self.size * 0.025
-    # Distance Checker
-    var dist: float32
-    # If Dragging, Check Distance
-    if state.kind == evCursorMove:
-      let # Calculate Deltas
-        dx = x - self.prev_x
-        dy = y - self.prev_y
-      # Calculate Distance Between Prev
+    let # Calculate Deltas
+      dx = x - self.prev_x
+      dy = y - self.prev_y
+      # Calculate Distance
       dist = sqrt(dx * dx + dy * dy)
-    elif state.kind == evCursorClick:
-      self.prev_t = 0.0
-      setLen(self.points, 0)
-    # Check if doesn't excced min dist
-    if dist >= min_dist:
+    # Check if distance is enough
+    if self.distance >= min_dist:
+      let press = # Don't be 0.0
+        max(state.pressure, 0.0001)
+      # Add New Point
       self.points.add(
         BrushPoint(x: x, y: y, 
-          press: state.pressure))
+          press: press))
       # Call Dispatch
       if not self.busy:
         # Push Dispatch Callback
@@ -219,13 +244,14 @@ method event(self: GUICanvas, state: ptr GUIState) =
         pushCallback(cb_brush_dispatch, target)
         # Stop Repeating Callback
         self.busy = true
-      # Change Prev Position
-      self.prev_x = x
-      self.prev_y = y
-  elif state.kind == evCursorRelease:
-    # Reset Prev Point
-    self.prev_x = 0.0
-    self.prev_y = 0.0
+      # Warp Distance using mod
+      self.distance = 
+        self.distance mod min_dist
+    # Sum Accumulated Distance
+    self.distance += dist
+    # Change Prev Position
+    self.prev_x = x
+    self.prev_y = y
 
 method draw(self: GUICanvas, ctx: ptr CTXRender) =
   ctx.color(uint32 0xFFFFFFFF)
@@ -256,7 +282,7 @@ when isMainModule:
   glBindTexture(GL_TEXTURE_2D, 0)
   # -- Put The Circle and Copy
   root.flags = wMouse
-  root.size = 30.0
+  root.size = 200
   # -- Open Window
   if win.open(root):
     while true:
