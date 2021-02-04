@@ -11,10 +11,8 @@ type
     buffer_copy: array[1280*720*4, uint8]
     # -- Brush Basic Attributes
     size, hard, rough: float
-    # -- Previous Positions
-    prev_x, prev_y, prev_t: float 
-    # Elapsed Distance
-    distance: float
+    # -- Continuous Stroke
+    prev_t: float 
     # -- Stroke Points
     points: seq[BrushPoint]
     # -- OpenGL Test Texture
@@ -61,8 +59,31 @@ proc copy(self: GUICanvas, x, y, w, h: int) =
 # ----------------------------
 
 # -- Blending Proc / Can be SIMDfied
-proc blend(a, b, alpha: int32): int16 {.inline.} =
-  result = cast[int16](b * alpha div 32765 + a)
+proc blend(src, dst, alpha: int32): int16 {.inline.} =
+  result = cast[int16](src + dst * alpha div 32765)
+
+# -- Alpha via numerical method
+proc alpha(n, beta: float): float =
+  (unsafeAddr beta)[] = 1.0 - beta
+  # Numerical Method Loop
+  var 
+    i: int
+    prev, error: float
+    # Auxiliar Vars
+    ac, acn: float
+  # Error at 100%
+  error = 1.0
+  # Solve using Numerical Method
+  while error > 0.10 and i < 5:
+    prev = result
+    # Auxiliar Vars
+    ac = 1.0 - result
+    acn = pow(ac, n)
+    # Calculate Next Step
+    result -= ac * (beta - acn) / (acn * n)
+    # Calculate Current Error
+    error = (result - prev) / result
+    inc(i) # Next Iteration
 
 # -- Standard Circle
 proc circle(self: GUICanvas, x, y, d: float32) =
@@ -74,12 +95,13 @@ proc circle(self: GUICanvas, x, y, d: float32) =
     # Y Positions Interval | Dirty Clipping
     yi = floor(y - d * 0.5).int32.clamp(0, 720)
     yd = ceil(y + d * 0.5).int32.clamp(0, 720)
-    # Antialiasing Gamma Coeffient
+    # Antialiasing Gamma Coeffient, inverse * |0.5 <-> 1.0|
     gamma = (6.0 - log2(d) * 0.5) * (inverse * 0.5)
     # Smoothstep Coeffients
     edge_a = 0.5
     edge_div = 
       1.0 / (0.5 - gamma - edge_a)
+    alpha = alpha(0.5 / 0.025, 1.0) * 32765.0
   var
     xn = xi # Position X
     yn = yi # Position Y
@@ -90,14 +112,15 @@ proc circle(self: GUICanvas, x, y, d: float32) =
     while xn < xd:
       dx = x - float32(xn)
       dy = y - float32(yn)
-      # Calculate Circle Smooth SDF
+      # 1 -- Calculate Circle Smooth SDF
       dist = fastSqrt(dx * dx + dy * dy) * inverse
       dist = (dist - edge_a) * edge_div
       dist = clamp(dist, 0.0, 1.0)
       dist = dist * dist * (3.0 - 2.0 * dist)
+      # 2 -- Blend Source With Alpha
       let 
-        d_alpha = (32765.0 * dist * 0.25).int16
-        s_alpha = 32765 - self.buffer[(yn * 1280 + xn) * 4 + 3]
+        s_alpha = (dist * alpha).int16
+        d_alpha = 32765 - self.buffer[(yn * 1280 + xn) * 4 + 3]
       # Blend Color - Can be SIMDfied
       self.buffer[(yn * 1280 + xn) * 4] = 
         blend(self.buffer[(yn * 1280 + xn) * 4], 0, s_alpha)
@@ -106,7 +129,7 @@ proc circle(self: GUICanvas, x, y, d: float32) =
       self.buffer[(yn * 1280 + xn) * 4 + 2] = 
         blend(self.buffer[(yn * 1280 + xn) * 4 + 2], 0, s_alpha)
       self.buffer[(yn * 1280 + xn) * 4 + 3] = 
-        blend(self.buffer[(yn * 1280 + xn) * 4 + 3], d_alpha, s_alpha)
+        blend(self.buffer[(yn * 1280 + xn) * 4 + 3], s_alpha, d_alpha)
       inc(xn) # Next Pixel
     inc(yn) # Next Row
   # -- Copy To Texture
@@ -123,7 +146,7 @@ proc brush_line(self: GUICanvas, a, b: BrushPoint, t_start: float32): float32 =
     # Line Length
     length = sqrt(dx * dx + dy * dy)
   # Avoid Zero Length
-  if length == 0.0:
+  if length < 0.0001:
     return t_start
   let # Calculate Steps
     t_step = 0.025 / length
@@ -162,13 +185,6 @@ proc cb_brush_dispatch(g: pointer, w: ptr GUITarget) =
       # Draw Brush Line
       self.prev_t = brush_line(
         self, a, b, self.prev_t)
-  # Just Draw Point
-  elif count == 1:
-    let a = self.points[0]
-    self.circle(a.x, a.y, 
-      self.size * a.press)
-  # Set Last Point
-  if count > 1:
     # Set Last Point to First
     self.points[0] = self.points[^1]
     setLen(self.points, 1)
@@ -192,8 +208,12 @@ proc cb_clear(g: pointer, w: ptr GUITarget) =
   self.busy = false
 
 method event(self: GUICanvas, state: ptr GUIState) =
+  state.pressure = 1.0
   # If clicked, reset points
   if state.kind == evCursorClick:
+    # Reset Path
+    self.prev_t = 0.0
+    setLen(self.points, 0)
     # Prototype Clearing
     if state.key == RightButton:
       if not self.busy:
@@ -201,57 +221,27 @@ method event(self: GUICanvas, state: ptr GUIState) =
         pushCallback(cb_clear, target)
         # Avoid Repeat
         self.busy = true
-    else: # Prepare Path
-      self.prev_t = 0.0
-      setLen(self.points, 0)
-      # Set Full Elapsed
-      self.distance = 
-        self.size * 0.025
-      # Set Prev Position
-      self.prev_x = state.px
-      self.prev_y = state.py
-      # If is mouse, force
-      if state.tool == devMouse:
-        state.kind = evCursorMove
     # Store Who Clicked
     self.handle = state.key
   # -- Perform Brush Path, if is moving
-  if self.test(wGrab) and 
+  elif self.test(wGrab) and 
   state.kind == evCursorMove and 
   self.handle == LeftButton:
-    let
-      x = state.px
-      y = state.py
-      # Minimun Distance
-      min_dist = self.size * 0.025
-    let # Calculate Deltas
-      dx = x - self.prev_x
-      dy = y - self.prev_y
-      # Calculate Distance
-      dist = sqrt(dx * dx + dy * dy)
-    # Check if distance is enough
-    if self.distance >= min_dist:
-      let press = # Don't be 0.0
-        max(state.pressure, 0.0001)
-      # Add New Point
-      self.points.add(
-        BrushPoint(x: x, y: y, 
-          press: press))
-      # Call Dispatch
-      if not self.busy:
-        # Push Dispatch Callback
-        var target = self.target
-        pushCallback(cb_brush_dispatch, target)
-        # Stop Repeating Callback
-        self.busy = true
-      # Warp Distance using mod
-      self.distance = 
-        self.distance mod min_dist
-    # Sum Accumulated Distance
-    self.distance += dist
-    # Change Prev Position
-    self.prev_x = x
-    self.prev_y = y
+    var point: BrushPoint
+    # Define New Point
+    point.x = state.px
+    point.y = state.py
+    point.press = # Avoid 0.0 Steps
+      max(state.pressure, 0.0001)
+    # Add New Point
+    self.points.add(point)
+    # Call Dispatch
+    if not self.busy:
+      # Push Dispatch Callback
+      var target = self.target
+      pushCallback(cb_brush_dispatch, target)
+      # Stop Repeating Callback
+      self.busy = true
 
 method draw(self: GUICanvas, ctx: ptr CTXRender) =
   ctx.color(uint32 0xFFFFFFFF)
@@ -282,7 +272,7 @@ when isMainModule:
   glBindTexture(GL_TEXTURE_2D, 0)
   # -- Put The Circle and Copy
   root.flags = wMouse
-  root.size = 200
+  root.size = 100
   # -- Open Window
   if win.open(root):
     while true:
