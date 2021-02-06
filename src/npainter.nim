@@ -130,6 +130,8 @@ proc circle(self: GUICanvas, x, y, d, a: float32) =
     xn = xi # Position X
     yn = yi # Position Y
     dist, dx, dy: float32
+    # Current Pixel
+    i: int
   # -- It will be tiled
   while yn < yd:
     xn = xi
@@ -144,16 +146,15 @@ proc circle(self: GUICanvas, x, y, d, a: float32) =
       # 2 -- Blend Source With Alpha
       let 
         alpha = (dist * a).int16
-        r_alpha = 32765 - alpha.int16
-      # Blend Color - Can be SIMDfied
-      self.buffer[(yn * 1280 + xn) * 4] = 
-        blend_s(self.r, self.buffer[(yn * 1280 + xn) * 4], alpha, r_alpha)
-      self.buffer[(yn * 1280 + xn) * 4 + 1] = 
-        blend_s(self.g, self.buffer[(yn * 1280 + xn) * 4 + 1], alpha, r_alpha)
-      self.buffer[(yn * 1280 + xn) * 4 + 2] = 
-        blend_s(self.b, self.buffer[(yn * 1280 + xn) * 4 + 2], alpha, r_alpha)
-      self.buffer[(yn * 1280 + xn) * 4 + 3] = 
-        blend(alpha, self.buffer[(yn * 1280 + xn) * 4 + 3], r_alpha)
+        r_alpha = 32767 - alpha
+      # Get Current Pixel
+      i = (yn * 1280 + xn) shl 2
+      # Blend Red, Blue, Green - Can be SIMDfied
+      self.buffer[i] = blend_s(self.r, self.buffer[i], alpha, r_alpha); inc(i)
+      self.buffer[i] = blend_s(self.g, self.buffer[i], alpha, r_alpha); inc(i)
+      self.buffer[i] = blend_s(self.b, self.buffer[i], alpha, r_alpha); inc(i)
+      # Blend Alpha - Can be Premultiplied
+      self.buffer[i] = blend(alpha, self.buffer[i], r_alpha)
       inc(xn) # Next Pixel
     inc(yn) # Next Row
   # -- Copy To Texture
@@ -224,8 +225,9 @@ proc stroke(self: GUICanvas, a, b: BrushPoint, t_start: float32): float32 =
       alpha *= 
         size * 0.4
       size = 2.5
+    alpha = pow(alpha, 1.75)
     alpha = # Calculate Current Alpha
-      alpha(f_step, alpha) * 32765.0
+      alpha(f_step, alpha) * 32767.0
     # Draw Circle
     self.circle(
       a.x + dx * t, 
