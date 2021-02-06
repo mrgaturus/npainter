@@ -14,6 +14,8 @@ out vec4 nColor;
 void main() {
   // Vertex Color
   nColor = vColor;
+  // Premultiply Color
+  nColor.rgb *= nColor.a;
   // Normalized UV Position
   nTexPos = vTexPos * uDim;
   // Vertex Projected XY Position

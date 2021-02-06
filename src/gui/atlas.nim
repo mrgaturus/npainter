@@ -288,7 +288,8 @@ proc newCTXAtlas*(): CTXAtlas =
     metrics.fontSize = cast[int16](m.height shr 6)
     metrics.ascender = cast[int16](m.ascender shr 6)
     metrics.descender = cast[int16](m.descender shr 6)
-    metrics.baseline = metrics.ascender + metrics.descender
+    metrics.baseline = cast[int16](
+      (m.ascender + m.descender) shr 6)
     # Set Icon Metric side*side
     metrics.iconSize = icons.size
     # Set Opaque For Text Metric Calc
@@ -353,10 +354,10 @@ proc newCTXAtlas*(): CTXAtlas =
   # Use Nearest Pixel Filter
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, cast[GLint](GL_NEAREST))
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, cast[GLint](GL_NEAREST))
-  # Swizzle pixel components to 1-1-1-RED
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_SWIZZLE_R, GL_ONE)
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_SWIZZLE_G, GL_ONE)
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_SWIZZLE_B, GL_ONE)
+  # Swizzle pixel components to RED-RED-RED-RED
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_SWIZZLE_R, cast[GLint](GL_RED))
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_SWIZZLE_G, cast[GLint](GL_RED))
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_SWIZZLE_B, cast[GLint](GL_RED))
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_SWIZZLE_A, cast[GLint](GL_RED))
   # Copy Arranged Bitmap Buffer to Texture
   glTexImage2D(GL_TEXTURE_2D, 0, cast[int32](GL_R8), result.w, result.h, 0, GL_RED,
