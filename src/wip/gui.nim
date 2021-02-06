@@ -9,6 +9,7 @@ from gui/widgets/textbox import newTextBox
 from gui/widgets/slider import newSlider
 from gui/widgets/scroll import newScroll
 from gui/widgets/color import newColorBar
+import gui/widgets/label
 from gui/atlas import width
 from gui/config import metrics, theme
 from omath import Value, interval, lerp, RGBColor
@@ -529,6 +530,31 @@ when isMainModule:
       color = newColorBar(addr col)
       color.geometry(300, 500, color.hint.w * 2, color.hint.h * 2)
       root.add(color)
+    block: # Add Labels
+      var label: GUILabel
+      let rect = GUIRect(
+        x: 550, y: 500, w: 400, h: 300)
+      # Right Align
+      label = newLabel("TEST TEXT", hoRight, veTop)
+      label.rect = rect; label.hint = rect; root.add(label)
+      label = newLabel("TEST TEXT", hoRight, veMiddle)
+      label.rect = rect; label.hint = rect; root.add(label)
+      label = newLabel("TEST TEXT", hoRight, veBottom)
+      label.rect = rect; label.hint = rect; root.add(label)
+      # Middle Align
+      label = newLabel("TEST TEXT", hoMiddle, veTop)
+      label.rect = rect; label.hint = rect; root.add(label)
+      label = newLabel("TEST TEXT", hoMiddle, veMiddle)
+      label.rect = rect; label.hint = rect; root.add(label)
+      label = newLabel("TEST TEXT", hoMiddle, veBottom)
+      label.rect = rect; label.hint = rect; root.add(label)
+      # Left Align
+      label = newLabel("TEST TEXT", hoLeft, veTop)
+      label.rect = rect; label.hint = rect; root.add(label)
+      label = newLabel("TEST TEXT", hoLeft, veMiddle)
+      label.rect = rect; label.hint = rect; root.add(label)
+      label = newLabel("TEST TEXT", hoLeft, veBottom)
+      label.rect = rect; label.hint = rect; root.add(label)
     root.add(button)
   # Create a random tooltip
   var tooltip = new GUITooltip

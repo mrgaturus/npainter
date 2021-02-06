@@ -1,7 +1,7 @@
 import gui/[window, widget, render, event, signal]
+import gui/widgets/[slider, label, color]
 import libs/gl
-import math
-from omath import fastSqrt
+import math, omath
 
 type
   BrushPoint = object # Vec2
@@ -9,17 +9,32 @@ type
   GUICanvas = ref object of GUIWidget
     buffer: array[1280*720*4, int16] # Fix15
     buffer_copy: array[1280*720*4, uint8]
-    # -- Brush Basic Attributes
-    size, hard, rough: float
+    # -- GUI Panel
+    panel: GUIBrushPanel
+    # -- Brush Color
+    r, g, b: int16
+    # -- Basic Attributes
+    size, alpha: float
+    hard, sharp: float
+    # Pressure Minimun
+    min_size, min_alpha: float
     # -- Continuous Stroke
-    prev_t: float 
-    # -- Stroke Points
+    step, prev_t: float 
     points: seq[BrushPoint]
     # -- OpenGL Test Texture
     tex: GLuint
     # -- Busy Indicator
     busy: bool
     handle: uint
+  # Brush Configurator
+  GUIBrushPanel = ref object of GUIWidget
+    # RGB Color
+    color: RGBColor
+    # Basic Attributes
+    size, alpha: Value
+    hard, sharp: Value
+    # Pressure Minimun
+    min_size, min_alpha: Value
 
 # ------------------------
 # Simple Buffer Copy Procs
@@ -59,8 +74,15 @@ proc copy(self: GUICanvas, x, y, w, h: int) =
 # ----------------------------
 
 # -- Blending Proc / Can be SIMDfied
+template div32767(a: int32): int32 =
+  ( a + ( (a + 32769) shr 15 ) ) shr 15
+
+proc blend_s(src, dst, alpha, ralpha: int32): int16 {.inline.} =
+  let pre = div32767(cast[int32](src) * alpha)
+  result = cast[int16](pre + div32767(dst * ralpha))
+
 proc blend(src, dst, alpha: int32): int16 {.inline.} =
-  result = cast[int16](src + dst * alpha div 32765)
+  result = cast[int16](src + div32767(dst * alpha))
 
 # -- Alpha via numerical method
 proc alpha(n, beta: float): float =
@@ -85,8 +107,11 @@ proc alpha(n, beta: float): float =
     error = (result - prev) / result
     inc(i) # Next Iteration
 
-# -- Standard Circle
-proc circle(self: GUICanvas, x, y, d: float32) =
+# -----------------------
+# Brush Shape Masks Procs
+# -----------------------
+
+proc circle(self: GUICanvas, x, y, d, a: float32) =
   let
     inverse = 1.0 / d
     # X Positions Interval | Dirty Clipping
@@ -96,12 +121,11 @@ proc circle(self: GUICanvas, x, y, d: float32) =
     yi = floor(y - d * 0.5).int32.clamp(0, 720)
     yd = ceil(y + d * 0.5).int32.clamp(0, 720)
     # Antialiasing Gamma Coeffient, inverse * |0.5 <-> 1.0|
-    gamma = (6.0 - log2(d) * 0.5) * (inverse * 0.5)
+    gamma = (6.0 - log2(d) * 0.5) * (inverse * self.sharp)
     # Smoothstep Coeffients
     edge_a = 0.5
-    edge_div = 
-      1.0 / (0.5 - gamma - edge_a)
-    alpha = alpha(0.5 / 0.025, 1.0) * 32765.0
+    edge_div = # |0.25 <-> 0.5|
+      1.0 / (self.hard - gamma - edge_a)
   var
     xn = xi # Position X
     yn = yi # Position Y
@@ -119,27 +143,53 @@ proc circle(self: GUICanvas, x, y, d: float32) =
       dist = dist * dist * (3.0 - 2.0 * dist)
       # 2 -- Blend Source With Alpha
       let 
-        s_alpha = (dist * alpha).int16
-        d_alpha = 32765 - self.buffer[(yn * 1280 + xn) * 4 + 3]
+        alpha = (dist * a).int16
+        r_alpha = 32765 - alpha.int16
       # Blend Color - Can be SIMDfied
       self.buffer[(yn * 1280 + xn) * 4] = 
-        blend(self.buffer[(yn * 1280 + xn) * 4], 0, s_alpha)
+        blend_s(self.r, self.buffer[(yn * 1280 + xn) * 4], alpha, r_alpha)
       self.buffer[(yn * 1280 + xn) * 4 + 1] = 
-        blend(self.buffer[(yn * 1280 + xn) * 4 + 1], 0, s_alpha)
+        blend_s(self.g, self.buffer[(yn * 1280 + xn) * 4 + 1], alpha, r_alpha)
       self.buffer[(yn * 1280 + xn) * 4 + 2] = 
-        blend(self.buffer[(yn * 1280 + xn) * 4 + 2], 0, s_alpha)
+        blend_s(self.b, self.buffer[(yn * 1280 + xn) * 4 + 2], alpha, r_alpha)
       self.buffer[(yn * 1280 + xn) * 4 + 3] = 
-        blend(self.buffer[(yn * 1280 + xn) * 4 + 3], s_alpha, d_alpha)
+        blend(alpha, self.buffer[(yn * 1280 + xn) * 4 + 3], r_alpha)
       inc(xn) # Next Pixel
     inc(yn) # Next Row
   # -- Copy To Texture
   self.copy(xi, yi, xd - xi, yd - yi)
 
-# -----------------------------
-# GUICanvas Interactive Methods
-# -----------------------------
+# ------------------------------------
+# Brush Engine Fundamental Stroke Line
+# ------------------------------------
 
-proc brush_line(self: GUICanvas, a, b: BrushPoint, t_start: float32): float32 =
+# TODO: Rework GUI Values
+proc prepare(self: GUICanvas) =
+  # Reset Path
+  self.prev_t = 0.0
+  setLen(self.points, 0)
+  # Shortcut Pointer
+  let
+    panel = self.panel
+    color = panel.color
+  # Unpack Color to Fix15
+  self.r = int16(color.r * 32767.0)
+  self.g = int16(color.g * 32767.0)
+  self.b = int16(color.b * 32767.0)
+  # Set Size and Min Size
+  self.size = 2.5 + (1000.0 - 2.5) * distance(panel.size)
+  self.min_size = distance(panel.min_size)
+  # Set Alpha and Min Alpha
+  self.alpha = distance(panel.alpha)
+  self.min_alpha = distance(panel.min_alpha)
+  # Set Hardness and Interval
+  let hardness = distance(panel.hard)
+  self.hard = 0.5 * hardness
+  self.step = 0.1 + (0.025 - 0.1) * hardness
+  # Set Circle Sharpess
+  self.sharp = 1.0 + (0.5 - 1.0) * distance(panel.sharp)
+
+proc stroke(self: GUICanvas, a, b: BrushPoint, t_start: float32): float32 =
   let
     dx = b.x - a.x
     dy = b.y - a.y
@@ -149,28 +199,46 @@ proc brush_line(self: GUICanvas, a, b: BrushPoint, t_start: float32): float32 =
   if length < 0.0001:
     return t_start
   let # Calculate Steps
-    t_step = 0.025 / length
+    t_step = self.step / length
+    f_step = 0.5 / self.step
     # Pressure Start
     press_st = a.press
-    # Pressure Distance
     press_dist = b.press - press_st
+    # Min Size Interval
+    size_st = self.min_size
+    size_dist = 1.0 - size_st
+    # Min Opacity Interval
+    alpha_st = self.min_alpha
+    alpha_dist = 1.0 - alpha_st
   var # Loop Variables
     t = t_start / length
-    press, size: float32
+    press, size, alpha: float32
   # Draw Each Stroke Point
   while t < 1.0:
     # Calculate Pressure at this point
     press = press_st + press_dist * t
-    size = self.size * press
+    size = (size_st + size_dist * press) * self.size
+    alpha = (alpha_st + alpha_dist * press) * self.alpha
+    # Simulate Smallest
+    if size < 2.5:
+      alpha *= 
+        size * 0.4
+      size = 2.5
+    alpha = # Calculate Current Alpha
+      alpha(f_step, alpha) * 32765.0
     # Draw Circle
     self.circle(
       a.x + dx * t, 
       a.y + dy * t, 
-      size)
+      size, alpha)
     # Step to next point
     t += size * t_step
   # Return Remainder
   result = length * (t - 1.0)
+
+# ----------------------------------
+# GUI Brush Engine Interactive Procs
+# ----------------------------------
 
 proc cb_brush_dispatch(g: pointer, w: ptr GUITarget) =
   let 
@@ -183,7 +251,7 @@ proc cb_brush_dispatch(g: pointer, w: ptr GUITarget) =
       a = self.points[i - 1]
       b = self.points[i]
       # Draw Brush Line
-      self.prev_t = brush_line(
+      self.prev_t = stroke(
         self, a, b, self.prev_t)
     # Set Last Point to First
     self.points[0] = self.points[^1]
@@ -208,12 +276,10 @@ proc cb_clear(g: pointer, w: ptr GUITarget) =
   self.busy = false
 
 method event(self: GUICanvas, state: ptr GUIState) =
-  state.pressure = 1.0
   # If clicked, reset points
   if state.kind == evCursorClick:
-    # Reset Path
-    self.prev_t = 0.0
-    setLen(self.points, 0)
+    # Prepare Attributes
+    self.prepare()
     # Prototype Clearing
     if state.key == RightButton:
       if not self.busy:
@@ -223,7 +289,7 @@ method event(self: GUICanvas, state: ptr GUIState) =
         self.busy = true
     # Store Who Clicked
     self.handle = state.key
-  # -- Perform Brush Path, if is moving
+  # Perform Brush Path, if is moving
   elif self.test(wGrab) and 
   state.kind == evCursorMove and 
   self.handle == LeftButton:
@@ -251,6 +317,92 @@ method draw(self: GUICanvas, ctx: ptr CTXRender) =
   ctx.color(uint32 0xFFFFFFFF)
   ctx.texture(r, self.tex)
 
+# -----------------------------
+# GUI Brush Engine Configurator
+# -----------------------------
+
+method draw(self: GUIBrushPanel, ctx: ptr CTXRender) =
+  ctx.color(uint32 0xff3b3b3b)
+  ctx.fill(rect self.rect)
+
+proc newBrushPanel(): GUIBrushPanel =
+  new result
+  # Set Mouse Attribute
+  result.flags = wMouse
+  # Set Geometry To Floating
+  result.geometry(20, 20, 250, 450)
+  # Create Label: |Slider|
+  var 
+    label: GUILabel
+    slider: GUISlider
+    color: GUIColorBar
+  # -- Color Square --
+  color = newColorBar(addr result.color)
+  color.geometry(5, 5, 240, 240)
+  result.add(color)
+  # -- Size Slider --
+  interval(result.size, 0, 1000)
+  label = newLabel("Size", hoLeft, veMiddle)
+  label.geometry(5, 265, 80, label.hint.h)
+  result.add(label)
+  slider = newSlider(addr result.size)
+  slider.geometry(90, 265, 150, slider.hint.h)
+  result.add(slider)
+  # Min Size Slider
+  interval(result.min_size, 0, 100)
+  label = newLabel("Min Size", hoLeft, veMiddle)
+  label.geometry(5, 285, 80, label.hint.h)
+  result.add(label)
+  slider = newSlider(addr result.min_size)
+  slider.geometry(90, 285, 100, slider.hint.h)
+  result.add(slider)
+  # -- Opacity Slider --
+  interval(result.alpha, 0, 100)
+  label = newLabel("Opacity", hoLeft, veMiddle)
+  label.geometry(5, 310, 80, label.hint.h)
+  result.add(label)
+  slider = newSlider(addr result.alpha)
+  slider.geometry(90, 310, 150, slider.hint.h)
+  result.add(slider)
+  # Min Opacity Slider
+  interval(result.min_alpha, 0, 100)
+  label = newLabel("Min Opacity", hoLeft, veMiddle)
+  label.geometry(5, 330, 80, label.hint.h)
+  result.add(label)
+  slider = newSlider(addr result.min_alpha)
+  slider.geometry(90, 330, 100, slider.hint.h)
+  result.add(slider)
+  # -- Hardness|Sharpness Slider --
+  interval(result.hard, 0, 100)
+  label = newLabel("Hardness", hoLeft, veMiddle)
+  label.geometry(5, 360, 80, label.hint.h)
+  result.add(label)
+  slider = newSlider(addr result.hard)
+  slider.geometry(90, 360, 150, slider.hint.h)
+  result.add(slider)
+  # Min Opacity Slider
+  interval(result.sharp, 0, 100)
+  label = newLabel("Sharpness", hoLeft, veMiddle)
+  label.geometry(5, 380, 80, label.hint.h)
+  result.add(label)
+  slider = newSlider(addr result.sharp)
+  slider.geometry(90, 380, 150, slider.hint.h)
+  result.add(slider)
+  # -- Default Values --
+  val(result.size, 10)
+  val(result.min_size, 20)
+  val(result.alpha, 100)
+  val(result.min_alpha, 100)
+  val(result.hard, 100)
+  val(result.sharp, 50)
+
+proc newCanvas(): GUICanvas =
+  new result
+  # Add New Brush Panel
+  var panel = newBrushPanel()
+  result.panel = panel
+  result.add(panel)
+
 # -------------
 # Main GUI Loop
 # -------------
@@ -258,7 +410,7 @@ method draw(self: GUICanvas, ctx: ptr CTXRender) =
 when isMainModule:
   var # Create Basic Widgets
     win = newGUIWindow(1280, 720, nil)
-    root = new GUICanvas
+    root = newCanvas()
   # -- Generate Canvas Texture
   glGenTextures(1, addr root.tex)
   glBindTexture(GL_TEXTURE_2D, root.tex)
@@ -272,7 +424,6 @@ when isMainModule:
   glBindTexture(GL_TEXTURE_2D, 0)
   # -- Put The Circle and Copy
   root.flags = wMouse
-  root.size = 100
   # -- Open Window
   if win.open(root):
     while true:

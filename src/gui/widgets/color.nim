@@ -10,7 +10,7 @@ from ../event import
 type
   GRABColorBar = enum
     gNothing, gBar, gSquare
-  GUIColorBar = ref object of GUIWidget
+  GUIColorBar* = ref object of GUIWidget
     color: ptr RGBColor
     # Cache Colors and Hue
     pColor: RGBColor

@@ -37,6 +37,10 @@ proc lerp*(value: var Value, t: float32, approx = false) =
       value.pos = ceil(value.pos)
     else: value.pos = floor(value.pos)
 
+proc val*(value: var Value, val: float32) =
+  value.pos = clamp(val, 
+    value.min, value.max)
+
 proc distance*(value: var Value): float32 {.inline.} =
   value.pos / (value.max - value.min)
 
