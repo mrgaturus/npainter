@@ -84,29 +84,6 @@ proc blend_s(src, dst, alpha, ralpha: int32): int16 {.inline.} =
 proc blend(src, dst, alpha: int32): int16 {.inline.} =
   result = cast[int16](src + div32767(dst * alpha))
 
-# -- Alpha via numerical method
-proc alpha(n, beta: float): float =
-  (unsafeAddr beta)[] = 1.0 - beta
-  # Numerical Method Loop
-  var 
-    i: int
-    prev, error: float
-    # Auxiliar Vars
-    ac, acn: float
-  # Error at 100%
-  error = 1.0
-  # Solve using Numerical Method
-  while error > 0.10 and i < 5:
-    prev = result
-    # Auxiliar Vars
-    ac = 1.0 - result
-    acn = pow(ac, n)
-    # Calculate Next Step
-    result -= ac * (beta - acn) / (acn * n)
-    # Calculate Current Error
-    error = (result - prev) / result
-    inc(i) # Next Iteration
-
 # -----------------------
 # Brush Shape Masks Procs
 # -----------------------
@@ -181,7 +158,7 @@ proc prepare(self: GUICanvas) =
   self.size = 2.5 + (1000.0 - 2.5) * distance(panel.size)
   self.min_size = distance(panel.min_size)
   # Set Alpha and Min Alpha
-  self.alpha = distance(panel.alpha)
+  self.alpha = 0.995 * distance(panel.alpha)
   self.min_alpha = distance(panel.min_alpha)
   # Set Hardness and Interval
   let hardness = distance(panel.hard)
@@ -201,7 +178,7 @@ proc stroke(self: GUICanvas, a, b: BrushPoint, t_start: float32): float32 =
     return t_start
   let # Calculate Steps
     t_step = self.step / length
-    f_step = 0.5 / self.step
+    p_step = self.step / 0.5
     # Pressure Start
     press_st = a.press
     press_dist = b.press - press_st
@@ -225,9 +202,10 @@ proc stroke(self: GUICanvas, a, b: BrushPoint, t_start: float32): float32 =
       alpha *= 
         size * 0.4
       size = 2.5
-    alpha = pow(alpha, 1.75)
-    alpha = # Calculate Current Alpha
-      alpha(f_step, alpha) * 32767.0
+    # Calculate Proper Alpha
+    alpha = 1.0 - pow(alpha, 1.75)
+    alpha = 1.0 - pow(alpha, p_step)
+    alpha *= 32767.0
     # Draw Circle
     self.circle(
       a.x + dx * t, 
