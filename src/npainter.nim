@@ -158,7 +158,8 @@ proc prepare(self: GUICanvas) =
   self.size = 2.5 + (1000.0 - 2.5) * distance(panel.size)
   self.min_size = distance(panel.min_size)
   # Set Alpha and Min Alpha
-  self.alpha = 0.995 * distance(panel.alpha)
+  self.alpha = # Needs to be clamped
+    distance(panel.alpha).min(0.995)
   self.min_alpha = distance(panel.min_alpha)
   # Set Hardness and Interval
   let hardness = distance(panel.hard)
@@ -202,8 +203,8 @@ proc stroke(self: GUICanvas, a, b: BrushPoint, t_start: float32): float32 =
       alpha *= 
         size * 0.4
       size = 2.5
-    # Calculate Proper Alpha
-    alpha = 1.0 - pow(alpha, 1.75)
+    # Calculate Proper Opacity
+    alpha = 1.0 - pow(alpha, alpha + 1.25)
     alpha = 1.0 - pow(alpha, p_step)
     alpha *= 32767.0
     # Draw Circle
