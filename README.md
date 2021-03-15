@@ -9,6 +9,3 @@ nimble build -d:icons
 # Build Binary Only
 nimble build
 ```
-
-## Mockup
-![mookup](https://raw.githubusercontent.com/mrgaturus/npainter/master/mookup.png)
