@@ -18,6 +18,8 @@ typedef struct {
   // Parameters
   float u0, u1, u2;
   float v0, v1, v2;
+  // Half Offset
+  float h0, h1, h2;
   // Edge Tie Breaker
   int tie0, tie1, tie2;
   // -- Fully Covered
@@ -41,10 +43,11 @@ typedef struct {
   // -- Edge Derivatives
   float dx0, dx1, dx2;
   float dy0, dy1, dy2;
-  // -- Edge Slopes
-  int16_t ss0, ss1, ss2;
-  // Triangle Orient
-  int orient;
+  // -- Edge Half Offset
+  float dr0, dr1, dr2;
+  float ds0, ds1, ds2;
+  // -- 0xFFFFFFFF Tie
+  int tie0, tie1, tie2;
 } derivative_t;
 
 // Binning Edges
@@ -69,7 +72,7 @@ typedef struct {
   // Target Pixels
   int dst_w, dst_h;
   // Target Pointers
-  int16_t *dst, *mask, *back;
+  int16_t *dst, *mask;
   // Sampler fn
   void* sample_fn;
 } fragment_t;
@@ -118,3 +121,24 @@ void eq_full(equation_t* eq, fragment_t* render);
 // -- Triangle Edge Equation Rendering with Antialising
 void eq_partial_subpixel(equation_t* eq, derivative_t* dde, fragment_t* render);
 void eq_full_subpixel(equation_t* eq, derivative_t* dde, fragment_t* render);
+
+// -----------------------------------------------------------
+// 2D TRIANGULAR SURFACES, AFFINE, BILINEAR-PERSPECTIVE, NURBS
+// -----------------------------------------------------------
+
+typedef struct {
+  float x, y;
+} point_t;
+
+typedef struct {
+  // Bilinear
+  point_t v[4];
+  // Perspective
+  float a, b, c;
+  float d, e, f;
+  float g, h, i;
+} perspective_t;
+
+void perspective_calc(perspective_t* surf, point_t* v);
+void perspective_evaluate(perspective_t* surf, vertex_t* v);
+

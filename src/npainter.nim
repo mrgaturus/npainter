@@ -21,7 +21,6 @@ type
   NTriangle = # Pass as Pointer
     array[3, NTriangleVertex]
   NTriangleDerivative {.importc: "derivative_t".} = object
-    orient: cint # Winding Orient
   NTriangleBinning {.importc: "binning_t".} = object
   NTriangleRender {.importc: "fragment_t".} = object
     x, y, w, h: cint
@@ -31,7 +30,7 @@ type
     # Target Pixels
     dst_w, dst_h: cint
     # Target Pointers
-    dst, mask, back: ptr cshort
+    dst, mask: ptr cshort
     # Sampler Func
     sample_fn: NTriangleFunc
 
@@ -179,14 +178,12 @@ proc copy(self: GUIDistort, x, y, w, h: int) =
     GL_RGBA, GL_UNSIGNED_BYTE, addr self.buffer_copy[0])
   glBindTexture(GL_TEXTURE_2D, 0)
 
-proc render_subpixel(eq: var NTriangleEquation, render: var NTriangleRender, orient: cint) =
+proc render_subpixel(eq: var NTriangleEquation, render: var NTriangleRender) =
   var 
     bin: NTriangleBinning
     dde: NTriangleDerivative
   # Calculate Triangle Derivative
   eq_derivative(addr eq, addr dde)
-  # Set Winding Order
-  dde.orient = orient
   # Create New Triangle Binner
   eq_binning(addr eq, addr bin)
   # Get Tiled Positions
@@ -269,9 +266,8 @@ proc render(self: GUIDistort, v: var NTriangle) =
     self.copy(0, 0, 1280, 720)
 
 proc render_subpixel(self: GUIDistort, v: var NTriangle) =
-  let orient = eq_winding(addr v)
-  if orient != 0:
-    eq_calculate( # Calculate Triangle Equation
+  if eq_winding(addr v) != 0:
+    eq_calculate( # Triangle Equation
       addr self.equation, addr v)
     # Prepare Triangle Rendering
     var render: NTriangleRender
@@ -280,7 +276,6 @@ proc render_subpixel(self: GUIDistort, v: var NTriangle) =
     # Subpixel Rendering Buffers
     render.dst = addr self.buffer[0]
     render.mask = addr self.mask[0]
-    render.back = addr self.backup[0]
     # Source Image
     render.src_w = self.source.w
     render.src_h = self.source.h
@@ -290,7 +285,7 @@ proc render_subpixel(self: GUIDistort, v: var NTriangle) =
     # Set Rendering Interval
     interval(render, v)
     # Render Triangle with Subpixel Rendering
-    render_subpixel(self.equation, render, orient)
+    render_subpixel(self.equation, render)
     self.copy(0, 0, 1280, 720)
 
 proc newDistort(src: string): GUIDistort =
@@ -337,6 +332,7 @@ when isMainModule:
 
   # Create Main Widget
   root = newDistort("yuh.png")
+  
   # Render Triangle A
   var triangle: NTriangle
   triangle[0] = NTriangleVertex(
@@ -350,10 +346,10 @@ when isMainModule:
   triangle[0] = NTriangleVertex(
     x: 10, y: 10, u: 0, v: 0)
   triangle[1] = NTriangleVertex(
-    x: 700, y: 10, u: 180, v: 0)
+    x: 700, y: 30, u: 180, v: 0)
   triangle[2] = NTriangleVertex(
-    x: 512, y: 400, u: 180, v: 180)
-  render_subpixel(root, triangle)
+    x: 20, y: 100, u: 180, v: 180)
+  #render_subpixel(root, triangle)
   root.flags = wMouse
   # Render Triangle B
   triangle[0] = NTriangleVertex(
@@ -362,7 +358,7 @@ when isMainModule:
     x: 10, y: 512, u: 0, v: 180)
   triangle[2] = NTriangleVertex(
     x: 10, y: 10, u: 0, v: 0)
-  render_subpixel(root, triangle)
+  #render_subpixel(root, triangle)
   # Render Triangle B
   triangle[0] = NTriangleVertex(
     x: 512, y: 400, u: 180, v: 180)
@@ -370,7 +366,7 @@ when isMainModule:
     x: 800, y: 600, u: 240, v: 240)
   triangle[2] = NTriangleVertex(
     x: 10, y: 512, u: 0, v: 180)
-  render_subpixel(root, triangle)
+  #render_subpixel(root, triangle)
   # Render Triangle B
   triangle[2] = NTriangleVertex(
     x: 700, y: 10, u: 180, v: 0)
@@ -378,7 +374,7 @@ when isMainModule:
     x: 512, y: 400, u: 180, v: 180)
   triangle[0] = NTriangleVertex(
     x: 800, y: 600, u: 240, v: 240)
-  render_subpixel(root, triangle)
+  #render_subpixel(root, triangle)
   # Render Triangle B
   triangle[0] = NTriangleVertex(
     x: 10, y: 512, u: 180, v: 0)
@@ -386,7 +382,33 @@ when isMainModule:
     x: 800, y: 600, u: 180, v: 180)
   triangle[2] = NTriangleVertex(
     x: 800, y: 700, u: 240, v: 240)
+  #render_subpixel(root, triangle)
+  # Render Triangle B
+  triangle[0] = NTriangleVertex(
+    x: 10, y: 512, u: 180, v: 0)
+  triangle[1] = NTriangleVertex(
+    x: 800, y: 700, u: 180, v: 180)
+  triangle[2] = NTriangleVertex(
+    x: 10, y: 700, u: 240, v: 240)
+  #render_subpixel(root, triangle)
+  # #[---------------------
+  # Render Triangle B
+  triangle[0] = NTriangleVertex(
+    x: 10, y: 10, u: 0, v: 0)
+  triangle[1] = NTriangleVertex(
+    x: 500, y: 10, u: 980, v: 0)
+  triangle[2] = NTriangleVertex(
+    x: 500, y: 500, u: 980, v: 980)
+  #render(root, triangle)
+  # Render Triangle B
+  triangle[0] = NTriangleVertex(
+    x: 500, y: 500, u: 980, v: 980)
+  triangle[1] = NTriangleVertex(
+    x: 300, y: 500, u: 0, v: 980)
+  triangle[2] = NTriangleVertex(
+    x: 10, y: 10, u: 0, v: 0)
   render_subpixel(root, triangle)
+  # ]#
   # Open Window
   if win.open(root):
     while true:

@@ -13,6 +13,10 @@ void eq_partial(equation_t* eq, fragment_t* render) {
   // Incremental Steps
   float a0, a1, a2;
   float b0, b1, b2;
+  // Half Offset
+  float h0, h1, h2;
+  // Edge With Offset
+  float ow0, ow1, ow2;
   // UV Parameters
   float u0, u1, u2, u;
   float v0, v1, v2, v;
@@ -36,10 +40,15 @@ void eq_partial(equation_t* eq, fragment_t* render) {
   // Load Equation Incrementals
   a0 = eq->a0; a1 = eq->a1; a2 = eq->a2;
   b0 = eq->b0; b1 = eq->b1; b2 = eq->b2;
+  // Load Equation Half Offsets
+  h0 = eq->h0; h1 = eq->h1; h2 = eq->h2;
+
+  u = (float) xmin + 0.5;
+  v = (float) ymin + 0.5;
   // Set Incremental Starting Position
-  row0 = a0 * xmin + b0 * ymin + eq->c0;
-  row1 = a1 * xmin + b1 * ymin + eq->c1;
-  row2 = a2 * xmin + b2 * ymin + eq->c2;
+  row0 = a0 * u + b0 * v + eq->c0;
+  row1 = a1 * u + b1 * v + eq->c1;
+  row2 = a2 * u + b2 * v + eq->c2;
 
   // Edge Tie Breaker
   tie0 = eq->tie0;
@@ -70,9 +79,11 @@ void eq_partial(equation_t* eq, fragment_t* render) {
       check2 = w2 > 0.0 || (w2 == 0.0 && tie2);
       // Check if is inside triangle
       if (check0 && check1 && check2) {
-        // Calculate Barycentric UV
-        u = w0 * u0 + w1 * u1 + w2 * u2;
-        v = w0 * v0 + w1 * v1 + w2 * v2;
+        // Remove Half Offset For Proper Sampling
+        ow0 = w0 - h0; ow1 = w1 - h1; ow2 = w2 - h2;
+        // Calculate Barycentric UV without Offset
+        u = ow0 * u0 + ow1 * u1 + ow2 * u2;
+        v = ow0 * v0 + ow1 * v1 + ow2 * v2;
         // Perform Pixel Filtering
         pixel = sample_fn(render, u, v);
         sample_blend_store(pixel, dst);
@@ -255,57 +266,76 @@ void eq_full_subpixel(equation_t* eq, derivative_t* dde, fragment_t* render) {
 static int eq_partial_count(derivative_t* dde, float r0, float r1, float r2) {
   // Equation Derivatives
   float dx0, dx1, dx2;
-  float dy0, dy1, dy2;
+  float ds0, ds1, ds2;
   // Horizontal Steps
   __m128 xmm_w0, xmm_w1, xmm_w2;
   __m128 xmm_row0, xmm_row1, xmm_row2;
-  // Equation Parameters
+  // Equation Parameters Steps
   __m128 xmm_dx0, xmm_dx1, xmm_dx2;
   __m128 xmm_dy0, xmm_dy1, xmm_dy2;
-  // Coverage Test
-  __m128 xmm0, xmm1;
-  // Pixels Found
+  // Equation Edge Tie Breaker x4
+  __m128 xmm_tie0, xmm_tie1, xmm_tie2;
+  // Subpixel Coverage Test
+  __m128 xmm0, xmm1, xmm2;
+  // Subpixels Inside
   int w_check, count;
 
-  // Load Partial Derivatives
+  // Load Partial Derivatives && Step Offset
   dx0 = dde->dx0; dx1 = dde->dx1; dx2 = dde->dx2;
-  dy0 = dde->dy0; dy1 = dde->dy1; dy2 = dde->dy2;
-  // Step by Half Initial Edge Equation
-  r0 += (dx0 * 0.5) + (dy0 * 0.5);
-  r1 += (dx1 * 0.5) + (dy1 * 0.5);
-  r2 += (dx2 * 0.5) + (dy2 * 0.5);
+  ds0 = dde->ds0; ds1 = dde->ds1; ds2 = dde->ds2;
+  r0 += dde->dr0; r1 += dde->dr1; r2 += dde->dr2;
 
-  // Load 2x2 Four Edge Equation
-  xmm_row0 = _mm_setr_ps(r0, r0 + dx0, r0 + dy0, r0 + dx0 + dy0);
-  xmm_row1 = _mm_setr_ps(r1, r1 + dx1, r1 + dy1, r1 + dx1 + dy1);
-  xmm_row2 = _mm_setr_ps(r2, r2 + dx2, r2 + dy2, r2 + dx2 + dy2);
+  // Load Four Checkboard Four Edge Equation
+  xmm_row0 = _mm_setr_ps(r0, r0 + ds0, r0 + dx0, r0 + ds0 + dx0);
+  xmm_row1 = _mm_setr_ps(r1, r1 + ds1, r1 + dx1, r1 + ds1 + dx1);
+  xmm_row2 = _mm_setr_ps(r2, r2 + ds2, r2 + dx2, r2 + ds2 + dx2);
   // Load Four Edge Equation Steps
   xmm_dx0 = _mm_set1_ps(dx0 * 2.0);
   xmm_dx1 = _mm_set1_ps(dx1 * 2.0);
   xmm_dx2 = _mm_set1_ps(dx2 * 2.0);
 
-  xmm_dy0 = _mm_set1_ps(dy0 * 2.0);
-  xmm_dy1 = _mm_set1_ps(dy1 * 2.0);
-  xmm_dy2 = _mm_set1_ps(dy2 * 2.0);
+  xmm_dy0 = _mm_set1_ps(dde->dy0);
+  xmm_dy1 = _mm_set1_ps(dde->dy1);
+  xmm_dy2 = _mm_set1_ps(dde->dy2);
+
+  // Load Equation Tie Breaker
+  xmm_tie0 = _mm_castsi128_ps(
+    _mm_set1_epi32(dde->tie0));
+  xmm_tie1 = _mm_castsi128_ps(
+    _mm_set1_epi32(dde->tie1));
+  xmm_tie2 = _mm_castsi128_ps(
+    _mm_set1_epi32(dde->tie2));
 
   // Count Found
   count = 0;
 
   // Calculate Coverage
-  for (int y = 0; y < 16; y++) {
+  for (int y = 0; y < 8; y++) {
     // Reset Horizontal
     xmm_w0 = xmm_row0;
     xmm_w1 = xmm_row1;
     xmm_w2 = xmm_row2;
 
-    for (int x = 0; x < 16; x++) {
+    for (int x = 0; x < 4; x++) {
       xmm0 = _mm_setzero_ps();
-      xmm1 = // Check Posivity
-        _mm_cmpge_ps(xmm_w0, xmm0);
-      xmm1 = _mm_and_ps(xmm1,
-        _mm_cmpge_ps(xmm_w1, xmm0));
-      xmm1 = _mm_and_ps(xmm1,
-        _mm_cmpge_ps(xmm_w2, xmm0));
+
+      xmm1 = _mm_cmpeq_ps(xmm_w0, xmm0);
+      xmm1 = _mm_and_ps(xmm1, xmm_tie0);
+      xmm1 = _mm_or_ps(xmm1,  // w0 > 0.0
+        _mm_cmpgt_ps(xmm_w0, xmm0));
+
+      xmm2 = _mm_cmpeq_ps(xmm_w1, xmm0);
+      xmm2 = _mm_and_ps(xmm2, xmm_tie1);
+      xmm2 = _mm_or_ps(xmm2, // w1 > 0.0
+        _mm_cmpgt_ps(xmm_w1, xmm0));
+      xmm1 = _mm_and_ps(xmm1, xmm2);
+
+      xmm2 = _mm_cmpeq_ps(xmm_w2, xmm0);
+      xmm2 = _mm_and_ps(xmm2, xmm_tie2);
+      xmm2 = _mm_or_ps(xmm2, // w2 > 0.0
+        _mm_cmpgt_ps(xmm_w2, xmm0));
+      xmm1 = _mm_and_ps(xmm1, xmm2);
+
       // Check if is inside triangle
       w_check = _mm_movemask_ps(xmm1);
 
@@ -341,9 +371,6 @@ void eq_partial_subpixel(equation_t* eq, derivative_t* dde, fragment_t* render) 
   // UV Parameters
   float u0, u1, u2, u;
   float v0, v1, v2, v;
-  // Edge Tie Breaker
-  int tie0, tie1, tie2;
-  int check0, check1, check2;
 
   __m128 xmm_div;
   // Subpixel Interpolation
@@ -354,13 +381,8 @@ void eq_partial_subpixel(equation_t* eq, derivative_t* dde, fragment_t* render) 
   // Coverage Count
   __m128i xmm_cnt;
 
-  // Coverage Check Mask
-  int16_t orient;
-  // Coverage Slopes Mask
-  int16_t ss0, ss1, ss2;
-  int16_t sd0, sd1, sd2;
   // Destination Pointers
-  int16_t *dst, *mask, *back;
+  int16_t *dst, *mask;
   // Count & Stride Step
   int count, stride;
 
@@ -379,34 +401,21 @@ void eq_partial_subpixel(equation_t* eq, derivative_t* dde, fragment_t* render) 
   row1 = a1 * xmin + b1 * ymin + eq->c1;
   row2 = a2 * xmin + b2 * ymin + eq->c2;
 
-  // Edge Tie Breaker
-  tie0 = eq->tie0;
-  tie1 = eq->tie1;
-  tie2 = eq->tie2;
-
   // Load UV Equation Coeffients
   u0 = eq->u0; u1 = eq->u1; u2 = eq->u2;
   v0 = eq->v0; v1 = eq->v1; v2 = eq->v2;
   
   // Load Subpixel Area Divisor
-  xmm_div = _mm_set1_ps(32.0 * 32.0);
+  xmm_div = _mm_set1_ps(128.0);
   xmm_div = _mm_rcp_ps(xmm_div);
   // Load Subpixel Interpolator
   xmm0 = _mm_set1_ps(dde->fract);
-
-  // Load Winding Orient Sign
-  orient = (int16_t) dde->orient;
-  // Load Mask Discretized Slopes
-  ss0 = dde->ss0 * orient; 
-  ss1 = dde->ss1 * orient; 
-  ss2 = dde->ss2 * orient;
 
   // Get Destination Pixel Stride Position
   stride = (ymin * render->dst_w + xmin) << 2;
   // Set Destination Pixel Pointers
   dst = render->dst + stride;
   mask = render->mask + stride;
-  back = render->back + stride;
   // Get Destination Pointer Stride
   stride = ( render->dst_w - render->w ) << 2;
 
@@ -419,13 +428,6 @@ void eq_partial_subpixel(equation_t* eq, derivative_t* dde, fragment_t* render) 
       count = eq_partial_count(dde, w0, w1, w2);
       // Not Zero Pixel
       if (count > 0) {
-        // Check Edge Sign and Tie Breaker
-        check0 = w0 > 0.0 || (w0 == 0.0 && tie0);
-        check1 = w1 > 0.0 || (w1 == 0.0 && tie1);
-        check2 = w2 > 0.0 || (w2 == 0.0 && tie2);
-        // Check if inside of not-antialised
-        check0 = check0 && check1 && check2;
-
         // Calculate Barycentric UV
         u = w0 * u0 + w1 * u1 + w2 * u2;
         v = w0 * v0 + w1 * v1 + w2 * v2;
@@ -438,88 +440,28 @@ void eq_partial_subpixel(equation_t* eq, derivative_t* dde, fragment_t* render) 
         xmm1 = _mm_mul_ps(xmm1, xmm0);
         xmm1 = _mm_add_ps(xmm1, pix_bot);
 
-        if (count == 1024) {
-          // Load Destination Color
-          pix1 = _mm_loadl_epi64(
-            (__m128i*) dst);
-          // Blend Pixel With Destination
-          pix0 = _mm_cvtps_epi32(xmm1);
-          pix0 = sample_blend_pack(pix0, pix1);
-          // Clear Coverage
-          check1 = 0x1;
-        } else {
-          // Load Destination Mask Slope
-          sd0 = mask[0]; sd1 = mask[1]; sd2 = mask[2];
-          // Check if there is at least one slope equality
-          check2  = sd0 && (sd0 == ss0) || sd1 && (sd1 == ss0) || sd2 && (sd2 == ss0);
-          check2 |= sd0 && (sd0 == ss1) || sd1 && (sd1 == ss1) || sd2 && (sd2 == ss1);
-          check2 |= sd0 && (sd0 == ss2) || sd1 && (sd1 == ss2) || sd2 && (sd2 == ss2);
+        // Move Count to a XMM register
+        xmm_cnt = _mm_cvtsi32_si128(count);
+        xmm_cnt = _mm_shuffle_epi32(xmm_cnt, 0);
+        // Convert Count to Float
+        xmm2 = _mm_cvtepi32_ps(xmm_cnt);
+        xmm2 = _mm_mul_ps(xmm2, xmm_div);
 
-          if (check1 = check2) {
-            // Load Backup Color
-            pix1 = _mm_loadl_epi64((__m128i*) back);
-
-            // Check Was or Is Inside
-            if (check1 = mask[3]) {
-              pix0 = pix1; // Just Backup
-            } else if (check1 = check0) {
-              // Blend Pixel With Backup
-              pix0 = _mm_cvtps_epi32(xmm1);
-              pix0 = sample_blend_pack(pix0, pix1);
-            } else { check2 &= mask[3]; }
-          }
-        }
-        
-        if (check1) {
-          // Clear Mask Coverage
-          pix1 = _mm_setzero_si128();
-          _mm_storel_epi64((__m128i*) mask, pix1);
-        } else {
-          // Replace Slopes
-          mask[0] = ss0;
-          mask[1] = ss1;
-          mask[2] = ss2;
-          // Set Edge test
-          mask[3] = check0;
-
-          // Load Destination Color
-          pix1 = _mm_loadl_epi64(
-            (__m128i*) dst);
-
-          if (check0 && !check2) {
-            pix0 = _mm_cvtps_epi32(xmm1);
-            pix0 = sample_blend_pack(pix0, pix1);
-          } else { pix0 = pix1; }
-
-          // Store Pixel to Backup Destination Pointer
-          _mm_storel_epi64((__m128i*) back, pix0);
-
-          // Move Count to a XMM register
-          xmm_cnt = _mm_cvtsi32_si128(count);
-          xmm_cnt = _mm_shuffle_epi32(xmm_cnt, 0);
-          // Convert Count to Float
-          xmm2 = _mm_cvtepi32_ps(xmm_cnt);
-          xmm2 = _mm_mul_ps(xmm2, xmm_div);
-
-          // Apply Antialiasing Coverage
-          xmm1 = _mm_mul_ps(xmm1, xmm2);
-          // Convert Pixel and Blend
-          pix0 = _mm_cvtps_epi32(xmm1);
-          pix0 = sample_blend_pack(pix0, pix1);
-        }
-
-        // Store Final Pixel to Dst
-        _mm_storel_epi64((__m128i*) dst, pix0);
+        // Apply Antialiasing Coverage
+        xmm1 = _mm_mul_ps(xmm1, xmm2);
+        // Convert Pixel and Blend
+        pix0 = _mm_cvtps_epi32(xmm1);
+        sample_blend_store(pix0, dst);
       }
 
       // Step Equation X Position and Pixels
       w0 += a0; w1 += a1; w2 += a2;
       // Step Destination Pointers
-      dst += 4; mask += 4; back += 4;
+      dst += 4; mask += 4;
     }
     // Step Equation Y Position and Pixels
     row0 += b0; row1 += b1; row2 += b2;
     // Step Destination Pointers
-    dst += stride; mask += stride; back += stride;
+    dst += stride; mask += stride;
   }
 }

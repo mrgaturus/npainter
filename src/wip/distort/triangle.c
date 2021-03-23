@@ -43,6 +43,8 @@ void eq_calculate(equation_t* eq, vertex_t* v) {
   // Parameter Coeff
   float z_a, z_b, z_c;
   float z0, z1, z2;
+  // Edge Tie Breaker
+  int tie0, tie1, tie2;
 
   // Define a*x delta
   a0 = v[1].y - v[2].y;
@@ -89,11 +91,20 @@ void eq_calculate(equation_t* eq, vertex_t* v) {
   eq->a0 = a0; eq->b0 = b0; eq->c0 = c0;
   eq->a1 = a1; eq->b1 = b1; eq->c1 = c1;
   eq->a2 = a2; eq->b2 = b2; eq->c2 = c2;
+  // Store Edge Half Offset
+  eq->h0 = (a0 * 0.5) + (b0 * 0.5);
+  eq->h1 = (a1 * 0.5) + (b1 * 0.5);
+  eq->h2 = (a2 * 0.5) + (b2 * 0.5);
   
   // Set Edge Tie Breaker
-  eq->tie0 = (a0 == 0.0) ? b0 > 0.0 : a0 > 0.0;
-  eq->tie1 = (a1 == 0.0) ? b1 > 0.0 : a1 > 0.0;
-  eq->tie2 = (a2 == 0.0) ? b2 > 0.0 : a2 > 0.0;
+  tie0 = (a0 == 0.0) ? b0 > 0.0 : a0 > 0.0;
+  tie1 = (a1 == 0.0) ? b1 > 0.0 : a1 > 0.0;
+  tie2 = (a2 == 0.0) ? b2 > 0.0 : a2 > 0.0;
+
+  // Fill all Bits
+  eq->tie0 = -tie0;
+  eq->tie1 = -tie1;
+  eq->tie2 = -tie2;
 }
 
 // ------------------------------------
@@ -114,20 +125,13 @@ static void eq_derivative_level(equation_t* eq, level_t* dde, int level) {
   dde->level = level;
 }
 
-static int16_t eq_derivative_slope(float a0, float b0) {
-  float as0, bs0, slope;
-
-  as0 = abs(a0); bs0 = abs(b0);
-  // Calculate Slope and discretize to 15bit
-  slope = ( as0 < bs0 ) ? (a0 / b0) : (b0 / a0);
-  slope *= 32767.0;
-
-  return (int16_t) slope;
-}
-
 void eq_derivative(equation_t* eq, derivative_t* dde) {
   float dx, ddu;
   float dy, ddv;
+  // Equation Steps
+  float a0, a1, a2;
+  float b0, b1, b2;
+  float r0, r1, r2;
 
   // dudx * dudx + dudy * dudy
   dx = eq->u_a; dy = eq->u_b;
@@ -155,22 +159,45 @@ void eq_derivative(equation_t* eq, derivative_t* dde) {
   // Derivative Interpolation
   dde->fract = fract;
 
-  raw = 0.03125;
-  // 32x32 subpixel mask
-  dde->dx0 = eq->a0 * raw;
-  dde->dx1 = eq->a1 * raw;
-  dde->dx2 = eq->a2 * raw;
+  raw = 0.0625;
+  // 16x16 subpixel mask
+  a0 = eq->a0 * raw;
+  a1 = eq->a1 * raw;
+  a2 = eq->a2 * raw;
 
-  dde->dy0 = eq->b0 * raw;
-  dde->dy1 = eq->b1 * raw;
-  dde->dy2 = eq->b2 * raw;
+  b0 = eq->b0 * raw;
+  b1 = eq->b1 * raw;
+  b2 = eq->b2 * raw;
 
-  // Calculate Discrete Slopes
-  dde->ss0 = eq_derivative_slope(eq->a0, eq->b0);
-  dde->ss1 = eq_derivative_slope(eq->a1, eq->b1);
-  dde->ss2 = eq_derivative_slope(eq->a2, eq->b2);
+  // Unit Offset
+  r0 = a0 + b0;
+  r1 = a1 + b1;
+  r2 = a2 + b2;
+  // Store Step
+  dde->ds0 = r0;
+  dde->ds1 = r1;
+  dde->ds2 = r2;
 
-  printf("ss0 %d, ss1 %d, ss2 %d\n", dde->ss0, dde->ss1, dde->ss2);
+  raw = 0.5;
+  // Store 0.5 Offset
+  dde->dr0 = r0 * raw;
+  dde->dr1 = r1 * raw; 
+  dde->dr2 = r2 * raw;
+
+  raw = 2.0;
+  // Store Steps as 8x8
+  dde->dx0 = a0 * raw;
+  dde->dx1 = a1 * raw;
+  dde->dx2 = a2 * raw;
+
+  dde->dy0 = b0 * raw;
+  dde->dy1 = b1 * raw;
+  dde->dy2 = b2 * raw;
+
+  // Copy Tie Checker
+  dde->tie0 = eq->tie0;
+  dde->tie1 = eq->tie1;
+  dde->tie2 = eq->tie2;
 }
 
 // ----------------------------------
