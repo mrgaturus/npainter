@@ -185,23 +185,3 @@ void sample_blend_store(__m128i src, int16_t* dst) {
   xmm0 = _mm_packs_epi32(xmm0, xmm0);
   _mm_storel_epi64( (__m128i*) dst, xmm0 );
 }
-
-__m128i sample_blend_pack(__m128i src, __m128i dst) {
-  __m128i alpha, xmm0;
-  const __m128i mask_one = 
-    _mm_set1_epi32(32767);
-  // Convert Destination Pixels
-  dst = _mm_cvtepi16_epi32(dst);
-  // Swizzle Source Alpha - Sa Sa Sa Sa
-  alpha = _mm_shuffle_epi32(src, 0xFF);
-  alpha = _mm_sub_epi32(mask_one, alpha);
-  // Perform Premultiplied Alpha Blending
-  dst = _mm_mullo_epi32(dst, alpha);
-  dst = _mm_div_32767(dst);
-  dst = _mm_add_epi32(src, dst);
-  // Pack Blended Pixel
-  dst = _mm_packs_epi32(dst, dst);
-
-  // Return Packed
-  return dst;
-}

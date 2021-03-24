@@ -206,13 +206,18 @@ void eq_full_subpixel(equation_t* eq, derivative_t* dde, fragment_t* render) {
   // Gradient Coeffients
   float u_a, u_b, u_row, u0;
   float v_a, v_b, v_row, v0;
-  // Destination Pixels
-  int stride; int16_t* dst;
   // Subpixel Interpolation
   __m128 xmm0, xmm1;
   __m128 pix_bot, pix_top;
   // Blend Pixel
   __m128i pixel;
+
+  // Destination Pixels
+  int16_t *dst, *mask;
+  // Stride Step
+  int stride;
+  // Subpixel Mask
+  subpixel_t* sub;
 
   // X Interval
   xmin = render->x;
@@ -233,7 +238,9 @@ void eq_full_subpixel(equation_t* eq, derivative_t* dde, fragment_t* render) {
 
   // Get Destination Pixel Pointer
   stride = (ymin * render->dst_w + xmin) << 2;
+  // Set Destination Pixel Pointers
   dst = render->dst + stride;
+  mask = render->mask + stride;
   // Get Destination Pointer Stride
   stride = ( render->dst_w - render->w ) << 2;
 
@@ -242,6 +249,19 @@ void eq_full_subpixel(equation_t* eq, derivative_t* dde, fragment_t* render) {
     // Reset X Incremental
     u0 = u_row; v0 = v_row;
     for (int x = xmin; x < xmax; x++) {
+      // Put and Free Subpixel Mask
+      if (sub = *(subpixel_t**) mask) {
+        xmm1 = sub->color;
+        // Convert and Blend Pixel
+        pixel = _mm_cvtps_epi32(xmm1);
+        sample_blend_store(pixel, dst);
+
+        // Free Subpixel
+        free(sub);
+        // Remove Subpixel Mask
+        *(subpixel_t**) mask = 0;
+      }
+
       pix_bot = eq_full_average(eq, &dde->bot, render, u0, v0);
       pix_top = eq_full_average(eq, &dde->top, render, u0, v0);
       // Interpolate Both Subpixels
@@ -251,11 +271,16 @@ void eq_full_subpixel(equation_t* eq, derivative_t* dde, fragment_t* render) {
       // Convert and Blend Pixel
       pixel = _mm_cvtps_epi32(xmm1);
       sample_blend_store(pixel, dst);
-      // Step X Incremental and Pixels
-      u0 += u_a; v0 += v_a; dst += 4;
+
+      // Step X Incremental
+      u0 += u_a; v0 += v_a; 
+      // Step X Pixel Pointers
+      dst += 4; mask += 4;
     }
-    // Step Y Incremental and Pixels
-    u_row += u_b; v_row += v_b; dst += stride;
+    // Step Y Incremental
+    u_row += u_b; v_row += v_b; 
+    // Step Y Pixel Pointers
+    dst += stride; mask += stride;
   }
 }
 
@@ -263,7 +288,7 @@ void eq_full_subpixel(equation_t* eq, derivative_t* dde, fragment_t* render) {
 // PARTIAL SUBPIXEL TRIANGLE RASTERIZATION
 // ---------------------------------------
 
-static int eq_partial_count(derivative_t* dde, float r0, float r1, float r2) {
+static int eq_partial_count(derivative_t* dde, __m128i* mask, float r0, float r1, float r2) {
   // Equation Derivatives
   float dx0, dx1, dx2;
   float ds0, ds1, ds2;
@@ -277,8 +302,10 @@ static int eq_partial_count(derivative_t* dde, float r0, float r1, float r2) {
   __m128 xmm_tie0, xmm_tie1, xmm_tie2;
   // Subpixel Coverage Test
   __m128 xmm0, xmm1, xmm2;
-  // Subpixels Inside
-  int w_check, count;
+  // Subpixels Edge Test
+  int check, count, bits;
+  // Subpixel 128bit Mask
+  __m128i bits0, bits1;
 
   // Load Partial Derivatives && Step Offset
   dx0 = dde->dx0; dx1 = dde->dx1; dx2 = dde->dx2;
@@ -306,7 +333,9 @@ static int eq_partial_count(derivative_t* dde, float r0, float r1, float r2) {
   xmm_tie2 = _mm_castsi128_ps(
     _mm_set1_epi32(dde->tie2));
 
-  // Count Found
+  // Intialize Bit Mask
+  bits0 = _mm_setzero_si128();
+  // Initialize Count
   count = 0;
 
   // Calculate Coverage
@@ -315,6 +344,8 @@ static int eq_partial_count(derivative_t* dde, float r0, float r1, float r2) {
     xmm_w0 = xmm_row0;
     xmm_w1 = xmm_row1;
     xmm_w2 = xmm_row2;
+    // Reset Bits
+    bits = 0;
 
     for (int x = 0; x < 4; x++) {
       xmm0 = _mm_setzero_ps();
@@ -337,24 +368,35 @@ static int eq_partial_count(derivative_t* dde, float r0, float r1, float r2) {
       xmm1 = _mm_and_ps(xmm1, xmm2);
 
       // Check if is inside triangle
-      w_check = _mm_movemask_ps(xmm1);
+      check = _mm_movemask_ps(xmm1);
 
       // Count How Many Are Inside
-      count += (w_check >> 0) & 0x1;
-      count += (w_check >> 1) & 0x1;
-      count += (w_check >> 2) & 0x1;
-      count += (w_check >> 3) & 0x1;
+      count += (check >> 0) & 0x1;
+      count += (check >> 1) & 0x1;
+      count += (check >> 2) & 0x1;
+      count += (check >> 3) & 0x1;
+      // Set Bits on Auxiliar Mask
+      bits = (bits << 4) | check;
 
       // Step Horizontal
       xmm_w0 = _mm_add_ps(xmm_w0, xmm_dx0);
       xmm_w1 = _mm_add_ps(xmm_w1, xmm_dx1);
       xmm_w2 = _mm_add_ps(xmm_w2, xmm_dx2);
     }
+
+    // Set mask bits on 128 bits
+    bits1 = _mm_cvtsi32_si128(bits);
+    bits0 = _mm_slli_si128(bits0, 2);
+    bits0 = _mm_or_si128(bits0, bits1);
+
     // Step Vertical Incrementals
     xmm_row0 = _mm_add_ps(xmm_row0, xmm_dy0);
     xmm_row1 = _mm_add_ps(xmm_row1, xmm_dy1);
     xmm_row2 = _mm_add_ps(xmm_row2, xmm_dy2);
   }
+
+  // Return Coverage Mask
+  _mm_store_si128(mask, bits0);
 
   // Return Count
   return count;
@@ -376,12 +418,14 @@ void eq_partial_subpixel(equation_t* eq, derivative_t* dde, fragment_t* render) 
   // Subpixel Interpolation
   __m128 xmm0, xmm1, xmm2;
   __m128 pix_bot, pix_top;
-  // Pixel Blending & Mask
-  __m128i pix0, pix1;
-  // Coverage Count
-  __m128i xmm_cnt;
+  // Pixel Blending
+  __m128i pix0;
+  // Coverage Count & Mask
+  __m128i mask0, mask1;
+  // Subpixel Mask
+  subpixel_t* sub;
 
-  // Destination Pointers
+  // Destination Pixel
   int16_t *dst, *mask;
   // Count & Stride Step
   int count, stride;
@@ -424,8 +468,8 @@ void eq_partial_subpixel(equation_t* eq, derivative_t* dde, fragment_t* render) 
     // Reset Equation X Position
     w0 = row0; w1 = row1, w2 = row2;
     for (int x = xmin; x < xmax; x++) {
-      // Count Subpixels Inside on 32x32 area
-      count = eq_partial_count(dde, w0, w1, w2);
+      // Count Subpixels Inside A 16x16 checkboard area
+      count = eq_partial_count(dde, &mask0, w0, w1, w2);
       // Not Zero Pixel
       if (count > 0) {
         // Calculate Barycentric UV
@@ -441,17 +485,60 @@ void eq_partial_subpixel(equation_t* eq, derivative_t* dde, fragment_t* render) 
         xmm1 = _mm_add_ps(xmm1, pix_bot);
 
         // Move Count to a XMM register
-        xmm_cnt = _mm_cvtsi32_si128(count);
-        xmm_cnt = _mm_shuffle_epi32(xmm_cnt, 0);
+        mask1 = _mm_cvtsi32_si128(count);
+        mask1 = _mm_shuffle_epi32(mask1, 0);
         // Convert Count to Float
-        xmm2 = _mm_cvtepi32_ps(xmm_cnt);
+        xmm2 = _mm_cvtepi32_ps(mask1);
         xmm2 = _mm_mul_ps(xmm2, xmm_div);
 
         // Apply Antialiasing Coverage
         xmm1 = _mm_mul_ps(xmm1, xmm2);
-        // Convert Pixel and Blend
-        pix0 = _mm_cvtps_epi32(xmm1);
-        sample_blend_store(pix0, dst);
+
+        // Load Subpixel Pointer
+        if (sub = *(subpixel_t**) mask) {
+          mask1 = sub->mask;
+          // Check if there is not an overlap
+          if (_mm_testz_si128(mask0, mask1) == 1) {
+            // Combine Both Masks and Pixels
+            mask0 = _mm_or_si128(mask0, mask1);
+            xmm1 = _mm_add_ps(xmm1, sub->color);
+          } else {
+            // Put Merged Pixel
+            xmm2 = sub->color;
+            // Convert Pixel and Blend
+            pix0 = _mm_cvtps_epi32(xmm2);
+            sample_blend_store(pix0, dst);
+          }
+
+          // Check if needs to be freed
+          mask1 = _mm_cmpeq_epi32(mask1, mask1);
+          if (_mm_testc_si128(mask0, mask1) == 0) {
+            // Replace Values
+            sub->color = xmm1;
+            sub->mask = mask0;
+          } else {
+            // Convert Current and Blend
+            pix0 = _mm_cvtps_epi32(xmm1);
+            sample_blend_store(pix0, dst);
+
+            // Free Subpixel
+            free(sub);
+            // Remove Subpixel Mask
+            *(subpixel_t**) mask = 0;
+          }
+        } else if (count < 128) {
+          // Allocates New Temporal Mask
+          sub = malloc( sizeof(subpixel_t) );
+          // Initialize Mask
+          sub->color = xmm1;
+          sub->mask = mask0;
+          // Replace Subpixel Pointer
+          *(subpixel_t**) mask = sub;
+        } else {
+          // Convert Pixel and Blend
+          pix0 = _mm_cvtps_epi32(xmm1);
+          sample_blend_store(pix0, dst);
+        }
       }
 
       // Step Equation X Position and Pixels
@@ -461,6 +548,62 @@ void eq_partial_subpixel(equation_t* eq, derivative_t* dde, fragment_t* render) 
     }
     // Step Equation Y Position and Pixels
     row0 += b0; row1 += b1; row2 += b2;
+    // Step Destination Pointers
+    dst += stride; mask += stride;
+  }
+}
+
+// ------------------------------
+// ANTIALIASING SUBPIXEL BLENDING
+// ------------------------------
+
+void eq_apply_antialiasing(fragment_t* render) {
+  int xmin, xmax, ymin, ymax;
+  // Weighted Pixel
+  __m128 xmm0;
+  // Blended Pixel
+  __m128i pix0;
+
+  // Destination Pixel
+  int16_t *dst, *mask;
+  // Stride Step
+  int stride;
+  // Subpixel Mask
+  subpixel_t* sub;
+
+  // X Interval
+  xmin = render->x;
+  xmax = xmin + render->w;
+  // Y Interval
+  ymin = render->y;
+  ymax = ymin + render->h;
+
+  // Get Destination Pixel Stride Position
+  stride = (ymin * render->dst_w + xmin) << 2;
+  // Set Destination Pixel Pointers
+  dst = render->dst + stride;
+  mask = render->mask + stride;
+  // Get Destination Pointer Stride
+  stride = ( render->dst_w - render->w ) << 2;
+
+  for (int y = ymin; y < ymax; y++) {
+    // Step Each Pixel And Blend Weighted
+    for (int x = xmin; x < xmax; x++) {
+      // Put and Free Subpixel Mask
+      if (sub = *(subpixel_t**) mask) {
+        xmm0 = sub->color;
+        // Convert and Blend Pixel
+        pix0 = _mm_cvtps_epi32(xmm0);
+        sample_blend_store(pix0, dst);
+        
+        // Free Subpixel
+        free(sub);
+        // Remove Subpixel Mask
+        *(subpixel_t**) mask = 0;
+      }
+      // Step Destination Pointers
+      dst += 4; mask += 4;
+    }
     // Step Destination Pointers
     dst += stride; mask += stride;
   }

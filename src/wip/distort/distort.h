@@ -5,12 +5,12 @@
 // TRIANGLE RASTERIZATION
 // ----------------------
 
-// 2D Vertex
+// -- 2D Vertex
 typedef struct {
   float x, y, u, v;
 } vertex_t;
 
-// Edge Equation
+// -- Edge Equation
 typedef struct {
   float a0, b0, c0;
   float a1, b1, c1;
@@ -27,13 +27,18 @@ typedef struct {
   float v_a, v_b, v_c;
 } equation_t;
 
-// Subpixel Derivative
+// -- Subpixel Rendering
 typedef struct {
   int level;
   // Raster Full
   float dudx, dudy;
   float dvdx, dvdy;
 } level_t;
+
+typedef struct {
+  __m128 color;
+  __m128i mask;
+} subpixel_t;
 
 typedef struct {
   // -- Full Derivatives
@@ -50,7 +55,7 @@ typedef struct {
   int tie0, tie1, tie2;
 } derivative_t;
 
-// Binning Edges
+// -- Triangle Binning
 typedef struct {
   // -- Tile Trivially Reject
   float tr_r0, tr_r1, tr_r2;
@@ -63,7 +68,7 @@ typedef struct {
   float s_b0, s_b1, s_b2;
 } binning_t;
 
-// Rendering Info
+// -- Rendering Info
 typedef struct {
   int x, y, w, h;
   // Source Pixels
@@ -121,6 +126,8 @@ void eq_full(equation_t* eq, fragment_t* render);
 // -- Triangle Edge Equation Rendering with Antialising
 void eq_partial_subpixel(equation_t* eq, derivative_t* dde, fragment_t* render);
 void eq_full_subpixel(equation_t* eq, derivative_t* dde, fragment_t* render);
+// -- Apply Antialiased Pixels and Free Auxiliar
+void eq_apply_antialiasing(fragment_t* render);
 
 // -----------------------------------------------------------
 // 2D TRIANGULAR SURFACES, AFFINE, BILINEAR-PERSPECTIVE, NURBS
@@ -137,6 +144,8 @@ typedef struct {
   float a, b, c;
   float d, e, f;
   float g, h, i;
+  // Interpolation
+  float fract;
 } perspective_t;
 
 void perspective_calc(perspective_t* surf, point_t* v);

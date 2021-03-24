@@ -57,8 +57,10 @@ proc eb_check(bin: ptr NTriangleBinning): int32
 # Triangle Equation Realtime Rendering
 proc eq_partial(eq: ptr NTriangleEquation, render: ptr NTriangleRender)
 proc eq_full(eq: ptr NTriangleEquation, render: ptr NTriangleRender)
+# Triangle Equation Rendering Subpixel Antialiasing Post-Procesing
 proc eq_partial_subpixel(eq: ptr NTriangleEquation, dde: ptr NTriangleDerivative, render: ptr NTriangleRender)
 proc eq_full_subpixel(eq: ptr NTriangleEquation, dde: ptr NTriangleDerivative, render: ptr NTriangleRender)
+proc eq_apply_antialiasing(render: ptr NTriangleRender)
 {.pop.}
 
 {.pop.}
@@ -288,6 +290,29 @@ proc render_subpixel(self: GUIDistort, v: var NTriangle) =
     render_subpixel(self.equation, render)
     self.copy(0, 0, 1280, 720)
 
+proc render_antialiasing(self: GUIDistort) =
+  # Prepare Triangle Rendering
+  var render: NTriangleRender
+  render.dst_w = 1280
+  render.dst_h = 720
+  # Subpixel Rendering Buffers
+  render.dst = addr self.buffer[0]
+  render.mask = addr self.mask[0]
+  # Source Image
+  render.src_w = self.source.w
+  render.src_h = self.source.h
+  render.src = addr self.source.buffer[0]
+  # Can be Tiled, Of course
+  render.x = 0
+  render.y = 0
+  render.w = 1280
+  render.h = 720
+  # Set Function Proc
+  render.sample_fn = cast[NTriangleFunc](sample_bilinear)
+  # Blend and Free Antialiased Pixels
+  eq_apply_antialiasing(addr render)
+  self.copy(0, 0, 1280, 720)
+
 proc newDistort(src: string): GUIDistort =
   new result
   # Load Source Image
@@ -335,13 +360,14 @@ when isMainModule:
   
   # Render Triangle A
   var triangle: NTriangle
+  #[
   triangle[0] = NTriangleVertex(
     x: 10, y: 10, u: 0, v: 0)
   triangle[1] = NTriangleVertex(
     x: 40, y: 180, u: 180, v: 0)
   triangle[2] = NTriangleVertex(
     x: 250, y: 200, u: 180, v: 180)
-  #render_subpixel(root, triangle)
+  render_subpixel(root, triangle)
   # Render Triangle C
   triangle[0] = NTriangleVertex(
     x: 10, y: 10, u: 0, v: 0)
@@ -349,7 +375,7 @@ when isMainModule:
     x: 700, y: 30, u: 180, v: 0)
   triangle[2] = NTriangleVertex(
     x: 20, y: 100, u: 180, v: 180)
-  #render_subpixel(root, triangle)
+  render_subpixel(root, triangle)
   root.flags = wMouse
   # Render Triangle B
   triangle[0] = NTriangleVertex(
@@ -358,7 +384,7 @@ when isMainModule:
     x: 10, y: 512, u: 0, v: 180)
   triangle[2] = NTriangleVertex(
     x: 10, y: 10, u: 0, v: 0)
-  #render_subpixel(root, triangle)
+  render_subpixel(root, triangle)
   # Render Triangle B
   triangle[0] = NTriangleVertex(
     x: 512, y: 400, u: 180, v: 180)
@@ -366,7 +392,7 @@ when isMainModule:
     x: 800, y: 600, u: 240, v: 240)
   triangle[2] = NTriangleVertex(
     x: 10, y: 512, u: 0, v: 180)
-  #render_subpixel(root, triangle)
+  render_subpixel(root, triangle)
   # Render Triangle B
   triangle[2] = NTriangleVertex(
     x: 700, y: 10, u: 180, v: 0)
@@ -374,7 +400,7 @@ when isMainModule:
     x: 512, y: 400, u: 180, v: 180)
   triangle[0] = NTriangleVertex(
     x: 800, y: 600, u: 240, v: 240)
-  #render_subpixel(root, triangle)
+  render_subpixel(root, triangle)
   # Render Triangle B
   triangle[0] = NTriangleVertex(
     x: 10, y: 512, u: 180, v: 0)
@@ -382,7 +408,7 @@ when isMainModule:
     x: 800, y: 600, u: 180, v: 180)
   triangle[2] = NTriangleVertex(
     x: 800, y: 700, u: 240, v: 240)
-  #render_subpixel(root, triangle)
+  render_subpixel(root, triangle)
   # Render Triangle B
   triangle[0] = NTriangleVertex(
     x: 10, y: 512, u: 180, v: 0)
@@ -390,25 +416,29 @@ when isMainModule:
     x: 800, y: 700, u: 180, v: 180)
   triangle[2] = NTriangleVertex(
     x: 10, y: 700, u: 240, v: 240)
-  #render_subpixel(root, triangle)
+  render_subpixel(root, triangle)
+  ]#
   # #[---------------------
   # Render Triangle B
   triangle[0] = NTriangleVertex(
     x: 10, y: 10, u: 0, v: 0)
   triangle[1] = NTriangleVertex(
-    x: 500, y: 10, u: 980, v: 0)
+    x: 500, y: 10, u: 490, v: 0)
   triangle[2] = NTriangleVertex(
-    x: 500, y: 500, u: 980, v: 980)
-  #render(root, triangle)
+    x: 400, y: 26, u: 490, v: 490)
+  render_subpixel(root, triangle)
   # Render Triangle B
   triangle[0] = NTriangleVertex(
-    x: 500, y: 500, u: 980, v: 980)
+    x: 500, y: 500, u: 490, v: 490)
   triangle[1] = NTriangleVertex(
-    x: 300, y: 500, u: 0, v: 980)
+    x: 10, y: 500, u: 0, v: 490)
   triangle[2] = NTriangleVertex(
     x: 10, y: 10, u: 0, v: 0)
   render_subpixel(root, triangle)
   # ]#
+
+  # Apply Antialiased Pixels
+  render_antialiasing(root)
   # Open Window
   if win.open(root):
     while true:
