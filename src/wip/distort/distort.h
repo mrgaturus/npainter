@@ -135,11 +135,12 @@ void eq_apply_antialiasing(fragment_t* render);
 
 typedef struct {
   float x, y;
-} point_t;
+} vec2_t;
 
+// -- Bi-Perspective
 typedef struct {
   // Bilinear
-  point_t v[4];
+  vec2_t v[4];
   // Perspective
   float a, b, c;
   float d, e, f;
@@ -148,6 +149,15 @@ typedef struct {
   float fract;
 } perspective_t;
 
-void perspective_calc(perspective_t* surf, point_t* v);
-void perspective_evaluate(perspective_t* surf, vertex_t* v);
+// -- Bezier Surface
+typedef struct {
+  vec2_t* v;
+  // Degrees
+  int w, h;
+} bezier_t;
 
+void perspective_calc(perspective_t* surf, vec2_t* v, float fract);
+void perspective_evaluate(perspective_t* surf, vertex_t* p);
+
+void bezier_surface_calc(bezier_t* surf, vec2_t* v, int w, int h);
+void bezier_surface_evaluate(bezier_t* surf, vertex_t* p);

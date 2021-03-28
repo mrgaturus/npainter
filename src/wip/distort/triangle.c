@@ -323,6 +323,8 @@ int eb_check(binning_t* bin) {
     count += (bin->ta_w0 >= 0.0);
     count += (bin->ta_w1 >= 0.0);
     count += (bin->ta_w2 >= 0.0);
+    // Avoid Rejected When Passed
+    count += (count == 0);
   } else {
     // Rejected
     count = 0;

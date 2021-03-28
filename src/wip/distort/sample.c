@@ -47,8 +47,8 @@ static __m128i sample_pixel(fragment_t* render, int x, int y) {
 
 __m128i sample_nearest(fragment_t* render, float u, float v) {
   // Just flooring
-  int ui = floor(u); 
-  int vi = floor(v);
+  int ui = floor(u + 0.5); 
+  int vi = floor(v + 0.5);
   // Return Sampled Pixel
   return sample_pixel(render, ui, vi);
 }
