@@ -1,6 +1,5 @@
 #include "distort.h"
 #include <string.h>
-#include <math.h>
 
 // --------------------------------------
 // 2D VECTOR OPERATION ONLY REVELANT HERE
@@ -77,7 +76,7 @@ void perspective_calc(perspective_t* surf, vec2_t* v, float fract) {
     surf->g = g; surf->h = h; surf->i = 1;
 
     // Store Interpolation
-    surf->fract = 0.8 * fract;
+    surf->fract = 0.75 * fract;
   } else { surf->fract = 0.0; }
 
   // Store Bilinear Interpolation Points

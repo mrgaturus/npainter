@@ -12,19 +12,17 @@ typedef struct {
 
 // -- Edge Equation
 typedef struct {
-  float a0, b0, c0;
-  float a1, b1, c1;
-  float a2, b2, c2;
+  long long a0, b0, c0;
+  long long a1, b1, c1;
+  long long a2, b2, c2;
   // Parameters
   float u0, u1, u2;
   float v0, v1, v2;
-  // Half Offset
-  float h0, h1, h2;
-  // Edge Tie Breaker
-  int tie0, tie1, tie2;
   // -- Fully Covered
   float u_a, u_b, u_c;
   float v_a, v_b, v_c;
+  // -- Tie Checker
+  int tie0, tie1, tie2;
 } equation_t;
 
 // -- Subpixel Rendering
@@ -46,26 +44,23 @@ typedef struct {
   // Interpolation
   float fract;
   // -- Edge Derivatives
-  float dx0, dx1, dx2;
-  float dy0, dy1, dy2;
-  // -- Edge Half Offset
-  float dr0, dr1, dr2;
-  float ds0, ds1, ds2;
-  // -- 0xFFFFFFFF Tie
-  int tie0, tie1, tie2;
+  long long a0, a1, a2;
+  long long b0, b1, b2;
+  // -- Tie Checker, Filled Bits
+  long long tie0, tie1, tie2;
 } derivative_t;
 
 // -- Triangle Binning
 typedef struct {
   // -- Tile Trivially Reject
-  float tr_r0, tr_r1, tr_r2;
-  float tr_w0, tr_w1, tr_w2;
+  int tr_r0, tr_r1, tr_r2;
+  int tr_w0, tr_w1, tr_w2;
   // -- Tile Trivially Accept
-  float ta_r0, ta_r1, ta_r2;
-  float ta_w0, ta_w1, ta_w2;
+  int ta_r0, ta_r1, ta_r2;
+  int ta_w0, ta_w1, ta_w2;
   // -- Tiled Equation Steps
-  float s_a0, s_a1, s_a2;
-  float s_b0, s_b1, s_b2;
+  int s_a0, s_a1, s_a2;
+  int s_b0, s_b1, s_b2;
 } binning_t;
 
 // -- Rendering Info
@@ -109,7 +104,7 @@ void eq_derivative(equation_t* eq, derivative_t* dde);
 void eq_binning(equation_t* eq, binning_t* bin);
 
 // -- Binning Pivot Definition
-void eb_step_xy(binning_t* bin, float x, float y);
+void eb_step_xy(binning_t* bin, int x, int y);
 // -- Binning Tile Steps
 void eb_step_x(binning_t* bin);
 void eb_step_y(binning_t* bin);

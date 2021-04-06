@@ -55,7 +55,7 @@ proc eq_derivative(eq: ptr NTriangleEquation, dde: ptr NTriangleDerivative)
 # Triangle Binning
 proc eq_binning(eq: ptr NTriangleEquation, bin: ptr NTriangleBinning)
 # Triangle Binning Steps
-proc eb_step_xy(bin: ptr NTriangleBinning, x, y: cfloat)
+proc eb_step_xy(bin: ptr NTriangleBinning, x, y: cint)
 proc eb_step_x(bin: ptr NTriangleBinning)
 proc eb_step_y(bin: ptr NTriangleBinning)
 # Triangle Binning Trivially Count
@@ -218,7 +218,7 @@ proc render_bin_subpixel(eq: var NTriangleEquation, render: var NTriangleRender)
   # Set Render Size to 8
   render.w = 8; render.h = 8
   # Locate Binning at X Y
-  eb_step_xy(addr bin, cfloat x1, cfloat y1)
+  eb_step_xy(addr bin, x1, y1)
   # Iterate Each Tile
   for y in y1..y2:
     for x in x1..x2:
@@ -235,27 +235,6 @@ proc render_bin_subpixel(eq: var NTriangleEquation, render: var NTriangleRender)
       eb_step_x(addr bin)
     # Step Y Equations
     eb_step_y(addr bin)
-
-proc render_idk_subpixel(eq: var NTriangleEquation, render: var NTriangleRender) =
-  var dde: NTriangleDerivative
-  # Calculate Triangle Derivative
-  eq_derivative(addr eq, addr dde)
-  # Get Tiled Positions
-  let
-    x1 = render.x shr 3
-    x2 = (render.x + render.w) shr 3
-    y1 = render.y shr 3
-    y2 = (render.y + render.h) shr 3
-  # Set Render Size to 8
-  render.w = 8; render.h = 8
-  # Iterate Each Tile
-  for y in y1..y2:
-    for x in x1..x2:
-      render.x = x shl 3
-      render.y = y shl 3
-      # Render All Tiles As Partially
-      eq_partial_subpixel(addr eq, 
-        addr dde, addr render)
 
 # - MAIN SUBPIXEL RENDERING -
 proc render_subpixel(self: GUIDistort, v: var NTriangle) =
@@ -277,11 +256,8 @@ proc render_subpixel(self: GUIDistort, v: var NTriangle) =
     render.sample_fn = cast[NTriangleFunc](sample_bilinear)
     # Set Rendering Interval
     interval(render, v)
-    # Check AABB and Decide Binning
-    if (render.w < 32 or render.h < 32):
-      render_idk_subpixel(self.equation, render)
-    else: # Render As Binning
-      render_bin_subpixel(self.equation, render)
+    # Render As Binning
+    render_bin_subpixel(self.equation, render)
 
 proc render_antialiasing(self: GUIDistort) =
   # Prepare Triangle Rendering
@@ -324,7 +300,7 @@ proc render_bin(eq: var NTriangleEquation, render: var NTriangleRender) =
   # Set Render Size to 8
   render.w = 8; render.h = 8
   # Locate Binning at X Y
-  eb_step_xy(addr bin, cfloat x1, cfloat y1)
+  eb_step_xy(addr bin, x1, y1)
   # Iterate Each Tile
   for y in y1..y2:
     for x in x1..x2:
@@ -339,23 +315,6 @@ proc render_bin(eq: var NTriangleEquation, render: var NTriangleRender) =
       eb_step_x(addr bin)
     # Step Y Equations
     eb_step_y(addr bin)
-
-proc render_idk(eq: var NTriangleEquation, render: var NTriangleRender) =
-  # Get Tiled Positions
-  let
-    x1 = render.x shr 3
-    x2 = (render.x + render.w) shr 3
-    y1 = render.y shr 3
-    y2 = (render.y + render.h) shr 3
-  # Set Render Size to 8
-  render.w = 8; render.h = 8
-  # Iterate Each Tile
-  for y in y1..y2:
-    for x in x1..x2:
-      render.x = x shl 3
-      render.y = y shl 3
-      # Render All Tiles As Partially
-      eq_partial(addr eq, addr render)
 
 # - MAIN REALTIME RENDERING -
 proc render(self: GUIDistort, v: var NTriangle) =
@@ -376,10 +335,7 @@ proc render(self: GUIDistort, v: var NTriangle) =
     # Set Rendering Interval
     interval(render, v)
     # Check AABB and Decide Binning
-    if (render.w < 32 or render.h < 32):
-      render_idk(self.equation, render)
-    else: # Render As Binning
-      render_bin(self.equation, render)
+    render_bin(self.equation, render)
 
 # ------------------------
 # TRIANGLE MESH DEFINITION
@@ -533,21 +489,26 @@ when isMainModule:
   # Create Main Widget
   root = newDistort("yuh.png")
   var quad: array[4, NSurfaceVec2D]
-  quad[0] = NSurfaceVec2D(x: 100, y: 10)
-  quad[1] = NSurfaceVec2D(x: 100, y: 400)
-  quad[2] = NSurfaceVec2D(x: 600, y: 600)
-  quad[3] = NSurfaceVec2D(x: 10, y: 100)
+  #quad[0] = NSurfaceVec2D(x: 100, y: 10)
+  #quad[1] = NSurfaceVec2D(x: 100, y: 600)
+  #quad[2] = NSurfaceVec2D(x: 1280, y: 720)
+  #quad[3] = NSurfaceVec2D(x: 10, y: 100)
 
-  #quad[0] = NSurfaceVec2D(x: 10, y: 10)
-  #quad[1] = NSurfaceVec2D(x: 710, y: 10)
-  #quad[2] = NSurfaceVec2D(x: 710, y: 80)
-  #quad[3] = NSurfaceVec2D(x: 10, y: 710)
+  #quad[0] = NSurfaceVec2D(x: 100, y: 10)
+  #quad[1] = NSurfaceVec2D(x: 100, y: 600)
+  #quad[2] = NSurfaceVec2D(x: 1280, y: 720)
+  #quad[3] = NSurfaceVec2D(x: 110, y: 10)
 
-  root.mesh_res = 128
-  root.perspective(quad, 0.0)
-  #root.render_mesh(true)
+  quad[0] = NSurfaceVec2D(x: 0, y: 0)
+  quad[1] = NSurfaceVec2D(x: 700, y: 0)
+  quad[2] = NSurfaceVec2D(x: 700, y: 700)
+  quad[3] = NSurfaceVec2D(x: 0, y: 700)
+
+  root.mesh_res = 2
+  root.perspective(quad, 1.0)
+  root.render_mesh()
   #root.render_mesh(false)
-  root.render_mesh_subpixel()
+  #root.render_mesh_subpixel()
 
   # Open Window
   if win.open(root):

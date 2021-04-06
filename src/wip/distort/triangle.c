@@ -36,15 +36,13 @@ int eq_winding(vertex_t* v) {
 // EDGE EQUATION CALCULATION
 // -------------------------
 
-void eq_calculate(equation_t* eq, vertex_t* v) {
+static void eq_gradient(equation_t* eq, vertex_t* v) {
   float a0, a1, a2;
   float b0, b1, b2;
   float c0, c1, c2;
   // Parameter Coeff
   float z_a, z_b, z_c;
   float z0, z1, z2;
-  // Edge Tie Breaker
-  int tie0, tie1, tie2;
 
   // Define a*x delta
   a0 = v[1].y - v[2].y;
@@ -86,25 +84,52 @@ void eq_calculate(equation_t* eq, vertex_t* v) {
   eq->v0 = z0; eq->v_a = z_a;
   eq->v1 = z1; eq->v_b = z_b;
   eq->v2 = z2; eq->v_c = z_c;
+}
+
+void eq_calculate(equation_t* eq, vertex_t* v) {
+  long long x0, x1, x2;
+  long long y0, y1, y2;
+
+  long long a0, a1, a2;
+  long long b0, b1, b2;
+  long long c0, c1, c2;
+
+  // Convert Coordinates to Fixed Point
+  x0 = (long long) (v[0].x * 256.0);
+  x1 = (long long) (v[1].x * 256.0);
+  x2 = (long long) (v[2].x * 256.0);
+
+  y0 = (long long) (v[0].y * 256.0);
+  y1 = (long long) (v[1].y * 256.0);
+  y2 = (long long) (v[2].y * 256.0);
+
+  // Define AX Incremental
+  a0 = (y1 - y2) << 8;
+  a1 = (y2 - y0) << 8;
+  a2 = (y0 - y1) << 8;
+
+  // Define BX Incremental
+  b0 = (x2 - x1) << 8;
+  b1 = (x0 - x2) << 8;
+  b2 = (x1 - x0) << 8;
+
+  // Define C Constant Part
+  c0 = (x1 * y2) - (x2 * y1);
+  c1 = (x2 * y0) - (x0 * y2);
+  c2 = (x0 * y1) - (x1 * y0);
 
   // Store Edge Equation
   eq->a0 = a0; eq->b0 = b0; eq->c0 = c0;
   eq->a1 = a1; eq->b1 = b1; eq->c1 = c1;
   eq->a2 = a2; eq->b2 = b2; eq->c2 = c2;
-  // Store Edge Half Offset
-  eq->h0 = (a0 * 0.5) + (b0 * 0.5);
-  eq->h1 = (a1 * 0.5) + (b1 * 0.5);
-  eq->h2 = (a2 * 0.5) + (b2 * 0.5);
-  
-  // Set Edge Tie Breaker
-  tie0 = (a0 == 0.0) ? b0 > 0.0 : a0 > 0.0;
-  tie1 = (a1 == 0.0) ? b1 > 0.0 : a1 > 0.0;
-  tie2 = (a2 == 0.0) ? b2 > 0.0 : a2 > 0.0;
 
-  // Fill all Bits
-  eq->tie0 = -tie0;
-  eq->tie1 = -tie1;
-  eq->tie2 = -tie2;
+  // Define Tie Checker
+  eq->tie0 = a0 > 0 || (a0 == 0 && b0 > 0);
+  eq->tie1 = a1 > 0 || (a1 == 0 && b1 > 0);
+  eq->tie2 = a2 > 0 || (a2 == 0 && b2 > 0);
+
+  // Define Equation Gradient
+  eq_gradient(eq, v);
 }
 
 // ------------------------------------
@@ -128,10 +153,6 @@ static void eq_derivative_level(equation_t* eq, level_t* dde, int level) {
 void eq_derivative(equation_t* eq, derivative_t* dde) {
   float dx, ddu;
   float dy, ddv;
-  // Equation Steps
-  float a0, a1, a2;
-  float b0, b1, b2;
-  float r0, r1, r2;
 
   // dudx * dudx + dudy * dudy
   dx = eq->u_a; dy = eq->u_b;
@@ -143,7 +164,7 @@ void eq_derivative(equation_t* eq, derivative_t* dde) {
 
   float raw, level, fract;
   // Calculate Mipmap Level
-  raw = (ddu > ddv) ? ddu: ddv;
+  raw = (ddu > ddv) ? ddu:ddv;
   raw = log2(raw);
   // Avoid Negative
   if (raw < 0.0)
@@ -159,77 +180,53 @@ void eq_derivative(equation_t* eq, derivative_t* dde) {
   // Derivative Interpolation
   dde->fract = fract;
 
-  raw = 0.0625;
   // 16x16 subpixel mask
-  a0 = eq->a0 * raw;
-  a1 = eq->a1 * raw;
-  a2 = eq->a2 * raw;
+  dde->a0 = eq->a0 >> 4;
+  dde->a1 = eq->a1 >> 4;
+  dde->a2 = eq->a2 >> 4;
 
-  b0 = eq->b0 * raw;
-  b1 = eq->b1 * raw;
-  b2 = eq->b2 * raw;
-
-  // Unit Offset
-  r0 = a0 + b0;
-  r1 = a1 + b1;
-  r2 = a2 + b2;
-  // Store Step
-  dde->ds0 = r0;
-  dde->ds1 = r1;
-  dde->ds2 = r2;
-
-  raw = 0.5;
-  // Store 0.5 Offset
-  dde->dr0 = r0 * raw;
-  dde->dr1 = r1 * raw; 
-  dde->dr2 = r2 * raw;
-
-  raw = 2.0;
-  // Store Steps as 8x8
-  dde->dx0 = a0 * raw;
-  dde->dx1 = a1 * raw;
-  dde->dx2 = a2 * raw;
-
-  dde->dy0 = b0 * raw;
-  dde->dy1 = b1 * raw;
-  dde->dy2 = b2 * raw;
-
-  // Copy Tie Checker
-  dde->tie0 = eq->tie0;
-  dde->tie1 = eq->tie1;
-  dde->tie2 = eq->tie2;
+  dde->b0 = eq->b0 >> 4;
+  dde->b1 = eq->b1 >> 4;
+  dde->b2 = eq->b2 >> 4;
 }
 
 // ----------------------------------
 // TRIANGLE TILED BINNING CALCULATION
 // ----------------------------------
-const float step = 8.0;
 
-static void eq_trivially(float a0, float b0, float c0, float* tr_r0, float* ta_r0) {
-  float ox, oy;
+static void eq_trivially(int a0, int b0, int c0, int* tr_r0, int* ta_r0) {
+  int ox, oy;
 
   // Trivially Reject Edge 0
-  ox = (a0 >= 0.0) ? step : 0.0;
-  oy = (b0 >= 0.0) ? step : 0.0;
+  ox = (a0 >= 0) ? 8 : 0;
+  oy = (b0 >= 0) ? 8 : 0;
   // Calculate Equation Position
   *(tr_r0) = a0 * ox + b0 * oy + c0;
 
   // Trivially Accept Edge 0
-  ox = (a0 >= 0.0) ? 0.0 : step;
-  oy = (b0 >= 0.0) ? 0.0 : step;
+  ox = (a0 >= 0) ? 0 : 8;
+  oy = (b0 >= 0) ? 0 : 8;
   // Calculate Equation Position
   *(ta_r0) = a0 * ox + b0 * oy + c0;
 }
 
 void eq_binning(equation_t* eq, binning_t* bin) {
-  float a0, a1, a2;
-  float b0, b1, b2;
-  float c0, c1, c2;
+  int a0, a1, a2;
+  int b0, b1, b2;
+  int c0, c1, c2;
 
   // Load Edge Equation Steps
-  a0 = eq->a0; a1 = eq->a1; a2 = eq->a2;
-  b0 = eq->b0; b1 = eq->b1; b2 = eq->b2;
-  c0 = eq->c0; c1 = eq->c1; c2 = eq->c2;
+  a0 = eq->a0 >> 8;
+  a1 = eq->a1 >> 8;
+  a2 = eq->a2 >> 8;
+
+  b0 = eq->b0 >> 8;
+  b1 = eq->b1 >> 8;
+  b2 = eq->b2 >> 8;
+
+  c0 = eq->c0 >> 8;
+  c1 = eq->c1 >> 8;
+  c2 = eq->c2 >> 8;
 
   // Calculate Reject & Accept Trivially Corners
   eq_trivially(a0, b0, c0, &bin->tr_r0, &bin->ta_r0);
@@ -237,20 +234,20 @@ void eq_binning(equation_t* eq, binning_t* bin) {
   eq_trivially(a2, b2, c2, &bin->tr_r2, &bin->ta_r2);
 
   // Edge Equation Steps
-  bin->s_a0 = a0 * step;
-  bin->s_a1 = a1 * step;
-  bin->s_a2 = a2 * step;
+  bin->s_a0 = a0 * 8;
+  bin->s_a1 = a1 * 8;
+  bin->s_a2 = a2 * 8;
 
-  bin->s_b0 = b0 * step;
-  bin->s_b1 = b1 * step;
-  bin->s_b2 = b2 * step;
+  bin->s_b0 = b0 * 8;
+  bin->s_b1 = b1 * 8;
+  bin->s_b2 = b2 * 8;
 }
 
 // --------------------------------------------
 // TRIANGLE TILED BINNING ITERATOR - Tile Units
 // --------------------------------------------
 
-void eb_step_xy(binning_t* bin, float x, float y) {
+void eb_step_xy(binning_t* bin, int x, int y) {
   // Define Trivially Reject
   bin->tr_r0 += (bin->s_a0 * x) + (bin->s_b0 * y);
   bin->tr_r1 += (bin->s_a1 * x) + (bin->s_b1 * y);
@@ -313,16 +310,16 @@ int eb_check(binning_t* bin) {
   int count = 0;
 
   // Sum Trivially Reject Count
-  count += (bin->tr_w0 < 0.0);
-  count += (bin->tr_w1 < 0.0);
-  count += (bin->tr_w2 < 0.0);
+  count += (bin->tr_w0 < 0);
+  count += (bin->tr_w1 < 0);
+  count += (bin->tr_w2 < 0);
 
   // No Trivially Rejected
   if (count == 0) {
     // Sum Trivially Accept Count
-    count += (bin->ta_w0 >= 0.0);
-    count += (bin->ta_w1 >= 0.0);
-    count += (bin->ta_w2 >= 0.0);
+    count += (bin->ta_w0 >= 0);
+    count += (bin->ta_w1 >= 0);
+    count += (bin->ta_w2 >= 0);
     // Avoid Rejected When Passed
     count += (count == 0);
   } else {

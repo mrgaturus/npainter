@@ -8,21 +8,15 @@
 void eq_partial(equation_t* eq, fragment_t* render) {
   int xmin, xmax, ymin, ymax;
   // Edge Equation Coeffients
-  float row0, row1, row2;
-  float w0, w1, w2;
+  long long row0, row1, row2;
+  long long w0, w1, w2;
   // Incremental Steps
-  float a0, a1, a2;
-  float b0, b1, b2;
-  // Half Offset
-  float h0, h1, h2;
-  // Edge With Offset
-  float ow0, ow1, ow2;
-  // UV Parameters
-  float u0, u1, u2, u;
-  float v0, v1, v2, v;
-  // Edge Tie Breaker
-  int tie0, tie1, tie2;
-  int check0, check1, check2;
+  long long a0, a1, a2;
+  long long b0, b1, b2;
+  // UV Gradient Parameters
+  float u_a, u_b, u_c, u;
+  float v_a, v_b, v_c, v;
+
   // Destination Pixels
   int stride; int16_t* dst;
   // Sampler Function Pointer
@@ -40,24 +34,20 @@ void eq_partial(equation_t* eq, fragment_t* render) {
   // Load Equation Incrementals
   a0 = eq->a0; a1 = eq->a1; a2 = eq->a2;
   b0 = eq->b0; b1 = eq->b1; b2 = eq->b2;
-  // Load Equation Half Offsets
-  h0 = eq->h0; h1 = eq->h1; h2 = eq->h2;
 
-  u = (float) xmin + 0.5;
-  v = (float) ymin + 0.5;
-  // Set Incremental Starting Position
-  row0 = a0 * u + b0 * v + eq->c0;
-  row1 = a1 * u + b1 * v + eq->c1;
-  row2 = a2 * u + b2 * v + eq->c2;
+  // Set Incremental Starting Position with Tie Bias
+  row0 = a0 * xmin + b0 * ymin + (eq->c0 + eq->tie0);
+  row1 = a1 * xmin + b1 * ymin + (eq->c1 + eq->tie1);
+  row2 = a2 * xmin + b2 * ymin + (eq->c2 + eq->tie2);
 
-  // Edge Tie Breaker
-  tie0 = eq->tie0;
-  tie1 = eq->tie1;
-  tie2 = eq->tie2;
+  // Set Centered to Pixel
+  row0 += (a0 >> 1) + (b0 >> 1);
+  row1 += (a1 >> 1) + (b1 >> 1);
+  row2 += (a2 >> 1) + (b2 >> 1);
 
   // Load UV Equation Coeffients
-  u0 = eq->u0; u1 = eq->u1; u2 = eq->u2;
-  v0 = eq->v0; v1 = eq->v1; v2 = eq->v2;
+  u_a = eq->u_a; u_b = eq->u_b; u_c = eq->u_c;
+  v_a = eq->v_a; v_b = eq->v_b; v_c = eq->v_c;
   
   // Get Destination Pixel Pointer
   stride = (ymin * render->dst_w + xmin) << 2;
@@ -73,26 +63,24 @@ void eq_partial(equation_t* eq, fragment_t* render) {
     // Reset Equation X Position
     w0 = row0; w1 = row1, w2 = row2;
     for (int x = xmin; x < xmax; x++) {
-      // Check Edge Sign and Tie Breaker
-      check0 = w0 > 0.0 || (w0 == 0.0 && tie0);
-      check1 = w1 > 0.0 || (w1 == 0.0 && tie1);
-      check2 = w2 > 0.0 || (w2 == 0.0 && tie2);
       // Check if is inside triangle
-      if (check0 && check1 && check2) {
-        // Remove Half Offset For Proper Sampling
-        ow0 = w0 - h0; ow1 = w1 - h1; ow2 = w2 - h2;
-        // Calculate Barycentric UV without Offset
-        u = ow0 * u0 + ow1 * u1 + ow2 * u2;
-        v = ow0 * v0 + ow1 * v1 + ow2 * v2;
+      if ( (w0 | w1 | w2) > 0 ) {
+        // Calculate Barycentric UV
+        u = x * u_a + y * u_b + u_c;
+        v = x * v_a + y * v_b + v_c;
         // Perform Pixel Filtering
         pixel = sample_fn(render, u, v);
         sample_blend_store(pixel, dst);
       }
-      // Step Equation X Position and Pixels
-      w0 += a0; w1 += a1; w2 += a2; dst += 4;
+      // Step Equation X Position
+      w0 += a0; w1 += a1; w2 += a2; 
+      // Next Pixel
+      dst += 4;
     }
-    // Step Equation Y Position and Pixels
-    row0 += b0; row1 += b1; row2 += b2; dst += stride;
+    // Step Equation Y Position
+    row0 += b0; row1 += b1; row2 += b2; 
+    // Next Stride
+    dst += stride;
   }
 }
 
@@ -288,50 +276,44 @@ void eq_full_subpixel(equation_t* eq, derivative_t* dde, fragment_t* render) {
 // PARTIAL SUBPIXEL TRIANGLE RASTERIZATION
 // ---------------------------------------
 
-static int eq_partial_count(derivative_t* dde, __m128i* mask, float r0, float r1, float r2) {
+static int eq_partial_count(derivative_t* dde, __m128i* mask, long long r0, long long r1, long long r2) {
   // Equation Derivatives
-  float dx0, dx1, dx2;
-  float ds0, ds1, ds2;
+  long long a0, a1, a2;
+  long long b0, b1, b2;
   // Horizontal Steps
-  __m128 xmm_w0, xmm_w1, xmm_w2;
-  __m128 xmm_row0, xmm_row1, xmm_row2;
+  __m128i xmm_w0, xmm_w1, xmm_w2;
+  __m128i xmm_row0, xmm_row1, xmm_row2;
   // Equation Parameters Steps
-  __m128 xmm_dx0, xmm_dx1, xmm_dx2;
-  __m128 xmm_dy0, xmm_dy1, xmm_dy2;
-  // Equation Edge Tie Breaker x4
-  __m128 xmm_tie0, xmm_tie1, xmm_tie2;
-  // Subpixel Coverage Test
-  __m128 xmm0, xmm1, xmm2;
+  __m128i xmm_a0, xmm_a1, xmm_a2;
+  __m128i xmm_b0, xmm_b1, xmm_b2;
+  // Subpixel Coverage
+  __m128i xmm0, xmm1;
   // Subpixels Edge Test
   int check, count, bits;
   // Subpixel 128bit Mask
   __m128i bits0, bits1;
 
   // Load Partial Derivatives && Step Offset
-  dx0 = dde->dx0; dx1 = dde->dx1; dx2 = dde->dx2;
-  ds0 = dde->ds0; ds1 = dde->ds1; ds2 = dde->ds2;
-  r0 += dde->dr0; r1 += dde->dr1; r2 += dde->dr2;
+  a0 = dde->a0; a1 = dde->a1; a2 = dde->a2;
+  b0 = dde->b0; b1 = dde->b1; b2 = dde->b2;
+
+  // Ajust to Center of Pixel
+  r0 += (a0 >> 1) + (b0 >> 1);
+  r1 += (a1 >> 1) + (b1 >> 1);
+  r2 += (a2 >> 1) + (b2 >> 1);
 
   // Load Four Checkboard Four Edge Equation
-  xmm_row0 = _mm_setr_ps(r0, r0 + ds0, r0 + dx0, r0 + ds0 + dx0);
-  xmm_row1 = _mm_setr_ps(r1, r1 + ds1, r1 + dx1, r1 + ds1 + dx1);
-  xmm_row2 = _mm_setr_ps(r2, r2 + ds2, r2 + dx2, r2 + ds2 + dx2);
+  xmm_row0 = _mm_set_epi64x(r0 + a0 + b0, r0);
+  xmm_row1 = _mm_set_epi64x(r1 + a1 + b1, r1);
+  xmm_row2 = _mm_set_epi64x(r2 + a2 + b2, r2);
   // Load Four Edge Equation Steps
-  xmm_dx0 = _mm_set1_ps(dx0 * 2.0);
-  xmm_dx1 = _mm_set1_ps(dx1 * 2.0);
-  xmm_dx2 = _mm_set1_ps(dx2 * 2.0);
+  xmm_a0 = _mm_set1_epi64x(a0 << 1);
+  xmm_a1 = _mm_set1_epi64x(a1 << 1);
+  xmm_a2 = _mm_set1_epi64x(a2 << 1);
 
-  xmm_dy0 = _mm_set1_ps(dde->dy0);
-  xmm_dy1 = _mm_set1_ps(dde->dy1);
-  xmm_dy2 = _mm_set1_ps(dde->dy2);
-
-  // Load Equation Tie Breaker
-  xmm_tie0 = _mm_castsi128_ps(
-    _mm_set1_epi32(dde->tie0));
-  xmm_tie1 = _mm_castsi128_ps(
-    _mm_set1_epi32(dde->tie1));
-  xmm_tie2 = _mm_castsi128_ps(
-    _mm_set1_epi32(dde->tie2));
+  xmm_b0 = _mm_set1_epi64x(b0 << 1);
+  xmm_b1 = _mm_set1_epi64x(b1 << 1);
+  xmm_b2 = _mm_set1_epi64x(b2 << 1);
 
   // Intialize Bit Mask
   bits0 = _mm_setzero_si128();
@@ -347,41 +329,32 @@ static int eq_partial_count(derivative_t* dde, __m128i* mask, float r0, float r1
     // Reset Bits
     bits = 0;
 
-    for (int x = 0; x < 4; x++) {
-      xmm0 = _mm_setzero_ps();
+    for (int x = 0; x < 8; x++) {
+      xmm0 = _mm_setzero_si128();
 
-      xmm1 = _mm_cmpeq_ps(xmm_w0, xmm0);
-      xmm1 = _mm_and_ps(xmm1, xmm_tie0);
-      xmm1 = _mm_or_ps(xmm1,  // w0 > 0.0
-        _mm_cmpgt_ps(xmm_w0, xmm0));
+      xmm1 = _mm_or_si128(xmm_w0, xmm_w1);
+      xmm1 = _mm_or_si128(xmm1, xmm_w2);
+      xmm1 = _mm_srli_epi64(xmm1, 63);
+      // Check if is Inside of Triangle
+      xmm1 = _mm_cmpeq_epi64(xmm1, xmm0);
 
-      xmm2 = _mm_cmpeq_ps(xmm_w1, xmm0);
-      xmm2 = _mm_and_ps(xmm2, xmm_tie1);
-      xmm2 = _mm_or_ps(xmm2, // w1 > 0.0
-        _mm_cmpgt_ps(xmm_w1, xmm0));
-      xmm1 = _mm_and_ps(xmm1, xmm2);
-
-      xmm2 = _mm_cmpeq_ps(xmm_w2, xmm0);
-      xmm2 = _mm_and_ps(xmm2, xmm_tie2);
-      xmm2 = _mm_or_ps(xmm2, // w2 > 0.0
-        _mm_cmpgt_ps(xmm_w2, xmm0));
-      xmm1 = _mm_and_ps(xmm1, xmm2);
-
-      // Check if is inside triangle
-      check = _mm_movemask_ps(xmm1);
+      // Get Edge Equation Test Mask
+      check = _mm_movemask_epi8(xmm1);
 
       // Count How Many Are Inside
       count += (check >> 0) & 0x1;
-      count += (check >> 1) & 0x1;
-      count += (check >> 2) & 0x1;
-      count += (check >> 3) & 0x1;
+      count += (check >> 8) & 0x1;
+
+      // Move Bits 2 Spaces
+      bits = (bits << 2);
       // Set Bits on Auxiliar Mask
-      bits = (bits << 4) | check;
+      bits |= (check >> 0) & 0x1;
+      bits |= (check >> 8) & 0x2;
 
       // Step Horizontal
-      xmm_w0 = _mm_add_ps(xmm_w0, xmm_dx0);
-      xmm_w1 = _mm_add_ps(xmm_w1, xmm_dx1);
-      xmm_w2 = _mm_add_ps(xmm_w2, xmm_dx2);
+      xmm_w0 = _mm_add_epi64(xmm_w0, xmm_a0);
+      xmm_w1 = _mm_add_epi64(xmm_w1, xmm_a1);
+      xmm_w2 = _mm_add_epi64(xmm_w2, xmm_a2);
     }
 
     // Set mask bits on 128 bits
@@ -390,9 +363,9 @@ static int eq_partial_count(derivative_t* dde, __m128i* mask, float r0, float r1
     bits0 = _mm_or_si128(bits0, bits1);
 
     // Step Vertical Incrementals
-    xmm_row0 = _mm_add_ps(xmm_row0, xmm_dy0);
-    xmm_row1 = _mm_add_ps(xmm_row1, xmm_dy1);
-    xmm_row2 = _mm_add_ps(xmm_row2, xmm_dy2);
+    xmm_row0 = _mm_add_epi64(xmm_row0, xmm_b0);
+    xmm_row1 = _mm_add_epi64(xmm_row1, xmm_b1);
+    xmm_row2 = _mm_add_epi64(xmm_row2, xmm_b2);
   }
 
   // Return Coverage Mask
@@ -405,14 +378,14 @@ static int eq_partial_count(derivative_t* dde, __m128i* mask, float r0, float r1
 void eq_partial_subpixel(equation_t* eq, derivative_t* dde, fragment_t* render) {
   int xmin, xmax, ymin, ymax;
   // Edge Equation Coeffients
-  float row0, row1, row2;
-  float w0, w1, w2;
+  long long row0, row1, row2;
+  long long w0, w1, w2;
   // Incremental Steps
-  float a0, a1, a2;
-  float b0, b1, b2;
-  // UV Parameters
-  float u0, u1, u2, u;
-  float v0, v1, v2, v;
+  long long a0, a1, a2;
+  long long b0, b1, b2;
+  // UV Gradient Parameters
+  float u_a, u_b, u_c, u;
+  float v_a, v_b, v_c, v;
 
   __m128 xmm_div;
   // Subpixel Interpolation
@@ -440,14 +413,15 @@ void eq_partial_subpixel(equation_t* eq, derivative_t* dde, fragment_t* render) 
   // Load Equation Incrementals
   a0 = eq->a0; a1 = eq->a1; a2 = eq->a2;
   b0 = eq->b0; b1 = eq->b1; b2 = eq->b2;
-  // Set Incremental Starting Position
-  row0 = a0 * xmin + b0 * ymin + eq->c0;
-  row1 = a1 * xmin + b1 * ymin + eq->c1;
-  row2 = a2 * xmin + b2 * ymin + eq->c2;
+
+  // Set Incremental Starting Position with Tie Bias
+  row0 = a0 * xmin + b0 * ymin + (eq->c0 - eq->tie0);
+  row1 = a1 * xmin + b1 * ymin + (eq->c1 - eq->tie1);
+  row2 = a2 * xmin + b2 * ymin + (eq->c2 - eq->tie2);
 
   // Load UV Equation Coeffients
-  u0 = eq->u0; u1 = eq->u1; u2 = eq->u2;
-  v0 = eq->v0; v1 = eq->v1; v2 = eq->v2;
+  u_a = eq->u_a; u_b = eq->u_b; u_c = eq->u_c;
+  v_a = eq->v_a; v_b = eq->v_b; v_c = eq->v_c;
   
   // Load Subpixel Area Divisor
   xmm_div = _mm_set1_ps(128.0);
@@ -473,8 +447,8 @@ void eq_partial_subpixel(equation_t* eq, derivative_t* dde, fragment_t* render) 
       // Not Zero Pixel
       if (count > 0) {
         // Calculate Barycentric UV
-        u = w0 * u0 + w1 * u1 + w2 * u2;
-        v = w0 * v0 + w1 * v1 + w2 * v2;
+        u = x * u_a + y * u_b + u_c;
+        v = x * v_a + y * v_b + v_c;
 
         // Calculate Bot-Top Subpixel
         pix_bot = eq_full_average(eq, &dde->bot, render, u, v);
