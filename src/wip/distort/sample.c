@@ -18,24 +18,27 @@ static inline __m128i _mm_div_32767(__m128i xmm0) {
 // FUNDAMENTAL PIXEL LOADING
 // -------------------------
 
-static __m128i sample_pixel(fragment_t* render, int x, int y) {
+static __m128i sample_pixel(sampler_t* src, int x, int y) {
   int w, h;
   __m128i pixel;
 
-  w = render->src_w; 
-  h = render->src_h;
-  // Repeat Positon
-  x %= w; y %= h;
-  // Ajust Negative
-  if (x < 0) x += w;
-  if (y < 0) y += h;
+  w = src->sw;
+  h = src->sh;
 
-  // Load 16 bit Pixel and Unpack
-  int stride = (y * w + x) << 2;
-  pixel = _mm_loadl_epi64( // Load
-    (__m128i*) (render->src + stride) );
-  // Return Unpacked Pixel to 32bit
-  pixel = _mm_cvtepi16_epi32(pixel);
+  if (x >= 0 && y >= 0 && x < w && y < h) {
+    w = src->w;
+    h = src->h;
+    // Repeat Positon
+    x %= w; y %= h;
+
+    // Load 16 bit Pixel and Unpack
+    int stride = (y * w + x) << 2;
+    pixel = _mm_loadl_epi64( // Load
+      (__m128i*) (src->buffer + stride) );
+    // Return Unpacked Pixel to 32bit
+    pixel = _mm_cvtepi16_epi32(pixel);
+
+  } else { pixel = _mm_setzero_si128(); }
 
   // Return Pixel
   return pixel;
@@ -45,15 +48,15 @@ static __m128i sample_pixel(fragment_t* render, int x, int y) {
 // PIXEL RESAMPLING FILTERING
 // --------------------------
 
-__m128i sample_nearest(fragment_t* render, float u, float v) {
+__m128i sample_nearest(sampler_t* src, float u, float v) {
   // Just flooring
   int ui = floor(u + 0.5); 
   int vi = floor(v + 0.5);
   // Return Sampled Pixel
-  return sample_pixel(render, ui, vi);
+  return sample_pixel(src, ui, vi);
 }
 
-__m128i sample_bilinear(fragment_t* render, float u, float v) {
+__m128i sample_bilinear(sampler_t* src, float u, float v) {
   // Floor Coordinates
   float uu = floor(u);
   float vv = floor(v);
@@ -67,10 +70,10 @@ __m128i sample_bilinear(fragment_t* render, float u, float v) {
   int y2 = y1 + 1;
 
   // Load Four Pixels
-  __m128i m00 = sample_pixel(render, x1, y1);
-  __m128i m10 = sample_pixel(render, x2, y1);
-  __m128i m01 = sample_pixel(render, x1, y2);
-  __m128i m11 = sample_pixel(render, x2, y2);
+  __m128i m00 = sample_pixel(src, x1, y1);
+  __m128i m10 = sample_pixel(src, x2, y1);
+  __m128i m01 = sample_pixel(src, x1, y2);
+  __m128i m11 = sample_pixel(src, x2, y2);
   // Swizzle Linear Interpolator
   __m128i mu = _mm_set1_epi32(su);
   __m128i mv = _mm_set1_epi32(sv);
@@ -113,7 +116,7 @@ static __m128 bicubic_weight(float x) {
   return _mm_set1_ps(w);
 }
 
-__m128i sample_bicubic(fragment_t* render, float u, float v) {
+__m128i sample_bicubic(sampler_t* src, float u, float v) {
   __m128i pixel, clamp;
   // Convolution Auxiliars
   __m128 w, w_row, sum_w;
@@ -136,7 +139,7 @@ __m128i sample_bicubic(fragment_t* render, float u, float v) {
       w = bicubic_weight(u - ui);
       w = _mm_mul_ps(w, w_row);
       // Lookup Pixel of Current Position
-      pixel = sample_pixel(render, ui, vj);
+      pixel = sample_pixel(src, ui, vj);
       // Multiply Pixel By Weight
       w_pixel = _mm_cvtepi32_ps(pixel);
       w_pixel = _mm_mul_ps(w_pixel, w);

@@ -1,3 +1,4 @@
+from math import floor
 import gui/[window, widget, render, event, signal]
 import libs/gl
 import nimPNG
@@ -23,17 +24,20 @@ type
     array[3, NTriangleVertex]
   NTriangleDerivative {.importc: "derivative_t".} = object
   NTriangleBinning {.importc: "binning_t".} = object
+  NTriangleSampler {.importc: "sampler_t".} = object
+    # SW, SH -> Repeat Size
+    # W, H -> Texture Size
+    sw, sh, w, h: cint
+    buffer: ptr cshort
+    # Sampler Func
+    fn: NTriangleFunc
   NTriangleRender {.importc: "fragment_t".} = object
     x, y, w, h: cint
-    # Source Pixels
-    src_w, src_h: cint
-    src: ptr cshort
+    # Source Pixels Sampler
+    sampler: ptr NTriangleSampler
     # Target Pixels
     dst_w, dst_h: cint
-    # Target Pointers
-    dst, mask: ptr cshort
-    # Sampler Func
-    sample_fn: NTriangleFunc
+    dst: ptr cshort
   # -------------------------------------------
   NSurfaceVec2D {.importc: "vec2_t".} = object
     x, y: cfloat # Vector2 is only relevant here
@@ -50,6 +54,7 @@ proc sample_bicubic(render: ptr NTriangleRender, u, v: cfloat) {.used.}
 # Triangle Equation
 proc eq_winding(v: ptr NTriangle): int32
 proc eq_calculate(eq: ptr NTriangleEquation, v: ptr NTriangle)
+proc eq_gradient(eq: ptr NTriangleEquation, v: ptr NTriangle)
 proc eq_derivative(eq: ptr NTriangleEquation, dde: ptr NTriangleDerivative)
 
 # Triangle Binning
@@ -67,7 +72,6 @@ proc eq_full(eq: ptr NTriangleEquation, render: ptr NTriangleRender)
 # Triangle Equation Rendering Subpixel Antialiasing Post-Procesing
 proc eq_partial_subpixel(eq: ptr NTriangleEquation, dde: ptr NTriangleDerivative, render: ptr NTriangleRender)
 proc eq_full_subpixel(eq: ptr NTriangleEquation, dde: ptr NTriangleDerivative, render: ptr NTriangleRender)
-proc eq_apply_antialiasing(render: ptr NTriangleRender)
 
 # --------------------------------------------
 proc perspective_calc(surf: ptr NSurfaceBilinear, v: ptr NSurfaceVec2D, fract: cfloat)
@@ -91,6 +95,7 @@ type
     verts: NTriangle
     # Triangle Preparation
     equation: NTriangleEquation
+    sampler: NTriangleSampler
     render: NTriangleRender
     # 15bit Pixel Buffer
     source: GUIImage
@@ -239,47 +244,20 @@ proc render_bin_subpixel(eq: var NTriangleEquation, render: var NTriangleRender)
 # - MAIN SUBPIXEL RENDERING -
 proc render_subpixel(self: GUIDistort, v: var NTriangle) =
   if eq_winding(addr v) != 0:
-    eq_calculate( # Triangle Equation
-      addr self.equation, addr v)
+    # Calculate Edge Equation with UV Equation
+    eq_calculate(addr self.equation, addr v)
+    eq_gradient(addr self.equation, addr v)
     # Prepare Triangle Rendering
     var render: NTriangleRender
     render.dst_w = 1280
     render.dst_h = 720
     # Subpixel Rendering Buffers
     render.dst = addr self.buffer[0]
-    render.mask = addr self.mask[0]
-    # Source Image
-    render.src_w = self.source.w
-    render.src_h = self.source.h
-    render.src = addr self.source.buffer[0]
-    # Set Function Proc
-    render.sample_fn = cast[NTriangleFunc](sample_bilinear)
+    render.sampler = addr self.sampler
     # Set Rendering Interval
     interval(render, v)
     # Render As Binning
     render_bin_subpixel(self.equation, render)
-
-proc render_antialiasing(self: GUIDistort) =
-  # Prepare Triangle Rendering
-  var render: NTriangleRender
-  render.dst_w = 1280
-  render.dst_h = 720
-  # Subpixel Rendering Buffers
-  render.dst = addr self.buffer[0]
-  render.mask = addr self.mask[0]
-  # Source Image
-  render.src_w = self.source.w
-  render.src_h = self.source.h
-  render.src = addr self.source.buffer[0]
-  # Can be Tiled, Of course
-  render.x = 0
-  render.y = 0
-  render.w = 1280
-  render.h = 720
-  # Set Function Proc
-  render.sample_fn = cast[NTriangleFunc](sample_bilinear)
-  # Blend and Free Antialiased Pixels
-  eq_apply_antialiasing(addr render)
 
 # -------------------------------
 # TRIANGLE REALTIME RASTERIZATION
@@ -319,19 +297,16 @@ proc render_bin(eq: var NTriangleEquation, render: var NTriangleRender) =
 # - MAIN REALTIME RENDERING -
 proc render(self: GUIDistort, v: var NTriangle) =
   if eq_winding(addr v) != 0:
-    eq_calculate( # Calculate Triangle Equation
-      addr self.equation, addr v)
+    # Calculate Edge Equation with UV Equation
+    eq_calculate(addr self.equation, addr v)
+    eq_gradient(addr self.equation, addr v)
     # Prepare Triangle Rendering
     var render: NTriangleRender
     render.dst_w = 1280
     render.dst_h = 720
+    # Realtime Rendering Buffers
     render.dst = addr self.buffer[0]
-    # Source Image
-    render.src_w = self.source.w
-    render.src_h = self.source.h
-    render.src = addr self.source.buffer[0]
-    # Set Function Proc
-    render.sample_fn = cast[NTriangleFunc](sample_nearest)
+    render.sampler = addr self.sampler
     # Set Rendering Interval
     interval(render, v)
     # Check AABB and Decide Binning
@@ -344,24 +319,23 @@ proc render(self: GUIDistort, v: var NTriangle) =
 proc unit(self: GUIDistort) =
   let 
     n = self.mesh_res
-    rcp = 1.0 / cfloat(n)
+    rcp = 1.0 / cfloat(n - 1)
     # Image Dimensions
-    w = self.source.w
-    h = self.source.h
+    w = self.sampler.sw + 1
+    h = self.sampler.sh + 1
   # With Additional Vertex
-  setLen(self.mesh, 
-    (n + 1) * (n + 1))
+  setLen(self.mesh, n * n)
   # Initialize As Unitary
   var i: int
-  for y in 0..n:
-    for x in 0..n:
+  for y in 0..<n:
+    for x in 0..<n:
       let 
         v = addr self.mesh[i]
         rx = cfloat(x) * rcp
         ry = cfloat(y) * rcp
-      # Store UV Coordinates
-      v.u = cfloat(w) * rx
-      v.v = cfloat(h) * ry
+      # Store UV Coordinates with border
+      v.u = cfloat(w + 1) * rx - 1.0
+      v.v = cfloat(h + 1) * ry - 1.0
       # Store Unit Position
       v.x = rx; v.y = ry
       inc(i) # Next Vertex
@@ -381,62 +355,49 @@ proc perspective(self: GUIDistort, quad: array[4, NSurfaceVec2D], fract: cfloat)
 # TRIANGLE MESH RENDERING
 # -----------------------
 
-proc render_mesh(self: GUIDistort, other = true) =
-  let n = self.mesh_res
+proc render_mesh(self: GUIDistort) =
+  let 
+    s = self.mesh_res
+    n = s - 1
   var 
     a, b: NTriangle
   for y in 0..<n:
     for x in 0..<n:
       let 
-        top = y * (n + 1) + x
-        bot = top + (n + 1)
-      if true:
-        a[0] = self.mesh[top]
-        a[1] = self.mesh[top + 1]
-        a[2] = self.mesh[bot]
-        # Left Half Quad
-        b[0] = a[2]; b[1] = a[1]
-        b[2] = self.mesh[bot + 1]
-        # Render Both Triangles
-        render(self, a)
-        if other:
-          render(self, b)
-      elif false:
-        a[0] = self.mesh[top + 1]
-        a[1] = self.mesh[top]
-        a[2] = self.mesh[bot + 1]
-        # Left Half Quad
-        b[0] = a[2]; b[1] = a[1]
-        b[2] = self.mesh[bot]
-
+        top = y * s + x
+        bot = top + s
+      a[0] = self.mesh[top]
+      a[1] = self.mesh[top + 1]
+      a[2] = self.mesh[bot]
+      # Left Half Quad
+      b[0] = a[2]; b[1] = a[1]
+      b[2] = self.mesh[bot + 1]
+      # Render Both Triangles
+      render(self, a)
+      render(self, b)
   # Copy Current Buffer
   self.copy(0, 0, 1280, 720)
 
-proc render_mesh_subpixel(self: GUIDistort, other = true) =
-  let n = self.mesh_res
+proc render_mesh_subpixel(self: GUIDistort) =
+  let 
+    s = self.mesh_res
+    n = s - 1
   var 
     a, b: NTriangle
   for y in 0..<n:
     for x in 0..<n:
       let 
-        top = y * (n + 1) + x
-        bot = top + (n + 1)
-      if true:
-        a[0] = self.mesh[top]
-        a[1] = self.mesh[top + 1]
-        a[2] = self.mesh[bot]
-        # Left Half Quad
-        b[0] = a[2]; b[1] = a[1]
-        b[2] = self.mesh[bot + 1]
-        # Render Both Triangles
-        render_subpixel(self, a)
-        if other:
-          render_subpixel(self, b)
-    # Change Row Orient
-    #orient = not orient
-  # Apply Antialiasing
-  if other:
-    render_antialiasing(self)
+        top = y * s + x
+        bot = top + s
+      a[0] = self.mesh[top]
+      a[1] = self.mesh[top + 1]
+      a[2] = self.mesh[bot]
+      # Left Half Quad
+      b[0] = a[2]; b[1] = a[1]
+      b[2] = self.mesh[bot + 1]
+      # Render Both Triangles
+      render_subpixel(self, a)
+      render_subpixel(self, b)
   # Copy Current Buffer
   self.copy(0, 0, 1280, 720)
 
@@ -448,6 +409,12 @@ proc newDistort(src: string): GUIDistort =
   new result
   # Load Source Image
   result.source = newImage(src)
+  # Configure Triangle Sampler
+  result.sampler.w = result.source.w
+  result.sampler.h = result.source.h
+  result.sampler.buffer = addr result.source.buffer[0]
+  # Set Function Proc
+  result.sampler.fn = cast[NTriangleFunc](sample_bilinear)
   # Copy Buffer To Texture
   glGenTextures(1, addr result.tex)
   glBindTexture(GL_TEXTURE_2D, result.tex)
@@ -462,6 +429,12 @@ proc newDistort(src: string): GUIDistort =
   glBindTexture(GL_TEXTURE_2D, 0)
   # Prepare Triangle
   #result.verts = v1
+
+proc repeat(self: GUIDistort, sw, sh: cfloat) =
+  self.sampler.sw = cint floor(
+    cfloat(self.sampler.w) * sw)
+  self.sampler.sh = cint floor(
+    cfloat(self.sampler.h) * sh)
 
 method draw(self: GUIDistort, ctx: ptr CTXRender) =
   ctx.color(uint32 0xFFFFFFFF)
@@ -489,26 +462,27 @@ when isMainModule:
   # Create Main Widget
   root = newDistort("yuh.png")
   var quad: array[4, NSurfaceVec2D]
-  #quad[0] = NSurfaceVec2D(x: 100, y: 10)
-  #quad[1] = NSurfaceVec2D(x: 100, y: 600)
+  #quad[0] = NSurfaceVec2D(x: 500, y: 10)
+  #quad[1] = NSurfaceVec2D(x: 100, y: 500)
   #quad[2] = NSurfaceVec2D(x: 1280, y: 720)
   #quad[3] = NSurfaceVec2D(x: 10, y: 100)
 
-  #quad[0] = NSurfaceVec2D(x: 100, y: 10)
-  #quad[1] = NSurfaceVec2D(x: 100, y: 600)
-  #quad[2] = NSurfaceVec2D(x: 1280, y: 720)
-  #quad[3] = NSurfaceVec2D(x: 110, y: 10)
+  quad[0] = NSurfaceVec2D(x: 100, y: 10)
+  quad[1] = NSurfaceVec2D(x: 120, y: 600)
+  quad[2] = NSurfaceVec2D(x: 1280, y: 720)
+  quad[3] = NSurfaceVec2D(x: 110, y: 10)
 
-  quad[0] = NSurfaceVec2D(x: 0, y: 0)
-  quad[1] = NSurfaceVec2D(x: 700, y: 0)
-  quad[2] = NSurfaceVec2D(x: 700, y: 700)
-  quad[3] = NSurfaceVec2D(x: 0, y: 700)
+  quad[0] = NSurfaceVec2D(x: 10 - 1, y: 10 - 1)
+  quad[1] = NSurfaceVec2D(x: 710 + 1, y: 10 - 1)
+  quad[2] = NSurfaceVec2D(x: 710 + 1, y: 710 + 1)
+  quad[3] = NSurfaceVec2D(x: 10 - 1, y: 710 + 1)
 
-  root.mesh_res = 2
+  root.mesh_res = 32
+  root.repeat(1.0, 1.0)
   root.perspective(quad, 1.0)
-  root.render_mesh()
+  #root.render_mesh()
   #root.render_mesh(false)
-  #root.render_mesh_subpixel()
+  root.render_mesh_subpixel()
 
   # Open Window
   if win.open(root):

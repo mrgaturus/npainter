@@ -36,7 +36,50 @@ int eq_winding(vertex_t* v) {
 // EDGE EQUATION CALCULATION
 // -------------------------
 
-static void eq_gradient(equation_t* eq, vertex_t* v) {
+void eq_calculate(equation_t* eq, vertex_t* v) {
+  long long x0, x1, x2;
+  long long y0, y1, y2;
+
+  long long a0, a1, a2;
+  long long b0, b1, b2;
+  long long c0, c1, c2;
+
+  // Convert Coordinates to Fixed Point
+  x0 = (long long) (v[0].x * 256.0);
+  x1 = (long long) (v[1].x * 256.0);
+  x2 = (long long) (v[2].x * 256.0);
+
+  y0 = (long long) (v[0].y * 256.0);
+  y1 = (long long) (v[1].y * 256.0);
+  y2 = (long long) (v[2].y * 256.0);
+
+  // Define AX Incremental
+  a0 = (y1 - y2) << 8;
+  a1 = (y2 - y0) << 8;
+  a2 = (y0 - y1) << 8;
+
+  // Define BX Incremental
+  b0 = (x2 - x1) << 8;
+  b1 = (x0 - x2) << 8;
+  b2 = (x1 - x0) << 8;
+
+  // Define C Constant Part
+  c0 = (x1 * y2) - (x2 * y1);
+  c1 = (x2 * y0) - (x0 * y2);
+  c2 = (x0 * y1) - (x1 * y0);
+
+  // Define Tie Checker Offset
+  c0 += a0 > 0 || (a0 == 0 && b0 > 0);
+  c1 += a1 > 0 || (a1 == 0 && b1 > 0);
+  c2 += a2 > 0 || (a2 == 0 && b2 > 0);
+
+  // Store Edge Equation
+  eq->a0 = a0; eq->b0 = b0; eq->c0 = c0;
+  eq->a1 = a1; eq->b1 = b1; eq->c1 = c1;
+  eq->a2 = a2; eq->b2 = b2; eq->c2 = c2;
+}
+
+void eq_gradient(equation_t* eq, vertex_t* v) {
   float a0, a1, a2;
   float b0, b1, b2;
   float c0, c1, c2;
@@ -86,52 +129,6 @@ static void eq_gradient(equation_t* eq, vertex_t* v) {
   eq->v2 = z2; eq->v_c = z_c;
 }
 
-void eq_calculate(equation_t* eq, vertex_t* v) {
-  long long x0, x1, x2;
-  long long y0, y1, y2;
-
-  long long a0, a1, a2;
-  long long b0, b1, b2;
-  long long c0, c1, c2;
-
-  // Convert Coordinates to Fixed Point
-  x0 = (long long) (v[0].x * 256.0);
-  x1 = (long long) (v[1].x * 256.0);
-  x2 = (long long) (v[2].x * 256.0);
-
-  y0 = (long long) (v[0].y * 256.0);
-  y1 = (long long) (v[1].y * 256.0);
-  y2 = (long long) (v[2].y * 256.0);
-
-  // Define AX Incremental
-  a0 = (y1 - y2) << 8;
-  a1 = (y2 - y0) << 8;
-  a2 = (y0 - y1) << 8;
-
-  // Define BX Incremental
-  b0 = (x2 - x1) << 8;
-  b1 = (x0 - x2) << 8;
-  b2 = (x1 - x0) << 8;
-
-  // Define C Constant Part
-  c0 = (x1 * y2) - (x2 * y1);
-  c1 = (x2 * y0) - (x0 * y2);
-  c2 = (x0 * y1) - (x1 * y0);
-
-  // Store Edge Equation
-  eq->a0 = a0; eq->b0 = b0; eq->c0 = c0;
-  eq->a1 = a1; eq->b1 = b1; eq->c1 = c1;
-  eq->a2 = a2; eq->b2 = b2; eq->c2 = c2;
-
-  // Define Tie Checker
-  eq->tie0 = a0 > 0 || (a0 == 0 && b0 > 0);
-  eq->tie1 = a1 > 0 || (a1 == 0 && b1 > 0);
-  eq->tie2 = a2 > 0 || (a2 == 0 && b2 > 0);
-
-  // Define Equation Gradient
-  eq_gradient(eq, v);
-}
-
 // ------------------------------------
 // EDGE EQUATION DERIVATIVE CALCULATION
 // ------------------------------------
@@ -165,10 +162,14 @@ void eq_derivative(equation_t* eq, derivative_t* dde) {
   float raw, level, fract;
   // Calculate Mipmap Level
   raw = (ddu > ddv) ? ddu:ddv;
-  raw = log2(raw);
-  // Avoid Negative
-  if (raw < 0.0)
-    raw = 0.0;
+
+  if (raw > 1.0) {
+    raw = log2(raw);
+
+    // Max Subpixel
+    if (raw > 8.0)
+      raw = 8.0;
+  } else { raw = 0.0; }
 
   level = floor(raw);
   fract = raw - level;
@@ -177,17 +178,9 @@ void eq_derivative(equation_t* eq, derivative_t* dde) {
   // Derivative Steps Full
   eq_derivative_level(eq, &dde->bot, lvl + 1);
   eq_derivative_level(eq, &dde->top, lvl + 2);
+
   // Derivative Interpolation
   dde->fract = fract;
-
-  // 16x16 subpixel mask
-  dde->a0 = eq->a0 >> 4;
-  dde->a1 = eq->a1 >> 4;
-  dde->a2 = eq->a2 >> 4;
-
-  dde->b0 = eq->b0 >> 4;
-  dde->b1 = eq->b1 >> 4;
-  dde->b2 = eq->b2 >> 4;
 }
 
 // ----------------------------------

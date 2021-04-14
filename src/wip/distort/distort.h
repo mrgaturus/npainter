@@ -34,20 +34,10 @@ typedef struct {
 } level_t;
 
 typedef struct {
-  __m128 color;
-  __m128i mask;
-} subpixel_t;
-
-typedef struct {
-  // -- Full Derivatives
+  // Full Derivatives
   level_t bot, top;
   // Interpolation
   float fract;
-  // -- Edge Derivatives
-  long long a0, a1, a2;
-  long long b0, b1, b2;
-  // -- Tie Checker, Filled Bits
-  long long tie0, tie1, tie2;
 } derivative_t;
 
 // -- Triangle Binning
@@ -65,28 +55,30 @@ typedef struct {
 
 // -- Rendering Info
 typedef struct {
+  int sw, sh, w, h;
+  int16_t* buffer;
+  // Sampler Fn
+  void* fn;
+} sampler_t;
+
+typedef struct {
   int x, y, w, h;
-  // Source Pixels
-  int src_w, src_h;
-  int16_t* src;
+  // Pixel Sampler
+  sampler_t* sampler;
   // Target Pixels
   int dst_w, dst_h;
-  // Target Pointers
-  int16_t *dst, *mask;
-  // Sampler fn
-  void* sample_fn;
+  int16_t *dst;
 } fragment_t;
 
 // ----------------
 // PIXEL RESAMPLING
 // ----------------
 
-// Pixel Resampling Function Pointer
-typedef __m128i (*sample_fn_t)(fragment_t*, float, float);
-// Pixel Resampling Virtual Methods
-__m128i sample_nearest(fragment_t* render, float u, float v);
-__m128i sample_bilinear(fragment_t* render, float u, float v);
-__m128i sample_bicubic(fragment_t* render, float u, float v);
+// Pixel Resampling Function Pointer and it's resamplers
+typedef __m128i (*sampler_fn_t)(sampler_t*, float, float);
+__m128i sample_nearest(sampler_t* src, float u, float v);
+__m128i sample_bilinear(sampler_t* src, float u, float v);
+__m128i sample_bicubic(sampler_t* src, float u, float v);
 
 // One Pixel Premultiplied Alpha Blending
 void sample_blend_store(__m128i src, int16_t* dst);
@@ -99,11 +91,12 @@ __m128i sample_blend_pack(__m128i src, __m128i dst);
 int eq_winding(vertex_t* v);
 // -- Triangle Edge Equation Preparing
 void eq_calculate(equation_t* eq, vertex_t* v);
+void eq_gradient(equation_t* eq, vertex_t* v);
 void eq_derivative(equation_t* eq, derivative_t* dde);
-// -- Triangle Edge Equation Binning
+// -- Triangle Edge Equation Tile Binning
 void eq_binning(equation_t* eq, binning_t* bin);
 
-// -- Binning Pivot Definition
+// -- Binning Pivot Definition, Tile Units
 void eb_step_xy(binning_t* bin, int x, int y);
 // -- Binning Tile Steps
 void eb_step_x(binning_t* bin);
@@ -121,8 +114,6 @@ void eq_full(equation_t* eq, fragment_t* render);
 // -- Triangle Edge Equation Rendering with Antialising
 void eq_partial_subpixel(equation_t* eq, derivative_t* dde, fragment_t* render);
 void eq_full_subpixel(equation_t* eq, derivative_t* dde, fragment_t* render);
-// -- Apply Antialiased Pixels and Free Auxiliar
-void eq_apply_antialiasing(fragment_t* render);
 
 // -----------------------------------------------------------
 // 2D TRIANGULAR SURFACES, AFFINE, BILINEAR-PERSPECTIVE, NURBS
