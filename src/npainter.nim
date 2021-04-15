@@ -333,9 +333,9 @@ proc unit(self: GUIDistort) =
         v = addr self.mesh[i]
         rx = cfloat(x) * rcp
         ry = cfloat(y) * rcp
-      # Store UV Coordinates with border
-      v.u = cfloat(w + 1) * rx - 1.0
-      v.v = cfloat(h + 1) * ry - 1.0
+      # Store UV Coordinates
+      v.u = cfloat(w) * rx - 1.0
+      v.v = cfloat(h) * ry - 1.0
       # Store Unit Position
       v.x = rx; v.y = ry
       inc(i) # Next Vertex
@@ -467,21 +467,20 @@ when isMainModule:
   #quad[2] = NSurfaceVec2D(x: 1280, y: 720)
   #quad[3] = NSurfaceVec2D(x: 10, y: 100)
 
-  quad[0] = NSurfaceVec2D(x: 100, y: 10)
-  quad[1] = NSurfaceVec2D(x: 120, y: 600)
-  quad[2] = NSurfaceVec2D(x: 1280, y: 720)
-  quad[3] = NSurfaceVec2D(x: 110, y: 10)
+  #quad[0] = NSurfaceVec2D(x: 100, y: 10)
+  #quad[1] = NSurfaceVec2D(x: 120, y: 600)
+  #quad[2] = NSurfaceVec2D(x: 1280, y: 720)
+  #quad[3] = NSurfaceVec2D(x: 110, y: 10)
 
-  quad[0] = NSurfaceVec2D(x: 10 - 1, y: 10 - 1)
-  quad[1] = NSurfaceVec2D(x: 710 + 1, y: 10 - 1)
-  quad[2] = NSurfaceVec2D(x: 710 + 1, y: 710 + 1)
-  quad[3] = NSurfaceVec2D(x: 10 - 1, y: 710 + 1)
+  quad[0] = NSurfaceVec2D(x: 2 - 1, y: 2 - 1)
+  quad[1] = NSurfaceVec2D(x: 702, y: 2 - 1)
+  quad[2] = NSurfaceVec2D(x: 702, y: 702)
+  quad[3] = NSurfaceVec2D(x: 2 - 1, y: 702)
 
-  root.mesh_res = 32
+  root.mesh_res = 128
   root.repeat(1.0, 1.0)
   root.perspective(quad, 1.0)
   #root.render_mesh()
-  #root.render_mesh(false)
   root.render_mesh_subpixel()
 
   # Open Window

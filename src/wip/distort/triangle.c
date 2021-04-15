@@ -16,12 +16,8 @@ int eq_winding(vertex_t* v) {
 
   // Calculate Oriented Area
   area = (ax * by) - (ay * bx);
-  
-  int result;
-  result = // Get Area Sign
-    (0.0 < area) - (area < 0.0);
 
-  if (result < 0) {
+  if (area < 0) {
     vertex_t swap;
     // Swap Vertex
     swap = v[0];
@@ -29,7 +25,8 @@ int eq_winding(vertex_t* v) {
     v[2] = swap;
   }
 
-  return result;
+  // Skip Parallel Lines
+  return (area != 0.0);
 }
 
 // -------------------------
@@ -69,9 +66,9 @@ void eq_calculate(equation_t* eq, vertex_t* v) {
   c2 = (x0 * y1) - (x1 * y0);
 
   // Define Tie Checker Offset
-  c0 += a0 > 0 || (a0 == 0 && b0 > 0);
-  c1 += a1 > 0 || (a1 == 0 && b1 > 0);
-  c2 += a2 > 0 || (a2 == 0 && b2 > 0);
+  c0 -= a0 > 0 || (a0 == 0 && b0 > 0);
+  c1 -= a1 > 0 || (a1 == 0 && b1 > 0);
+  c2 -= a2 > 0 || (a2 == 0 && b2 > 0);
 
   // Store Edge Equation
   eq->a0 = a0; eq->b0 = b0; eq->c0 = c0;

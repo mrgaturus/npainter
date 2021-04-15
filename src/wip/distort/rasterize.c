@@ -42,11 +42,6 @@ void eq_partial(equation_t* eq, fragment_t* render) {
   row1 = a1 * xmin + b1 * ymin + eq->c1;
   row2 = a2 * xmin + b2 * ymin + eq->c2;
 
-  // Set Centered to Pixel
-  row0 += (a0 >> 1) + (b0 >> 1);
-  row1 += (a1 >> 1) + (b1 >> 1);
-  row2 += (a2 >> 1) + (b2 >> 1);
-
   // Load UV Equation Coeffients
   u_a = eq->u_a; u_b = eq->u_b; u_c = eq->u_c;
   v_a = eq->v_a; v_b = eq->v_b; v_c = eq->v_c;
@@ -238,11 +233,6 @@ void eq_partial_subpixel(equation_t* eq, derivative_t* dde, fragment_t* render) 
   row1 = a1 * xmin + b1 * ymin + eq->c1;
   row2 = a2 * xmin + b2 * ymin + eq->c2;
 
-  // Set Centered to Pixel
-  row0 += (a0 >> 1) + (b0 >> 1);
-  row1 += (a1 >> 1) + (b1 >> 1);
-  row2 += (a2 >> 1) + (b2 >> 1);
-
   // Load UV Equation Coeffients
   u_a = eq->u_a; u_b = eq->u_b; u_c = eq->u_c;
   v_a = eq->v_a; v_b = eq->v_b; v_c = eq->v_c;
@@ -326,7 +316,7 @@ void eq_full_subpixel(equation_t* eq, derivative_t* dde, fragment_t* render) {
   // Set Incremental Starting Position
   u_row = xmin * u_a + ymin * u_b + eq->u_c;
   v_row = xmin * v_a + ymin * v_b + eq->v_c;
-  
+
   // Load Subpixel Interpolator
   xmm0 = _mm_set1_ps(dde->fract);
 
