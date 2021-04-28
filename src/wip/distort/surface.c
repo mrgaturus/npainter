@@ -193,32 +193,32 @@ static float catmull_lookup(float* cp_x, float* cp_y, vec2_t* cp, int count, flo
 }
 
 static vec2_t catmull_evaluate(float* cp_x, float* cp_y, float t) {
-  float p[4], t2, t3, calc;
+  float p[4], t2, t3;
+  // SSE4.1 Dot Product
+  __m128 xmm0, xmm1, xmm2;
 
   t2 = t * t;
-  t3 = t * t * t;
+  t3 = t2 * t;
 
   p[0] = (-0.5 * t3) + t2 - (0.5 * t);
   p[1] = (1.5 * t3) - (2.5 * t2) + 1.0;
   p[2] = (-1.5 * t3) + (2.0 * t2) + (0.5 * t);
   p[3] = (0.5 * t3) - (0.5 * t2);
 
-  vec2_t result;
-  // Calculate New Point
-  calc  = cp_x[0] * p[0];
-  calc += cp_x[1] * p[1];
-  calc += cp_x[2] * p[2];
-  calc += cp_x[3] * p[3];
-  // Store New X
-  result.x = calc;
+  // Load Cooeffients
+  xmm0 = _mm_loadu_ps(p);
+  // Load Control Points
+  xmm1 = _mm_loadu_ps(cp_x);
+  xmm2 = _mm_loadu_ps(cp_y);
 
-  // Calculate New Point
-  calc  = cp_y[0] * p[0];
-  calc += cp_y[1] * p[1];
-  calc += cp_y[2] * p[2];
-  calc += cp_y[3] * p[3];
-  // Store New Y
-  result.y = calc;
+  // Perform SSE4.1 Dot Product
+  xmm1 = _mm_dp_ps(xmm0, xmm1, 0xFF);
+  xmm2 = _mm_dp_ps(xmm0, xmm2, 0xFF);
+
+  vec2_t result;
+  // Store Interpolated
+  result.x = _mm_cvtss_f32(xmm1);
+  result.y = _mm_cvtss_f32(xmm2);
 
   return result;
 }

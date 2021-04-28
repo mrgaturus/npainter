@@ -407,13 +407,14 @@ proc perspective(self: GUIDistort, controls: array[4, NSurfaceVec2D], fract: cfl
     perspective_evaluate(addr self.bilinear, addr p)
 
 proc catmull(self: GUIDistort, controls: seq[NSurfaceVec2D], w, h: cint) =
+  let s = h + 2
   # Prepare Catmull Buffer
   var cp: seq[NSurfaceVec2D]
-  cp.setLen(w + 3 + (h + 2) * w)
+  cp.setLen(w + 3 + s * w)
   # Copy Each Point
   for x in 0..<w:
     for y in 0..<h:
-      cp[x * (h + 2) + y + 1] = 
+      cp[x * s + y + 1] = 
         controls[y * w + x]
   # Store Catmull Buffer
   shallowCopy(self.catmull_cp, cp)
@@ -487,7 +488,7 @@ when isMainModule:
 
   # Create Main Widget
   root = newDistort("yuh.png")
-  root.mesh_res = 64
+  root.mesh_res = 32
   root.repeat(1.0, 1.0)
 
   # #[
@@ -498,7 +499,7 @@ when isMainModule:
   controls[1] = NSurfaceVec2D(x: 351, y: 0)
   controls[2] = NSurfaceVec2D(x: 702, y: 0)
 
-  controls[3] = NSurfaceVec2D(x: 0, y: 351)
+  controls[3] = NSurfaceVec2D(x: 128, y: 351)
   controls[4] = NSurfaceVec2D(x: 351, y: 351)
   controls[5] = NSurfaceVec2D(x: 702, y: 351)
 
