@@ -42,6 +42,11 @@ void eq_partial(equation_t* eq, fragment_t* render) {
   row1 = a1 * xmin + b1 * ymin + eq->c1;
   row2 = a2 * xmin + b2 * ymin + eq->c2;
 
+  // Set Incremental Centered
+  row0 += (a0 >> 1) + (b0 >> 1);
+  row1 += (a1 >> 1) + (b1 >> 1);
+  row2 += (a2 >> 1) + (b2 >> 1);
+
   // Load UV Equation Coeffients
   u_a = eq->u_a; u_b = eq->u_b; u_c = eq->u_c;
   v_a = eq->v_a; v_b = eq->v_b; v_c = eq->v_c;
@@ -232,6 +237,11 @@ void eq_partial_subpixel(equation_t* eq, derivative_t* dde, fragment_t* render) 
   row0 = a0 * xmin + b0 * ymin + eq->c0;
   row1 = a1 * xmin + b1 * ymin + eq->c1;
   row2 = a2 * xmin + b2 * ymin + eq->c2;
+
+  // Set Incremental Centered
+  row0 += (a0 >> 1) + (b0 >> 1);
+  row1 += (a1 >> 1) + (b1 >> 1);
+  row2 += (a2 >> 1) + (b2 >> 1);
 
   // Load UV Equation Coeffients
   u_a = eq->u_a; u_b = eq->u_b; u_c = eq->u_c;

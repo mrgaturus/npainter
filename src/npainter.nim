@@ -42,7 +42,7 @@ type
   NSurfaceVec2D {.importc: "vec2_t".} = object
     x, y: cfloat # Vector2 is only relevant here
   NSurfaceBilinear {.importc: "perspective_t".} = object
-  NSurfaceBezier {.importc: "bezier_t".} = object
+  NSurfaceCatmull {.importc: "catmull_t".} = object
 
 {.push importc.}
 
@@ -77,6 +77,9 @@ proc eq_full_subpixel(eq: ptr NTriangleEquation, dde: ptr NTriangleDerivative, r
 proc perspective_calc(surf: ptr NSurfaceBilinear, v: ptr NSurfaceVec2D, fract: cfloat)
 proc perspective_evaluate(surf: ptr NSurfaceBilinear, p: ptr NTriangleVertex)
 
+proc catmull_surface_calc(surf: ptr NSurfaceCatmull, c: ptr NSurfaceVec2D, w, h: cint)
+proc catmull_surface_evaluate(surf: ptr NSurfaceCatmull, p: ptr NTriangleVertex)
+
 {.pop.} # -- End Importing Procs
 
 {.pop.} # -- End distort.h
@@ -105,8 +108,10 @@ type
     # Triangle Mesh
     mesh: seq[NTriangleVertex]
     mesh_res: cint
-    # Surface Caches
+    # Surface Interpolators
     bilinear: NSurfaceBilinear
+    catmull: NSurfaceCatmull
+    catmull_cp: seq[NSurfaceVec2D]
     # OpenGL Texture
     tex: GLuint
 
@@ -312,45 +317,6 @@ proc render(self: GUIDistort, v: var NTriangle) =
     # Check AABB and Decide Binning
     render_bin(self.equation, render)
 
-# ------------------------
-# TRIANGLE MESH DEFINITION
-# ------------------------
-
-proc unit(self: GUIDistort) =
-  let 
-    n = self.mesh_res
-    rcp = 1.0 / cfloat(n - 1)
-    # Image Dimensions
-    w = self.sampler.sw + 1
-    h = self.sampler.sh + 1
-  # With Additional Vertex
-  setLen(self.mesh, n * n)
-  # Initialize As Unitary
-  var i: int
-  for y in 0..<n:
-    for x in 0..<n:
-      let 
-        v = addr self.mesh[i]
-        rx = cfloat(x) * rcp
-        ry = cfloat(y) * rcp
-      # Store UV Coordinates
-      v.u = cfloat(w) * rx - 1.0
-      v.v = cfloat(h) * ry - 1.0
-      # Store Unit Position
-      v.x = rx; v.y = ry
-      inc(i) # Next Vertex
-
-proc perspective(self: GUIDistort, quad: array[4, NSurfaceVec2D], fract: cfloat) =
-  # Calculate Transformation
-  perspective_calc(addr self.bilinear, 
-    unsafeAddr quad[0], fract)
-  # Define Unitary
-  self.unit()
-  # Transform Each Point
-  for v in mitems(self.mesh):
-    # Transform Each Point As Bilinear Transform
-    perspective_evaluate(addr self.bilinear, addr v)
-
 # -----------------------
 # TRIANGLE MESH RENDERING
 # -----------------------
@@ -400,6 +366,66 @@ proc render_mesh_subpixel(self: GUIDistort) =
       render_subpixel(self, b)
   # Copy Current Buffer
   self.copy(0, 0, 1280, 720)
+
+# ------------------------
+# TRIANGLE MESH DEFINITION
+# ------------------------
+
+proc unit(self: GUIDistort) =
+  let 
+    n = self.mesh_res
+    rcp = 1.0 / cfloat(n - 1)
+    # Image Dimensions
+    w = self.sampler.sw + 2
+    h = self.sampler.sh + 2
+  # With Additional Vertex
+  setLen(self.mesh, n * n)
+  # Initialize As Unitary
+  var i: int
+  for y in 0..<n:
+    for x in 0..<n:
+      let 
+        v = addr self.mesh[i]
+        rx = cfloat(x) * rcp
+        ry = cfloat(y) * rcp
+      # Store UV Coordinates
+      v.u = cfloat(w) * rx - 1.0
+      v.v = cfloat(h) * ry - 1.0
+      # Store Unit Position
+      v.x = rx; v.y = ry
+      inc(i) # Next Vertex
+
+proc perspective(self: GUIDistort, controls: array[4, NSurfaceVec2D], fract: cfloat) =
+  # Calculate Transformation
+  perspective_calc(addr self.bilinear, 
+    unsafeAddr controls[0], fract)
+  # Define Unitary
+  self.unit()
+  # Transform Each Point
+  for p in mitems(self.mesh):
+    # Transform Each Point As Bilinear Transform
+    perspective_evaluate(addr self.bilinear, addr p)
+
+proc catmull(self: GUIDistort, controls: seq[NSurfaceVec2D], w, h: cint) =
+  # Prepare Catmull Buffer
+  var cp: seq[NSurfaceVec2D]
+  cp.setLen(w + 3 + (h + 2) * w)
+  # Copy Each Point
+  for x in 0..<w:
+    for y in 0..<h:
+      cp[x * (h + 2) + y + 1] = 
+        controls[y * w + x]
+  # Store Catmull Buffer
+  shallowCopy(self.catmull_cp, cp)
+  # Calculate Transformation
+  catmull_surface_calc(addr self.catmull,
+    addr self.catmull_cp[0], w, h)
+  # Define Unitary
+  self.unit()
+  # Transform Each Point
+  for p in mitems(self.mesh):
+    # Transform Each Point As Bilinear Transform
+    catmull_surface_evaluate(addr self.catmull, addr p)
 
 # ------------------
 # MESH TEST CREATION
@@ -461,6 +487,30 @@ when isMainModule:
 
   # Create Main Widget
   root = newDistort("yuh.png")
+  root.mesh_res = 64
+  root.repeat(1.0, 1.0)
+
+  # #[
+  var controls: seq[NSurfaceVec2D]
+  controls.setLen(3 * 3)
+
+  controls[0] = NSurfaceVec2D(x: 0, y: 0)
+  controls[1] = NSurfaceVec2D(x: 351, y: 0)
+  controls[2] = NSurfaceVec2D(x: 702, y: 0)
+
+  controls[3] = NSurfaceVec2D(x: 0, y: 351)
+  controls[4] = NSurfaceVec2D(x: 351, y: 351)
+  controls[5] = NSurfaceVec2D(x: 702, y: 351)
+
+  controls[6] = NSurfaceVec2D(x: 0, y: 702)
+  controls[7] = NSurfaceVec2D(x: 351, y: 702)
+  controls[8] = NSurfaceVec2D(x: 20, y: 20)
+
+  catmull(root, controls, 3, 3)
+
+  # ]#
+
+  #[
   var quad: array[4, NSurfaceVec2D]
   #quad[0] = NSurfaceVec2D(x: 500, y: 10)
   #quad[1] = NSurfaceVec2D(x: 100, y: 500)
@@ -472,16 +522,15 @@ when isMainModule:
   #quad[2] = NSurfaceVec2D(x: 1280, y: 720)
   #quad[3] = NSurfaceVec2D(x: 110, y: 10)
 
-  quad[0] = NSurfaceVec2D(x: 2 - 1, y: 2 - 1)
-  quad[1] = NSurfaceVec2D(x: 702, y: 2 - 1)
+  quad[0] = NSurfaceVec2D(x: 0, y: 0)
+  quad[1] = NSurfaceVec2D(x: 702, y: 0)
   quad[2] = NSurfaceVec2D(x: 702, y: 702)
-  quad[3] = NSurfaceVec2D(x: 2 - 1, y: 702)
+  quad[3] = NSurfaceVec2D(x: 0, y: 702)
 
-  root.mesh_res = 128
-  root.repeat(1.0, 1.0)
   root.perspective(quad, 1.0)
-  #root.render_mesh()
-  root.render_mesh_subpixel()
+  ]#
+  root.render_mesh()
+  #root.render_mesh_subpixel()
 
   # Open Window
   if win.open(root):

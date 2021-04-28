@@ -111,7 +111,7 @@ int eb_check(binning_t* bin);
 // -- Triangle Edge Equation Rendering
 void eq_partial(equation_t* eq, fragment_t* render);
 void eq_full(equation_t* eq, fragment_t* render);
-// -- Triangle Edge Equation Rendering with Antialising
+// -- Triangle Edge Equation Rendering with Downscaling Oversample
 void eq_partial_subpixel(equation_t* eq, derivative_t* dde, fragment_t* render);
 void eq_full_subpixel(equation_t* eq, derivative_t* dde, fragment_t* render);
 
@@ -135,15 +135,18 @@ typedef struct {
   float fract;
 } perspective_t;
 
-// -- Bezier Surface
+// -- Catmull Patch
 typedef struct {
-  vec2_t* v;
-  // Degrees
-  int w, h;
-} bezier_t;
+  vec2_t* curves;
+  vec2_t* curve;
+  // Mesh Size
+  int w, h, s;
+  // V Cache
+  float v;
+} catmull_t;
 
 void perspective_calc(perspective_t* surf, vec2_t* v, float fract);
 void perspective_evaluate(perspective_t* surf, vertex_t* p);
 
-void bezier_surface_calc(bezier_t* surf, vec2_t* v, int w, int h);
-void bezier_surface_evaluate(bezier_t* surf, vertex_t* p);
+void catmull_surface_calc(catmull_t* surf, vec2_t* v, int w, int h);
+void catmull_surface_evaluate(catmull_t* surf, vertex_t* p);

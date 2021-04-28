@@ -1,5 +1,6 @@
-#include "distort.h"
+#include <math.h>
 #include <string.h>
+#include "distort.h"
 
 // --------------------------------------
 // 2D VECTOR OPERATION ONLY REVELANT HERE
@@ -127,6 +128,141 @@ void perspective_evaluate(perspective_t* surf, vertex_t* p) {
   p->x = x0; p->y = y0;
 }
 
-// -----------------------------
-// BEZIER SURFACE TRANSFORMATION
-// -----------------------------
+// ------------------------------------
+// CATMULL SURFACE PATCH TRANSFORMATION
+// ------------------------------------
+
+static void catmull_endpoints(vec2_t* v, int w) {
+  w += 2; // Add End Points
+
+  vec2_t cp;
+  // A = B - (C - B)
+  cp = vec2_sub(v[2], v[1]);
+  cp = vec2_sub(v[1], cp);
+  // Start Point
+  v[0] = cp;
+
+  // D = C + (C - B)
+  cp = vec2_sub(v[w - 2], v[w - 3]);
+  cp = vec2_add(v[w - 2], cp);
+  // End Point
+  v[w - 1] = cp;
+}
+
+void catmull_surface_calc(catmull_t* surf, vec2_t* v, int w, int h) {
+  const int s = h + 2;
+  // Calculate End Points
+  for (int i = 0; i < h; i++)
+    catmull_endpoints(v + s * i, h);
+
+  // Mesh of Curves
+  surf->curves = v;
+  // Bind Horizontally Curve
+  surf->curve = v + s * w;
+
+  surf->w = w;
+  surf->h = h;
+  surf->s = s;
+  // Reset V Cache
+  surf->v = INFINITY;
+}
+
+static float catmull_lookup(float* cp_x, float* cp_y, vec2_t* cp, int count, float t) {
+  int i; float t0, t1;
+
+  // Get Interpolation
+  t1 = (count - 1) * t;
+  t0 = floor(t1);
+
+  // Get Point Index
+  i = (int) t0;
+  t = t1 - t0;
+
+  // Get Curve Segment
+  cp_x[0] = cp[i + 0].x;
+  cp_x[1] = cp[i + 1].x;
+  cp_x[2] = cp[i + 2].x;
+  cp_x[3] = cp[i + 3].x;
+
+  cp_y[0] = cp[i + 0].y;
+  cp_y[1] = cp[i + 1].y;
+  cp_y[2] = cp[i + 2].y;
+  cp_y[3] = cp[i + 3].y;
+
+  return t;
+}
+
+static vec2_t catmull_evaluate(float* cp_x, float* cp_y, float t) {
+  float p[4], t2, t3, calc;
+
+  t2 = t * t;
+  t3 = t * t * t;
+
+  p[0] = (-0.5 * t3) + t2 - (0.5 * t);
+  p[1] = (1.5 * t3) - (2.5 * t2) + 1.0;
+  p[2] = (-1.5 * t3) + (2.0 * t2) + (0.5 * t);
+  p[3] = (0.5 * t3) - (0.5 * t2);
+
+  vec2_t result;
+  // Calculate New Point
+  calc  = cp_x[0] * p[0];
+  calc += cp_x[1] * p[1];
+  calc += cp_x[2] * p[2];
+  calc += cp_x[3] * p[3];
+  // Store New X
+  result.x = calc;
+
+  // Calculate New Point
+  calc  = cp_y[0] * p[0];
+  calc += cp_y[1] * p[1];
+  calc += cp_y[2] * p[2];
+  calc += cp_y[3] * p[3];
+  // Store New Y
+  result.y = calc;
+
+  return result;
+}
+
+void catmull_surface_evaluate(catmull_t* surf, vertex_t* p) {
+  vec2_t *curves, *curve, point;
+  // Current Curve Segment
+  float cp_x[4], cp_y[4];
+
+  float u, v, t;
+  // Interpolation
+  u = p->x; v = p->y;
+  // Curve Pointers
+  curves = surf->curves;
+  curve = surf->curve;
+
+  int w, h, s;
+  // Dimensions
+  w = surf->w;
+  h = surf->h;
+  s = surf->s;
+
+  if (v != surf->v) {
+    // Calculate Horizontal Curve
+    for (int i = 0; i < h; i++) {
+      // Load Current Curve
+      t = catmull_lookup(cp_x, cp_y,
+        curves + s * i, h, v);
+
+      // Evaluate Curve and Save Point
+      curve[i + 1] = catmull_evaluate(cp_x, cp_y, t);
+    }
+
+    // Calculate Endpoints
+    catmull_endpoints(curve, w);
+    // Replace Cache
+    surf->v = v;
+  }
+  
+  // Evaluate Horizontally
+  t = catmull_lookup(cp_x, cp_y, curve, w, u);
+  point = catmull_evaluate(cp_x, cp_y, t);
+
+  // Store New Point
+  p->x = point.x;
+  p->y = point.y;
+}
