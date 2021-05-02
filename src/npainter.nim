@@ -106,8 +106,8 @@ type
     mask, backup: array[1280*720*4, int16]
     buffer_copy: array[1280*720*4, uint8]
     # Control Points
-    cp_w, cp_h: int
     cp: seq[NSurfaceVec2D]
+    cp_w, cp_h, cp_grab: cint
     # Triangle Mesh
     mesh_n, mesh_m: cint
     mesh_res, mesh_s: cint
@@ -120,6 +120,8 @@ type
     catmull_cp: seq[NSurfaceVec2D]
     # OpenGL Texture
     tex: GLuint
+    # Avoid Flooding
+    busy: bool
 
 proc newImage(file: string): GUIImage =
   let image = loadPNG32(file)
@@ -371,8 +373,12 @@ proc render_mesh(self: GUIDistort) =
 # TRIANGLE MESH DEFINITION
 # ------------------------
 
-proc unit(self: GUIDistort; w, h, res: cint) =
+proc unit(self: GUIDistort; res: cint) =
   let
+    # Dimensions
+    w = self.cp_w
+    h = self.cp_h
+    # Grid Dimensions
     cw = w - 1
     ch = h - 1
     # Odd Resolution
@@ -412,21 +418,79 @@ proc unit(self: GUIDistort; w, h, res: cint) =
       v.v = cfloat(sh) * ry - 1.0
       # Store Unit Position
       v.x = rx; v.y = ry
-      inc(i) # Next Vertex
 
-proc perspective(self: GUIDistort, controls: array[4, NSurfaceVec2D], fract: cfloat) =
+# -------------------------------------
+# PERSPECTIVE-BILINEAR MESH CALCULATION
+# -------------------------------------
+
+proc perspective_cp(self: GUIDistort, x, y: cint) =
+  let
+    # Image Dimensions
+    sw = self.sampler.sw + 2
+    sh = self.sampler.sh + 2
+    # Position With Border
+    xx = cfloat(x - 1)
+    yy = cfloat(y - 1)
+    # Position With Offset
+    ox = cfloat(x - 1 + sw)
+    oy = cfloat(y - 1 + sh)
+  # Alloc Control Points
+  setLen(self.cp, 4)
+  # Set Control Points
+  self.cp[0] = NSurfaceVec2D(x: xx, y: yy)
+  self.cp[1] = NSurfaceVec2D(x: ox, y: yy)
+  self.cp[2] = NSurfaceVec2D(x: ox, y: oy)
+  self.cp[3] = NSurfaceVec2D(x: xx, y: oy)
+  # Set Control Point Dimensions
+  self.cp_w = 2; self.cp_h = 2
+
+proc perspective(self: GUIDistort, fract: cfloat) =
   # Calculate Transformation
   perspective_calc(addr self.bilinear, 
-    unsafeAddr controls[0], fract)
-  # Define Unitary
-  self.unit(2, 2, 32)
+    unsafeAddr self.cp[0], fract)
+  # Define Unitary Mesh
+  self.unit(32)
   # Transform Each Point
   for p in mitems(self.mesh):
     # Transform Each Point As Bilinear Transform
     perspective_evaluate(addr self.bilinear, addr p)
 
-proc catmull(self: GUIDistort, controls: seq[NSurfaceVec2D], w, h: cint) =
-  let s = h + 2
+# --------------------------------
+# CATMULL SURFACE MESH CALCULATION
+# --------------------------------
+
+proc catmull_cp(self: GUIDistort, x, y: cint; w, h: cint) =
+  let
+    rcx = 1.0 / cfloat(w - 1)
+    rcy = 1.0 / cfloat(h - 1)
+    # Bordered Position
+    ox = cfloat(x - 1)
+    oy = cfloat(y - 1)
+    # Image Dimensions
+    sw = self.sampler.sw + 2
+    sh = self.sampler.sh + 2
+  # Allocate Control Points
+  setLen(self.cp, w * h)
+  # Locate Each Control Point
+  var i: int
+  for yy in 0..<h:
+    for xx in 0..<w:
+      i = yy * w + xx
+      # Load Current Control
+      let cp = addr self.cp[i]
+      # Calculate and Store Each XY Position
+      cp.x = ox + cfloat(sw * xx) * rcx
+      cp.y = oy + cfloat(sh * yy) * rcy
+  # Store Control Points Dimensions
+  self.cp_w = w; self.cp_h = h
+
+proc catmull(self: GUIDistort) =
+  let 
+    # Grid Dimensions
+    w = self.cp_w
+    h = self.cp_h
+    # Grid Stride
+    s = h + 2
   # Prepare Catmull Buffer
   var cp: seq[NSurfaceVec2D]
   cp.setLen(w + 3 + s * w)
@@ -434,22 +498,22 @@ proc catmull(self: GUIDistort, controls: seq[NSurfaceVec2D], w, h: cint) =
   for x in 0..<w:
     for y in 0..<h:
       cp[x * s + y + 1] = 
-        controls[y * w + x]
+        self.cp[y * w + x]
   # Store Catmull Buffer
   shallowCopy(self.catmull_cp, cp)
   # Calculate Transformation
   catmull_surface_calc(addr self.catmull,
     addr self.catmull_cp[0], w, h)
-  # Define Unitary Quads
-  self.unit(w, h, 16)
+  # Define Unitary
+  self.unit(8)
   # Transform Each Point
   for p in mitems(self.mesh):
     # Transform Each Point As Bilinear Transform
     catmull_surface_evaluate(addr self.catmull, addr p)
 
-# ------------------
-# MESH TEST CREATION
-# ------------------
+# -------------------------
+# WIDGET MESH TEST CREATION
+# -------------------------
 
 proc newDistort(src: string): GUIDistort =
   new result
@@ -460,7 +524,7 @@ proc newDistort(src: string): GUIDistort =
   result.sampler.h = result.source.h
   result.sampler.buffer = addr result.source.buffer[0]
   # Set Function Proc
-  result.sampler.fn = cast[NTriangleFunc](sample_bilinear)
+  result.sampler.fn = cast[NTriangleFunc](sample_nearest)
   result.mesh_fn = rasterize_fast
   # Copy Buffer To Texture
   glGenTextures(1, addr result.tex)
@@ -475,7 +539,8 @@ proc newDistort(src: string): GUIDistort =
   #glGenerateMipmap(GL_TEXTURE_2D)
   glBindTexture(GL_TEXTURE_2D, 0)
   # Prepare Triangle
-  #result.verts = v1
+  result.flags = wMouse
+  result.cp_grab = not 0
 
 proc repeat(self: GUIDistort, sw, sh: cfloat) =
   self.sampler.sw = cint floor(
@@ -483,13 +548,63 @@ proc repeat(self: GUIDistort, sw, sh: cfloat) =
   self.sampler.sh = cint floor(
     cfloat(self.sampler.h) * sh)
 
+# -----------------------
+# WIDGET MESH INTERACTIVE
+# -----------------------
+
+proc cb_mesh(g: pointer, w: ptr GUITarget) =
+  let self = 
+    cast[GUIDistort](w[])
+  # Clear Buffer
+  zeroMem(addr self.buffer[0],
+    self.buffer.len * int16.sizeof)
+  # Calculate And Rasterize
+  perspective(self, 1.0)
+  render_mesh(self)
+  # Get Ready
+  self.busy = false
+
+method event*(self: GUIDistort, state: ptr GUIState) =
+  if self.test(wGrab) and self.cp_grab >= 0:
+    # Load Grabbed Control Point
+    let cp = addr self.cp[self.cp_grab]
+    # Change Position
+    cp.x = state.px
+    cp.y = state.py
+    if not self.busy:
+      var target = self.target
+      pushCallback(cb_mesh, target)
+      # Avoid Event Flooding
+      self.busy = true
+  elif state.kind == evCursorClick:
+    let
+      px = state.px
+      py = state.py
+    var cx, cy: cfloat
+    for i, cp in pairs(self.cp):
+      cx = cp.x
+      cy = cp.y
+      if (px < cx + 5.0) and px > (cx - 5.0) and 
+        (py < cy + 5.0) and py > (cy - 5.0):
+          self.cp_grab = cast[cint](i); break
+  elif state.kind == evCursorRelease:
+    self.cp_grab = not 0    
+
 method draw(self: GUIDistort, ctx: ptr CTXRender) =
+  var r: CTXRect
   ctx.color(uint32 0xFFFFFFFF)
-  #ctx.color(uint32 0xFFFF2f2f)
-  var r = rect(0, 0, 1280, 720)
+  r = rect(0, 0, 1280, 720)
   ctx.fill(r)
   ctx.color(uint32 0xFFFFFFFF)
   ctx.texture(r, self.tex)
+  # Draw Control Points
+  ctx.color(uint32 0xFF2f2f2f)
+  for cp in self.cp:
+    r.x = cp.x - 5.0
+    r.xw = cp.x + 5.0
+    r.y = cp.y - 5.0
+    r.yh = cp.y + 5.0
+    ctx.fill(r)
   #ctx.color(self.color)
   #for v in self.quad.v:
   #  r = rect(int32 v.x - 5, int32 v.y - 5, 10, 10)
@@ -554,12 +669,12 @@ when isMainModule:
   #quad[2] = NSurfaceVec2D(x: 1280, y: 720)
   #quad[3] = NSurfaceVec2D(x: 110, y: 10)
 
-  quad[0] = NSurfaceVec2D(x: 0, y: 0)
-  quad[1] = NSurfaceVec2D(x: 702, y: 0)
-  quad[2] = NSurfaceVec2D(x: 702, y: 702)
-  quad[3] = NSurfaceVec2D(x: 0, y: 702)
-
-  root.perspective(quad, 1.0)
+  #quad[0] = NSurfaceVec2D(x: 0, y: 0)
+  #quad[1] = NSurfaceVec2D(x: 702, y: 0)
+  #quad[2] = NSurfaceVec2D(x: 702, y: 702)
+  #quad[3] = NSurfaceVec2D(x: 0, y: 702)
+  perspective_cp(root, 50, 50)
+  perspective(root, 1.0)
   # ]#
   root.render_mesh()
   
