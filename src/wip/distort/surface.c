@@ -152,7 +152,7 @@ static void catmull_endpoints(vec2_t* v, int w) {
 void catmull_surface_calc(catmull_t* surf, vec2_t* v, int w, int h) {
   const int s = h + 2;
   // Calculate End Points
-  for (int i = 0; i < h; i++)
+  for (int i = 0; i < w; i++)
     catmull_endpoints(v + s * i, h);
 
   // Mesh of Curves
@@ -243,7 +243,7 @@ void catmull_surface_evaluate(catmull_t* surf, vertex_t* p) {
 
   if (v != surf->v) {
     // Calculate Horizontal Curve
-    for (int i = 0; i < h; i++) {
+    for (int i = 0; i < w; i++) {
       // Load Current Curve
       t = catmull_lookup(cp_x, cp_y,
         curves + s * i, h, v);
