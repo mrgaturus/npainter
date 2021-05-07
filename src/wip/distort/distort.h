@@ -12,17 +12,15 @@ typedef struct {
 
 // -- Edge Equation
 typedef struct {
-  long long a0, b0, c0;
-  long long a1, b1, c1;
-  long long a2, b2, c2;
+  int a0, b0, c0;
+  int a1, b1, c1;
+  int a2, b2, c2;
   // Parameters
   float u0, u1, u2;
   float v0, v1, v2;
   // -- Fully Covered
   float u_a, u_b, u_c;
   float v_a, v_b, v_c;
-  // -- Tie Checker
-  int tie0, tie1, tie2;
 } equation_t;
 
 // -- Subpixel Rendering
@@ -70,11 +68,11 @@ typedef struct {
   int16_t *dst;
 } fragment_t;
 
-// ----------------
-// PIXEL RESAMPLING
-// ----------------
+// -----------------------
+// SOURCE PIXEL RESAMPLING
+// -----------------------
 
-// Pixel Resampling Function Pointer and it's resamplers
+// Pixel Resamplers for usage with Oversampling
 typedef __m128i (*sampler_fn_t)(sampler_t*, float, float);
 __m128i sample_nearest(sampler_t* src, float u, float v);
 __m128i sample_bilinear(sampler_t* src, float u, float v);
@@ -93,10 +91,9 @@ int eq_winding(vertex_t* v);
 void eq_calculate(equation_t* eq, vertex_t* v);
 void eq_gradient(equation_t* eq, vertex_t* v);
 void eq_derivative(equation_t* eq, derivative_t* dde);
-// -- Triangle Edge Equation Tile Binning
-void eq_binning(equation_t* eq, binning_t* bin);
 
-// -- Binning Pivot Definition, Tile Units
+// -- Triangle Edge Equation Tile Binning
+void eq_binning(equation_t* eq, binning_t* bin, int shift);
 void eb_step_xy(binning_t* bin, int x, int y);
 // -- Binning Tile Steps
 void eb_step_x(binning_t* bin);

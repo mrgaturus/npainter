@@ -6,7 +6,6 @@ import nimPNG
 # -------------------------
 # Import C Code of Triangle
 # -------------------------
-{.passC: "-msse4.1".}
 
 {.compile: "wip/distort/sample.c".}
 {.compile: "wip/distort/triangle.c".}
@@ -46,7 +45,7 @@ type
 
 {.push importc.}
 
-# Sampling Procs
+# Pixel Resampling Function Pointers
 proc sample_nearest(render: ptr NTriangleRender, u, v: cfloat) {.used.}
 proc sample_bilinear(render: ptr NTriangleRender, u, v: cfloat) {.used.}
 proc sample_bicubic(render: ptr NTriangleRender, u, v: cfloat) {.used.}
@@ -57,8 +56,8 @@ proc eq_calculate(eq: ptr NTriangleEquation, v: ptr NTriangle)
 proc eq_gradient(eq: ptr NTriangleEquation, v: ptr NTriangle)
 proc eq_derivative(eq: ptr NTriangleEquation, dde: ptr NTriangleDerivative)
 
-# Triangle Binning
-proc eq_binning(eq: ptr NTriangleEquation, bin: ptr NTriangleBinning)
+# Triangle Binning, Multiply By A Power Of Two
+proc eq_binning(eq: ptr NTriangleEquation, bin: ptr NTriangleBinning, shift: cint)
 # Triangle Binning Steps
 proc eb_step_xy(bin: ptr NTriangleBinning, x, y: cint)
 proc eb_step_x(bin: ptr NTriangleBinning)
@@ -67,8 +66,8 @@ proc eb_step_y(bin: ptr NTriangleBinning)
 proc eb_check(bin: ptr NTriangleBinning): int32
 
 # Triangle Equation Realtime Rendering
-proc eq_partial(eq: ptr NTriangleEquation, render: ptr NTriangleRender)
-proc eq_full(eq: ptr NTriangleEquation, render: ptr NTriangleRender)
+proc eq_partial(eq: ptr NTriangleEquation, render: ptr NTriangleRender) {.gcsafe.}
+proc eq_full(eq: ptr NTriangleEquation, render: ptr NTriangleRender) {.gcsafe.}
 # Triangle Equation Rendering Subpixel Antialiasing Post-Procesing
 proc eq_partial_subpixel(eq: ptr NTriangleEquation, dde: ptr NTriangleDerivative, render: ptr NTriangleRender)
 proc eq_full_subpixel(eq: ptr NTriangleEquation, dde: ptr NTriangleDerivative, render: ptr NTriangleRender)
@@ -89,41 +88,56 @@ proc catmull_surface_evaluate(surf: ptr NSurfaceCatmull, p: ptr NTriangleVertex)
 # ---------------------
 
 type
-  NTriangleAABB = object
-    xmin, ymin, xmax, ymax: float32
-  NTriangleRasterizeFunc = 
-    proc (self: GUIDistort, v: var NTriangle)
-  GUIImage = object
+  NImage = object
     w, h: int32
     buffer: seq[int16] 
+  NTriangleAABB = object
+    xmin, ymin, xmax, ymax: float32
+  NTriangleBlockAABB = object
+    xmin, ymin, xmax, ymax: int32
+  NTriangleBlockCMD = object
+    x, y, len: int32
+    # FINAL: Pointer To An Object Directly
+    index: ptr UncheckedArray[uint16]
+    # Image Target And Source
+    buffer: ptr UncheckedArray[int16]
+    sampler: ptr NTriangleSampler
+    # Triangle Rasterization Proc
+    fn: NTriangleRasterizeFunc
+  NTriangleRasterizeFunc = 
+    proc (self: GUIDistort, v: var NTriangle)
   GUIDistort = ref object of GUIWidget
     # Triangle Preparation
     equation: NTriangleEquation
     sampler: NTriangleSampler
+    # Image Source
+    source: NImage
     # 15bit Pixel Buffer
-    source: GUIImage
     buffer: array[1280*720*4, int16]
-    mask, backup: array[1280*720*4, int16]
     buffer_copy: array[1280*720*4, uint8]
     # Control Points
-    cp: seq[NSurfaceVec2D]
+    cp, cp_aux: seq[NSurfaceVec2D]
     cp_w, cp_h, cp_grab: cint
     # Triangle Mesh
     mesh_n, mesh_m: cint
     mesh_res, mesh_s: cint
-    # Triangle Mesh Buffer & Proc
+    # Triangle Mesh Buffers
+    mesh_e: seq[uint16]
     mesh: seq[NTriangleVertex]
+    # Triangle Mesh Rendering Proc
     mesh_fn: NTriangleRasterizeFunc
     # Surface Interpolators
     bilinear: NSurfaceBilinear
     catmull: NSurfaceCatmull
-    catmull_cp: seq[NSurfaceVec2D]
+    # Triangle Blocks
+    blocks: seq[NTriangleBlockCMD]
+    blocks_aabb: NTriangleBlockAABB
     # OpenGL Texture
     tex: GLuint
     # Avoid Flooding
     busy: bool
 
-proc newImage(file: string): GUIImage =
+proc newImage(file: string): NImage =
   let image = loadPNG32(file)
   result.w = cast[int32](image.width)
   result.h = cast[int32](image.height)
@@ -155,8 +169,11 @@ proc newImage(file: string): GUIImage =
     result.buffer[i + 3] = 
       cast[int16]((a shl 7) or a)
 
-proc interval(render: var NTriangleRender, v: NTriangle) =
-  var result: NTriangleAABB
+# -------------------------------
+# AXIS ALIGNED BOUNDING BOX PROCS
+# -------------------------------
+
+proc aabb(v: NTriangle): NTriangleAABB =
   var # Iterator
     i = 1
     p = v[0]
@@ -181,11 +198,22 @@ proc interval(render: var NTriangleRender, v: NTriangle) =
       result.ymax = p.y
     # Next Point
     inc(i)
-  # Set Interval
-  render.x = int32(result.xmin)
-  render.y = int32(result.ymin)
-  render.w = int32(result.xmax) - render.x
-  render.h = int32(result.ymax) - render.y
+
+proc toBlocks(box: NTriangleAABB, shift: cint): NTriangleBlockAABB =
+  result.xmin = int32(box.xmin) shr shift
+  result.xmax = int32(box.xmax) shr shift
+  result.ymin = int32(box.ymin) shr shift
+  result.ymax = int32(box.ymax) shr shift
+
+proc expand(current: var NTriangleBlockAABB, box: NTriangleBlockAABB) =
+  current.xmin = min(current.xmin, box.xmin)
+  current.ymin = min(current.ymin, box.ymin)
+  current.xmin = max(current.xmax, box.xmax)
+  current.ymin = max(current.ymax, box.ymax)
+
+# -------------------------------
+# Copy to 8-Bit Color Buffer Proc
+# -------------------------------
 
 proc copy(self: GUIDistort, x, y, w, h: int) =
   var
@@ -218,20 +246,20 @@ proc copy(self: GUIDistort, x, y, w, h: int) =
 # TRIANGLE ANTIALIASED RASTERIZATION
 # ----------------------------------
 
-proc bin_subpixel(eq: var NTriangleEquation, render: var NTriangleRender) =
+proc bin_subpixel(eq: var NTriangleEquation, render: var NTriangleRender, aabb: NTriangleBlockAABB) =
   var 
     bin: NTriangleBinning
     dde: NTriangleDerivative
   # Calculate Triangle Derivative
   eq_derivative(addr eq, addr dde)
-  # Create New Triangle Binner
-  eq_binning(addr eq, addr bin)
+  # Calculate Triangle Binning
+  eq_binning(addr eq, addr bin, 3)
   # Get Tiled Positions
   let
-    x1 = render.x shr 3
-    x2 = (render.x + render.w) shr 3
-    y1 = render.y shr 3
-    y2 = (render.y + render.h) shr 3
+    x1 = aabb.xmin
+    x2 = aabb.xmax
+    y1 = aabb.ymin
+    y2 = aabb.ymax
   var count: cint
   # Set Render Size to 8
   render.w = 8; render.h = 8
@@ -267,26 +295,24 @@ proc rasterize_subpixel(self: GUIDistort, v: var NTriangle) =
     # Subpixel Rendering Buffers
     render.dst = addr self.buffer[0]
     render.sampler = addr self.sampler
-    # Set Rendering Interval
-    interval(render, v)
-    # Render As Binning
-    bin_subpixel(self.equation, render)
+    # Render As Blocks of 8x8
+    bin_subpixel(self.equation, render, 
+      v.aabb.toBlocks 3)
 
 # -------------------------------
 # TRIANGLE REALTIME RASTERIZATION
 # -------------------------------
 
-proc bin_fast(eq: var NTriangleEquation, render: var NTriangleRender) =
-  var 
-    bin: NTriangleBinning
-  # Create New Triangle Binner
-  eq_binning(addr eq, addr bin)
+proc bin_fast(eq: var NTriangleEquation, render: var NTriangleRender, aabb: NTriangleBlockAABB) =
+  var bin: NTriangleBinning
+  # Calculate Triangle Binning
+  eq_binning(addr eq, addr bin, 3)
   # Get Tiled Positions
   let
-    x1 = render.x shr 3
-    x2 = (render.x + render.w) shr 3
-    y1 = render.y shr 3
-    y2 = (render.y + render.h) shr 3
+    x1 = aabb.xmin
+    x2 = aabb.xmax
+    y1 = aabb.ymin
+    y2 = aabb.ymax
   var count: cint
   # Set Render Size to 8
   render.w = 8; render.h = 8
@@ -320,37 +346,37 @@ proc rasterize_fast(self: GUIDistort, v: var NTriangle) =
     # Realtime Rendering Buffers
     render.dst = addr self.buffer[0]
     render.sampler = addr self.sampler
-    # Set Rendering Interval
-    interval(render, v)
-    # Check AABB and Decide Binning
-    bin_fast(self.equation, render)
+    # Render As Blocks of 8x8
+    bin_fast(self.equation, render, 
+      v.aabb.toBlocks 3)
 
-# -----------------------
-# TRIANGLE MESH RENDERING
-# -----------------------
+# ----------------------------------
+# TRIANGLE MESH ELEMENTS CALCULATION
+# ----------------------------------
 
-proc render_quad(self: GUIDistort; ox, oy, n, s: int) =
-  let fn = self.mesh_fn
-  var # Walker
+proc mesh_elements_quad(self: GUIDistort; idx, ox, oy, n, s: int): int =
+  result = idx
+  var 
     xx, yy: int
-    a, b: NTriangle
   for y in 0..<n:
     for x in 0..<n:
       xx = ox + x
       yy = oy + y
-      let 
-        top = yy * s + xx
-        bot = top + s
-      a[0] = self.mesh[top]
-      a[1] = self.mesh[top + 1]
-      a[2] = self.mesh[bot]
-      # Left Half Quad
-      b[0] = a[2]; b[1] = a[1]
-      b[2] = self.mesh[bot + 1]
-      # Render Both Triangles
-      fn(self, a); fn(self, b)
+      let
+        top = cast[uint16](yy * s + xx)
+        bot = top + cast[uint16](s)
+      # Left Half Triangle
+      self.mesh_e[result + 0] = top
+      self.mesh_e[result + 1] = top + 1
+      self.mesh_e[result + 2] = bot
+      # Right Half Triangle
+      self.mesh_e[result + 3] = bot
+      self.mesh_e[result + 4] = top + 1
+      self.mesh_e[result + 5] = bot + 1
+      # Next Six Elements
+      result += 6
 
-proc render_mesh(self: GUIDistort) =
+proc mesh_elements(self: GUIDistort) =
   let
     n = self.mesh_n
     m = self.mesh_m
@@ -358,14 +384,41 @@ proc render_mesh(self: GUIDistort) =
     res = self.mesh_res
     # Mesh Buffer Stride
     s = self.mesh_s
-  var 
+    # Step Elements
+    next = res * res * 6
+  # Alloc Mesh Elements
+  setLen(self.mesh_e, 
+    next * n * m)
+  var
     ox, oy: int
+    # Current IDX
+    idx: int
   for y in 0..<m:
     for x in 0..<n:
       # Locate Vertex Offset
       ox = x * res; oy = y * res
-      # Render Mesh Quad by Resolution
-      render_quad(self, ox, oy, res, s)
+      # Calculate Mesh Quad Elements
+      idx = mesh_elements_quad(self, 
+        idx, ox, oy, res, s)
+
+# -----------------------
+# TRIANGLE MESH RENDERING
+# -----------------------
+
+proc render_mesh(self: GUIDistort) =
+  let
+    n = len(self.mesh_e) div 3
+    fn = self.mesh_fn
+  var triangle: NTriangle
+  for i in 0..<n:
+    # Shorcut For Avoid Repeating
+    let cursor = cast[ptr UncheckedArray[uint16]](
+      addr self.mesh_e[i * 3])
+    triangle[0] = self.mesh[cursor[0]]
+    triangle[1] = self.mesh[cursor[1]]
+    triangle[2] = self.mesh[cursor[2]]
+    # Render Triangle
+    fn(self, triangle)
   # Copy Current Buffer
   self.copy(0, 0, 1280, 720)
 
@@ -373,8 +426,34 @@ proc render_mesh(self: GUIDistort) =
 # TRIANGLE MESH DEFINITION
 # ------------------------
 
-proc unit(self: GUIDistort; res: cint) =
+proc reserve(self: GUIDistort; res: cint) =
   let
+    # Dimensions
+    w = self.cp_w
+    h = self.cp_h
+    # Grid Dimensions
+    cw = w - 1
+    ch = h - 1
+    # Odd Resolution
+    cr = res - 1
+    # Triangles
+    n = w + cr * cw
+    m = h + cr * ch
+  # Store Resolution
+  self.mesh_res = res
+  # Store Dimensions
+  self.mesh_n = cw
+  self.mesh_m = ch
+  # Buffer Stride
+  self.mesh_s = n
+  # Alloc Mesh Vertexes
+  setLen(self.mesh, n * m)
+  # Alloc Mesh Elements
+  mesh_elements(self)
+
+proc unit(self: GUIDistort) =
+  let
+    res = self.mesh_res
     # Dimensions
     w = self.cp_w
     h = self.cp_h
@@ -392,15 +471,6 @@ proc unit(self: GUIDistort; res: cint) =
     # Image Dimensions
     sw = self.sampler.sw + 2
     sh = self.sampler.sh + 2
-  # Alloc Mesh Vertexes
-  setLen(self.mesh, n * m)
-  # Store Resolution
-  self.mesh_res = res
-  # Store Dimensions
-  self.mesh_n = cw
-  self.mesh_m = ch
-  # Buffer Stride
-  self.mesh_s = n
   # Initialize As Unitary
   var
     i: int
@@ -449,7 +519,7 @@ proc perspective(self: GUIDistort, fract: cfloat) =
   perspective_calc(addr self.bilinear, 
     unsafeAddr self.cp[0], fract)
   # Define Unitary Mesh
-  self.unit(32)
+  self.unit()
   # Transform Each Point
   for p in mitems(self.mesh):
     # Transform Each Point As Bilinear Transform
@@ -471,6 +541,10 @@ proc catmull_cp(self: GUIDistort, x, y: cint; w, h: cint) =
     sh = self.sampler.sh + 2
   # Allocate Control Points
   setLen(self.cp, w * h)
+  # Decide Higher Side
+  let s = w + 3 + (h + 2) * w
+  # Allocate Catmull CP Buffer
+  setLen(self.cp_aux, s)
   # Locate Each Control Point
   var i: int
   for yy in 0..<h:
@@ -491,21 +565,16 @@ proc catmull(self: GUIDistort) =
     h = self.cp_h
     # Grid Stride
     s = h + 2
-  # Prepare Catmull Buffer
-  var cp: seq[NSurfaceVec2D]
-  cp.setLen(w + 3 + s * w)
   # Copy Each Point
   for x in 0..<w:
     for y in 0..<h:
-      cp[x * s + y + 1] = 
+      self.cp_aux[x * s + y + 1] = 
         self.cp[y * w + x]
-  # Store Catmull Buffer
-  shallowCopy(self.catmull_cp, cp)
   # Calculate Transformation
   catmull_surface_calc(addr self.catmull,
-    addr self.catmull_cp[0], w, h)
+    addr self.cp_aux[0], w, h)
   # Define Unitary
-  self.unit(8)
+  self.unit()
   # Transform Each Point
   for p in mitems(self.mesh):
     # Transform Each Point As Bilinear Transform
@@ -541,6 +610,8 @@ proc newDistort(src: string): GUIDistort =
   # Prepare Triangle
   result.flags = wMouse
   result.cp_grab = not 0
+  #!!!! Create ThreadPool
+  # result.pool = createPool(1)
 
 proc repeat(self: GUIDistort, sw, sh: cfloat) =
   self.sampler.sw = cint floor(
@@ -559,7 +630,8 @@ proc cb_mesh(g: pointer, w: ptr GUITarget) =
   zeroMem(addr self.buffer[0],
     self.buffer.len * int16.sizeof)
   # Calculate And Rasterize
-  perspective(self, 1.0)
+  #perspective(self, 1.0)
+  catmull(self)
   render_mesh(self)
   # Get Ready
   self.busy = false
@@ -625,60 +697,10 @@ when isMainModule:
   root = newDistort("yuh.png")
   root.repeat(1.0, 1.0)
 
-  #[
-  var controls: seq[NSurfaceVec2D]
-  controls.setLen(4 * 4)
-
-  controls[0] = NSurfaceVec2D(x: 0, y: 0)
-  controls[1] = NSurfaceVec2D(x: 234, y: 0)
-  controls[2] = NSurfaceVec2D(x: 468, y: 0)
-  controls[3] = NSurfaceVec2D(x: 702, y: 0)
-
-  controls[4] = NSurfaceVec2D(x: 0, y: 234)
-  controls[5] = NSurfaceVec2D(x: 600, y: 100)
-  controls[6] = NSurfaceVec2D(x: 468, y: 234)
-  controls[7] = NSurfaceVec2D(x: 702, y: 234)
-
-  controls[8] = NSurfaceVec2D(x: 0, y: 468)
-  controls[9] = NSurfaceVec2D(x: 234, y: 468)
-  controls[10] = NSurfaceVec2D(x: 468, y: 468)
-  controls[11] = NSurfaceVec2D(x: 702, y: 468)
-
-  controls[12] = NSurfaceVec2D(x: 0, y: 702)
-  controls[13] = NSurfaceVec2D(x: 234, y: 702)
-  controls[14] = NSurfaceVec2D(x: 468, y: 702)
-  controls[15] = NSurfaceVec2D(x: 702, y: 702)
-
-  #for p in mitems(controls):
-  #  p.x += 10; p.y += 10
-
-  catmull(root, controls, 4, 4)
-  shallowCopy(root.cp, controls)
-
-  ]#
-
-  # #[
-  var quad: array[4, NSurfaceVec2D]
-  #quad[0] = NSurfaceVec2D(x: 500, y: 10)
-  #quad[1] = NSurfaceVec2D(x: 100, y: 500)
-  #quad[2] = NSurfaceVec2D(x: 1280, y: 720)
-  #quad[3] = NSurfaceVec2D(x: 10, y: 100)
-
-  #quad[0] = NSurfaceVec2D(x: 100, y: 10)
-  #quad[1] = NSurfaceVec2D(x: 120, y: 600)
-  #quad[2] = NSurfaceVec2D(x: 1280, y: 720)
-  #quad[3] = NSurfaceVec2D(x: 110, y: 10)
-
-  #quad[0] = NSurfaceVec2D(x: 0, y: 0)
-  #quad[1] = NSurfaceVec2D(x: 702, y: 0)
-  #quad[2] = NSurfaceVec2D(x: 702, y: 702)
-  #quad[3] = NSurfaceVec2D(x: 0, y: 702)
-  perspective_cp(root, 50, 50)
-  perspective(root, 1.0)
-  # ]#
+  catmull_cp(root, 50, 50, 6, 3)
+  reserve(root, 8)
+  catmull(root)
   root.render_mesh()
-  
-  #root.render_mesh_subpixel()
 
   # Open Window
   if win.open(root):

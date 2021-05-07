@@ -8,11 +8,11 @@
 void eq_partial(equation_t* eq, fragment_t* render) {
   int xmin, xmax, ymin, ymax;
   // Edge Equation Coeffients
-  long long row0, row1, row2;
-  long long w0, w1, w2;
+  int row0, row1, row2;
+  int w0, w1, w2;
   // Incremental Steps
-  long long a0, a1, a2;
-  long long b0, b1, b2;
+  int a0, a1, a2;
+  int b0, b1, b2;
   // UV Gradient Parameters
   float u_a, u_b, u_c, u;
   float v_a, v_b, v_c, v;
@@ -201,11 +201,11 @@ static __m128 eq_full_average(level_t* dde, sampler_t* sampler, float u0, float 
 void eq_partial_subpixel(equation_t* eq, derivative_t* dde, fragment_t* render) {
   int xmin, xmax, ymin, ymax;
   // Edge Equation Coeffients
-  long long row0, row1, row2;
-  long long w0, w1, w2;
+  int row0, row1, row2;
+  int w0, w1, w2;
   // Incremental Steps
-  long long a0, a1, a2;
-  long long b0, b1, b2;
+  int a0, a1, a2;
+  int b0, b1, b2;
   // UV Gradient Parameters
   float u_a, u_b, u_c, u;
   float v_a, v_b, v_c, v;

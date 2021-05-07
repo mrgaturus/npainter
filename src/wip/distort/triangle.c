@@ -34,31 +34,31 @@ int eq_winding(vertex_t* v) {
 // -------------------------
 
 void eq_calculate(equation_t* eq, vertex_t* v) {
-  long long x0, x1, x2;
-  long long y0, y1, y2;
+  int x0, x1, x2;
+  int y0, y1, y2;
 
-  long long a0, a1, a2;
-  long long b0, b1, b2;
-  long long c0, c1, c2;
+  int a0, a1, a2;
+  int b0, b1, b2;
+  int c0, c1, c2;
 
   // Convert Coordinates to Fixed Point
-  x0 = (long long) (v[0].x * 256.0);
-  x1 = (long long) (v[1].x * 256.0);
-  x2 = (long long) (v[2].x * 256.0);
+  x0 = (int) (v[0].x * 16.0);
+  x1 = (int) (v[1].x * 16.0);
+  x2 = (int) (v[2].x * 16.0);
 
-  y0 = (long long) (v[0].y * 256.0);
-  y1 = (long long) (v[1].y * 256.0);
-  y2 = (long long) (v[2].y * 256.0);
+  y0 = (int) (v[0].y * 16.0);
+  y1 = (int) (v[1].y * 16.0);
+  y2 = (int) (v[2].y * 16.0);
 
   // Define AX Incremental
-  a0 = (y1 - y2) << 8;
-  a1 = (y2 - y0) << 8;
-  a2 = (y0 - y1) << 8;
+  a0 = (y1 - y2) << 4;
+  a1 = (y2 - y0) << 4;
+  a2 = (y0 - y1) << 4;
 
   // Define BX Incremental
-  b0 = (x2 - x1) << 8;
-  b1 = (x0 - x2) << 8;
-  b2 = (x1 - x0) << 8;
+  b0 = (x2 - x1) << 4;
+  b1 = (x0 - x2) << 4;
+  b2 = (x1 - x0) << 4;
 
   // Define C Constant Part
   c0 = (x1 * y2) - (x2 * y1);
@@ -184,53 +184,45 @@ void eq_derivative(equation_t* eq, derivative_t* dde) {
 // TRIANGLE TILED BINNING CALCULATION
 // ----------------------------------
 
-static void eq_trivially(int a0, int b0, int c0, int* tr_r0, int* ta_r0) {
+static void eq_trivially(int a0, int b0, int c0, int* tr_r0, int* ta_r0, int size) {
   int ox, oy;
 
   // Trivially Reject Edge 0
-  ox = (a0 >= 0) ? 8 : 0;
-  oy = (b0 >= 0) ? 8 : 0;
+  ox = (a0 >= 0) ? size : 0;
+  oy = (b0 >= 0) ? size : 0;
   // Calculate Equation Position
   *(tr_r0) = a0 * ox + b0 * oy + c0;
 
   // Trivially Accept Edge 0
-  ox = (a0 >= 0) ? 0 : 8;
-  oy = (b0 >= 0) ? 0 : 8;
+  ox = (a0 >= 0) ? 0 : size;
+  oy = (b0 >= 0) ? 0 : size;
   // Calculate Equation Position
   *(ta_r0) = a0 * ox + b0 * oy + c0;
 }
 
-void eq_binning(equation_t* eq, binning_t* bin) {
+void eq_binning(equation_t* eq, binning_t* bin, int shift) {
   int a0, a1, a2;
   int b0, b1, b2;
   int c0, c1, c2;
 
   // Load Edge Equation Steps
-  a0 = eq->a0 >> 8;
-  a1 = eq->a1 >> 8;
-  a2 = eq->a2 >> 8;
-
-  b0 = eq->b0 >> 8;
-  b1 = eq->b1 >> 8;
-  b2 = eq->b2 >> 8;
-
-  c0 = eq->c0 >> 8;
-  c1 = eq->c1 >> 8;
-  c2 = eq->c2 >> 8;
+  a0 = eq->a0; a1 = eq->a1; a2 = eq->a2;
+  b0 = eq->b0; b1 = eq->b1; b2 = eq->b2;
+  c0 = eq->c0; c1 = eq->c1; c2 = eq->c2;
 
   // Calculate Reject & Accept Trivially Corners
-  eq_trivially(a0, b0, c0, &bin->tr_r0, &bin->ta_r0);
-  eq_trivially(a1, b1, c1, &bin->tr_r1, &bin->ta_r1);
-  eq_trivially(a2, b2, c2, &bin->tr_r2, &bin->ta_r2);
+  eq_trivially(a0, b0, c0, &bin->tr_r0, &bin->ta_r0, 1 << shift);
+  eq_trivially(a1, b1, c1, &bin->tr_r1, &bin->ta_r1, 1 << shift);
+  eq_trivially(a2, b2, c2, &bin->tr_r2, &bin->ta_r2, 1 << shift);
 
-  // Edge Equation Steps
-  bin->s_a0 = a0 * 8;
-  bin->s_a1 = a1 * 8;
-  bin->s_a2 = a2 * 8;
+  // Store Edge Equation Steps
+  bin->s_a0 = a0 << shift;
+  bin->s_a1 = a1 << shift;
+  bin->s_a2 = a2 << shift;
 
-  bin->s_b0 = b0 * 8;
-  bin->s_b1 = b1 * 8;
-  bin->s_b2 = b2 * 8;
+  bin->s_b0 = b0 << shift;
+  bin->s_b1 = b1 << shift;
+  bin->s_b2 = b2 << shift;
 }
 
 // --------------------------------------------
