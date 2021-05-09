@@ -1,7 +1,9 @@
 from math import floor
 import gui/[window, widget, render, event, signal]
+from gui/timer import loop
 import libs/gl
 import nimPNG
+import spmc
 
 # -------------------------
 # Import C Code of Triangle
@@ -66,8 +68,8 @@ proc eb_step_y(bin: ptr NTriangleBinning)
 proc eb_check(bin: ptr NTriangleBinning): int32
 
 # Triangle Equation Realtime Rendering
-proc eq_partial(eq: ptr NTriangleEquation, render: ptr NTriangleRender) {.gcsafe.}
-proc eq_full(eq: ptr NTriangleEquation, render: ptr NTriangleRender) {.gcsafe.}
+proc eq_partial(eq: ptr NTriangleEquation, render: ptr NTriangleRender)
+proc eq_full(eq: ptr NTriangleEquation, render: ptr NTriangleRender)
 # Triangle Equation Rendering Subpixel Antialiasing Post-Procesing
 proc eq_partial_subpixel(eq: ptr NTriangleEquation, dde: ptr NTriangleDerivative, render: ptr NTriangleRender)
 proc eq_full_subpixel(eq: ptr NTriangleEquation, dde: ptr NTriangleDerivative, render: ptr NTriangleRender)
@@ -95,15 +97,25 @@ type
     xmin, ymin, xmax, ymax: float32
   NTriangleBlockAABB = object
     xmin, ymin, xmax, ymax: int32
+  NTriangleBlockFunc =
+    proc (eq: var NTriangleEquation, 
+      render: var NTriangleRender, 
+      aabb: NTriangleBlockAABB) {.nimcall.}
+  NTriangleBlockIndex = object
+    len, cap: int32
+    index: ptr UncheckedArray[int32]
   NTriangleBlockCMD = object
-    x, y, len: int32
+    x, y: int32
     # FINAL: Pointer To An Object Directly
-    index: ptr UncheckedArray[uint16]
+    index: ptr NTriangleBlockIndex
+    mesh: ptr UncheckedArray[NTriangleVertex]
+    mesh_e: ptr UncheckedArray[uint16]
     # Image Target And Source
     buffer: ptr UncheckedArray[int16]
+    buffer_w, buffer_h: int32
     sampler: ptr NTriangleSampler
     # Triangle Rasterization Proc
-    fn: NTriangleRasterizeFunc
+    fn: NTriangleBlockFunc
   NTriangleRasterizeFunc = 
     proc (self: GUIDistort, v: var NTriangle)
   GUIDistort = ref object of GUIWidget
@@ -113,8 +125,8 @@ type
     # Image Source
     source: NImage
     # 15bit Pixel Buffer
-    buffer: array[1280*720*4, int16]
-    buffer_copy: array[1280*720*4, uint8]
+    buffer: array[1280*736*4, int16]
+    buffer_copy: array[1280*736*4, uint8]
     # Control Points
     cp, cp_aux: seq[NSurfaceVec2D]
     cp_w, cp_h, cp_grab: cint
@@ -132,6 +144,9 @@ type
     # Triangle Blocks
     blocks: seq[NTriangleBlockCMD]
     blocks_aabb: NTriangleBlockAABB
+    blocks_map: array[40*23, NTriangleBlockIndex]
+    # Thread Pool
+    pool: NThreadPool
     # OpenGL Texture
     tex: GLuint
     # Avoid Flooding
@@ -291,7 +306,7 @@ proc rasterize_subpixel(self: GUIDistort, v: var NTriangle) =
     # Prepare Triangle Rendering
     var render: NTriangleRender
     render.dst_w = 1280
-    render.dst_h = 720
+    render.dst_h = 736
     # Subpixel Rendering Buffers
     render.dst = addr self.buffer[0]
     render.sampler = addr self.sampler
@@ -342,7 +357,7 @@ proc rasterize_fast(self: GUIDistort, v: var NTriangle) =
     # Prepare Triangle Rendering
     var render: NTriangleRender
     render.dst_w = 1280
-    render.dst_h = 720
+    render.dst_h = 736
     # Realtime Rendering Buffers
     render.dst = addr self.buffer[0]
     render.sampler = addr self.sampler
@@ -405,7 +420,127 @@ proc mesh_elements(self: GUIDistort) =
 # TRIANGLE MESH RENDERING
 # -----------------------
 
+proc push(cmd: ptr NTriangleBlockIndex, i: int32) =
+  if cmd.cap == 0:
+    cmd.cap = 8
+    cmd.index = # Alloc Buffer
+      cast[cmd.index.type](alloc(8 * int32.sizeof))
+  elif cmd.len + 1 > cmd.cap:
+    cmd.cap += 8
+    cmd.index = cast[cmd.index.type](
+      realloc(cmd.index, cmd.cap * int32.sizeof))
+  # Put Item on Current Lenght
+  cmd.index[cmd.len] = i
+  inc(cmd.len)
+
+proc clear(cmd: var NTriangleBlockIndex) =
+  cmd.cap = 0
+  cmd.len = 0
+  if not isNil(cmd.index):
+    dealloc(cmd.index)
+    cmd.index = nil
+
+proc thr_render(cmd: ptr NTriangleBlockCMD) =
+  var 
+    v: NTriangle
+    equation: NTriangleEquation
+    render: NTriangleRender
+  let
+    aabb = NTriangleBlockAABB(
+      xmin: cmd.x shl 2,
+      xmax: (cmd.x shl 2) + 3,
+      ymin: cmd.y shl 2,
+      ymax: (cmd.y shl 2) + 3
+    )
+    list = cmd.index
+  render.dst_w = 1280
+  render.dst_h = 736
+  # Realtime Rendering Buffers
+  render.dst = addr cmd.buffer[0]
+  render.sampler = cmd.sampler
+  for i in 0..<list.len:
+    # Lookup Triangle
+    let ii = cast[uint32](list.index[i]) * 3
+    v[0] = cmd.mesh[cmd.mesh_e[ii]]
+    v[1] = cmd.mesh[cmd.mesh_e[ii + 1]]
+    v[2] = cmd.mesh[cmd.mesh_e[ii + 2]]
+    # Ajust Triangle Winding
+    discard eq_winding(addr v)
+    # Calculate Edge Equation with UV Equation
+    eq_calculate(addr equation, addr v)
+    eq_gradient(addr equation, addr v)
+    # Render As Blocks of 8x8
+    bin_fast(equation, render, aabb)
+
+proc render_pack(self: GUIDistort, i: int32) =
+  var 
+    triangle: NTriangle
+    equation: NTriangleEquation
+    binning: NTriangleBinning
+  # Shorcut For Avoid Repeating
+  let cursor = cast[ptr UncheckedArray[uint16]](
+    addr self.mesh_e[i * 3])
+  triangle[0] = self.mesh[cursor[0]]
+  triangle[1] = self.mesh[cursor[1]]
+  triangle[2] = self.mesh[cursor[2]]
+  # Calculate Triangle Binning for 32x32 Tiles
+  if eq_winding(addr triangle) == 0: return
+  eq_calculate(addr equation, addr triangle)
+  eq_binning(addr equation, addr binning, 5)
+  # Pack Each Bin to Mesh
+  let 
+    box = triangle.aabb.toBlocks(5)
+    x1 = box.xmin
+    x2 = box.xmax
+    y1 = box.ymin
+    y2 = box.ymax
+    # Buffers
+    sampler = addr self.sampler
+    buffer = addr self.buffer[0]
+    mesh = addr self.mesh[0]
+    mesh_e = addr self.mesh_e[0]
+  var cmd: NTriangleBlockCMD
+  cmd.buffer = 
+    cast[cmd.buffer.type](buffer)
+  cmd.mesh = cast[cmd.mesh.type](mesh)
+  cmd.mesh_e = cast[cmd.mesh_e.type](mesh_e)
+  cmd.fn = bin_fast
+  cmd.sampler = sampler
+  eb_step_xy(addr binning, x1, y1)
+  for y in y1..y2:
+    for x in x1..x2:
+      if eb_check(addr binning) > 0:
+        let s = y * 40 + x
+        var map = addr self.blocks_map[s]
+        if map.len == 0:
+          var n = cmd
+          n.x = x
+          n.y = y
+          n.index = map
+          self.blocks.add(n)
+        map.push(i)
+      eb_step_x(addr binning)
+    eb_step_y(addr binning)
+
 proc render_mesh(self: GUIDistort) =
+  let n = len(self.mesh_e) div 3
+  for i in 0..<n:
+    # Shorcut For Avoid Repeating
+    render_pack(self, i.int32)
+  # Render Each Block
+  for b in mitems(self.blocks):
+    self.pool.spawn(thr_render, addr b)
+    #(addr b).thr_render()
+  self.pool.sync()
+  # Clear Each Memory Block
+  for b in mitems(self.blocks):
+    let s = b.y * 40 + b.x
+    self.blocks_map[s].clear()
+  self.blocks.setLen(0)
+  # Copy Current Buffer
+  self.copy(0, 0, 1280, 736)
+
+proc render_mesh_single(self: GUIDistort) =
   let
     n = len(self.mesh_e) div 3
     fn = self.mesh_fn
@@ -420,7 +555,7 @@ proc render_mesh(self: GUIDistort) =
     # Render Triangle
     fn(self, triangle)
   # Copy Current Buffer
-  self.copy(0, 0, 1280, 720)
+  self.copy(0, 0, 1280, 736)
 
 # ------------------------
 # TRIANGLE MESH DEFINITION
@@ -594,12 +729,12 @@ proc newDistort(src: string): GUIDistort =
   result.sampler.buffer = addr result.source.buffer[0]
   # Set Function Proc
   result.sampler.fn = cast[NTriangleFunc](sample_nearest)
-  result.mesh_fn = rasterize_fast
+  result.mesh_fn = rasterize_subpixel
   # Copy Buffer To Texture
   glGenTextures(1, addr result.tex)
   glBindTexture(GL_TEXTURE_2D, result.tex)
   glTexImage2D(GL_TEXTURE_2D, 0, cast[GLint](GL_RGBA8), 
-    1280, 720, 0, GL_RGBA, GL_UNSIGNED_BYTE, addr result.buffer_copy[0])
+    1280, 736, 0, GL_RGBA, GL_UNSIGNED_BYTE, addr result.buffer_copy[0])
   # Set Mig/Mag Filter
   glTexParameteri(GL_TEXTURE_2D, 
     GL_TEXTURE_MIN_FILTER, cast[GLint](GL_NEAREST))
@@ -630,8 +765,8 @@ proc cb_mesh(g: pointer, w: ptr GUITarget) =
   zeroMem(addr self.buffer[0],
     self.buffer.len * int16.sizeof)
   # Calculate And Rasterize
-  #perspective(self, 1.0)
-  catmull(self)
+  perspective(self, 1.0)
+  #catmull(self)
   render_mesh(self)
   # Get Ready
   self.busy = false
@@ -665,7 +800,7 @@ method event*(self: GUIDistort, state: ptr GUIState) =
 method draw(self: GUIDistort, ctx: ptr CTXRender) =
   var r: CTXRect
   ctx.color(uint32 0xFFFFFFFF)
-  r = rect(0, 0, 1280, 720)
+  r = rect(0, 0, 1280, 736)
   ctx.fill(r)
   ctx.color(uint32 0xFFFFFFFF)
   ctx.texture(r, self.tex)
@@ -688,23 +823,29 @@ method draw(self: GUIDistort, ctx: ptr CTXRender) =
 
 when isMainModule:
   var # Create Basic Widgets
-    win = newGUIWindow(1280, 720, nil)
+    win = newGUIWindow(1280, 736, nil)
     root: GUIDistort
 
   # Create Triangle Vertexs
 
   # Create Main Widget
   root = newDistort("yuh.png")
+  root.pool = newThreadPool(6)
   root.repeat(1.0, 1.0)
 
-  catmull_cp(root, 50, 50, 6, 3)
-  reserve(root, 8)
-  catmull(root)
+  # Calculate Control Points
+  catmull_cp(root, 50, 50, 4, 4)
+  perspective_cp(root, 50, 50)
+  # Reserve Mesh and Elements
+  reserve(root, 32)
+  perspective(root, 1.0)
+  # Render First Time
+  #catmull(root)
   root.render_mesh()
 
   # Open Window
   if win.open(root):
-    while true:
+    loop(16):
       win.handleEvents() # Input
       if win.handleSignals(): break
       win.handleTimers() # Timers
@@ -715,3 +856,4 @@ when isMainModule:
       win.render()
   # Close Window
   win.close()
+  root.pool.destroy()
