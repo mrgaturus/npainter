@@ -1,46 +1,35 @@
-# Posix Simple Timer for GUI Needes
-from posix import 
-  CLOCK_MONOTONIC, Time, Timespec,
-  clock_gettime, nanosleep
+from posix import
+  Time, Timespec, nanosleep
+# GUI Monotimic Timer Updates
+from std/monotimes import
+  getMonoTime, ticks
 from signal import GUITarget
 from widget import GUIWidget
 
 type
   GUITimer = object
     target: GUITarget
-    stamp: Timespec
-    milsecs: int
+    ticks, nano_ms: int64
   GUITimers = seq[GUITimer]
 var # Global Timers
   timers: GUITimers
 
-# ----------------------
-# SIMPLE MONOTONIC TIMER
-# ----------------------
-
-# in posix systems, time_t is a clong
-proc `+=`(a: var Time, b: Time) {.borrow.}
-proc `==`(a, b: Time): bool {.borrow.}
-proc `<`(a, b: Time): bool {.borrow.}
-# borrow widget pointer comparing
+# --------------------------
+# SIMPLE MONOTONIC GUI TIMER
+# --------------------------
 proc `==`(a, b: GUITarget): bool {.borrow.}
 
-# -- Create Timers
-proc current(milsecs: int): Timespec =
-  if clock_gettime(CLOCK_MONOTONIC, result) == 0 and milsecs > 0:
-    let s = result.tv_nsec + (milsecs mod 1000) * 1000_000
-    result.tv_sec += Time(milsecs div 1000 + s div 1000_000_000)
-    result.tv_nsec = s mod 1000_000_000
+proc current(offset: int64): int64 =
+  result = # Get Current Time Plus Offset
+    getMonoTime().ticks() + offset
 
-proc check(a: Timespec): bool =
-  let b = current(0)
-  return # Check Timer
-    b.tv_sec > a.tv_sec or 
-    (b.tv_sec == a.tv_sec and 
-    b.tv_nsec >= a.tv_nsec)
+proc check(a: int64): bool =
+  let b = # Get Current Monotonic
+    getMonoTime().ticks()
+  result = b > a
 
 # -- Add a Timer
-proc pushTimer*(target: GUITarget, milsecs = 0) =
+proc pushTimer*(target: GUITarget, ms = 0) =
   var found = false
   block: # Check
     var i: int32
@@ -51,9 +40,12 @@ proc pushTimer*(target: GUITarget, milsecs = 0) =
       inc(i) # Next Timer
   if not found:
     var timer: GUITimer
+    # Convert miliseconds to nanoseconds
+    let nano_ms = ms * 1000000
+    # Create New Timer
     timer.target = target
-    timer.milsecs = milsecs
-    timer.stamp = current(milsecs)
+    timer.ticks = current(nano_ms)
+    timer.nano_ms = nano_ms
     # Add Timer to Global
     timers.add(timer)
 
@@ -76,22 +68,35 @@ iterator walkTimers*(): GUIWidget =
   while i < L:
     # Handle Timer
     timer = addr timers[i]
-    if check(timer.stamp):
+    if check(timer.ticks):
       yield cast[GUIWidget](timer.target)
       # Check if was not deleted
       if L == len(timers):
-        timer.stamp = 
-          current(timer.milsecs)
+        timer.ticks = # Renew
+          current(timer.nano_ms)
       else: # Deleted Timer
         dec(L); continue
     inc(i) # Next Timer
 
-# ------------------
-# SYSTEM REIMPLEMENT
-# ------------------
+# --------------------------------
+# INFINITE LOOP WITH FRAME LIMITER
+# --------------------------------
 
-proc sleep*(milsecs: int) {.tags: [TimeEffect].} =
+proc sleep(ns: int64) {.tags: [TimeEffect].} =
   var a, b: Timespec
-  a.tv_sec = Time(milsecs div 1000)
-  a.tv_nsec = (milsecs mod 1000) * 1000_000
+  a.tv_sec = cast[Time](ns div 1_000_000_000)
+  a.tv_nsec = cast[clong](ns mod 1_000_000_000)
   discard nanosleep(a, b)
+
+template loop*(ms: int, body: untyped) =
+  let nano_ms = ms * 1000000
+  # Procedure Duration
+  var a, b, ss: int64
+  while true:
+    a = current(0)
+    body # Execute Body
+    b = current(0)
+    # Calculate Sleep Time
+    ss = max(nano_ms - b + a, 0)
+    # Sleep Loop
+    sleep(ss)

@@ -593,7 +593,7 @@ when isMainModule:
   # Open Window
   if win.open(root):
     pushTimer(tooltip.target, 1000)
-    while true:
+    loop(16):
       win.handleEvents() # Input
       if win.handleSignals(): break
       win.handleTimers() # Timers

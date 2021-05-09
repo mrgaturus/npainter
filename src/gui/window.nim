@@ -5,8 +5,7 @@ import x11/xlib, x11/x
 # Import Modules
 import widget, event, signal, render
 # Import Somes
-from timer import 
-  walkTimers, sleep
+from timer import walkTimers
 from config import metrics
 from ../libs/gl import gladLoadGL
 
@@ -551,5 +550,3 @@ proc render*(win: var GUIWindow) =
   finish() # -- End GUI Rendering
   # Present Frame to X11/EGL
   discard eglSwapBuffers(win.eglDsp, win.eglSur)
-  # 60 FPS Limit
-  sleep(16)
