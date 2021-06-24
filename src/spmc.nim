@@ -4,131 +4,83 @@ from typetraits import
 import locks
 
 type
-  Semaphore = object
-    lck: Lock
-    cnd: Cond
-    # Boolean
-    v: int
-  # -- Thread Task
   NThread = 
     Thread[NThreadPool]
   NThreadProc = # Guaranted To Be Safe by Macro
     proc (data: pointer) {.nimcall, gcsafe.}
   NThreadGenericProc[T] =
     proc (data: ptr T) {.nimcall.}
-  ThreadTask = object
-    prev: NThreadTask
-    # Thread Task Data
+  NThreadTask = object
     fn: NThreadProc
-    data, dummy: pointer
-  NThreadTask = ptr ThreadTask
+    data: pointer
   # -- Thread Pool
   ThreadPool = object
     threads: seq[NThread]
-    taskSem: Semaphore
     # Count and Brake
-    tasking: int
     working: int
     running: bool
-    # Syncronization
+    # Thread Mutexes
     lockQueue: Lock
     lockCount: Lock
+    # Thread Conditions
+    waitQueue: Cond
     waitCount: Cond
-    # Singly Linked List
-    front, back: NThreadTask
+    # Task Ring Index
+    tail, head: uint
+    # Task Ring Buffer
+    ring: array[256, NThreadTask]
   NThreadPool* = ptr ThreadPool
-
-# --------------------------
-# Mutex/Cond SEMAPHORE PROCS
-# --------------------------
-
-proc initSemaphore(sem: var Semaphore, v: int) =
-  assert(v >= 0, "negative semaphore")
-  # Initialize Semaphore
-  initLock(sem.lck)
-  initCond(sem.cnd)
-  sem.v = v
-
-proc deinitSemaphore(sem: var Semaphore) =
-  deinitLock(sem.lck)
-  deinitCond(sem.cnd)
-
-proc post(sem: var Semaphore) =
-  withLock(sem.lck):
-    inc(sem.v)
-    signal(sem.cnd)
-
-proc wait(sem: var Semaphore) =
-  withLock(sem.lck):
-    while sem.v <= 0:
-      wait(sem.cnd, sem.lck)
-    dec(sem.v) # Decrease
 
 # -------------------------
 # Thread Pool Queue/Dequeue
 # -------------------------
 
-proc push(pool: NThreadPool, task: NThreadTask) =
-  withLock(pool.lockQueue):
-    task.prev = nil
-    if pool.tasking > 0:
-      pool.back.prev = task
-      pool.back = task
-    else:
-      pool.front = task
-      pool.back = task
-    # Increment Task Count
-    inc(pool.tasking)
-    # Notify Semaphore
-    post(pool.taskSem)
-
 proc push(pool: NThreadPool, fn: NThreadProc, data: pointer) =
-  let task = createShared(ThreadTask)
+  var task: NThreadTask
   # Initialize Task Values
   task.fn = fn
   task.data = data
   # Add Task To Queue
-  pool.push(task)
+  withLock(pool.lockQueue):
+    # Wait for free space
+    while (pool.tail - pool.head) >= 256:
+      wait(pool.waitQueue, pool.lockQueue)
+    # Enqueue New Task To Ring Buffer
+    pool.ring[pool.tail and 255] = task
+    # Increment Tail
+    inc(pool.tail)
+    # Increment Working
+    withLock(pool.lockCount):
+      inc(pool.working)
+    # Send Wait Signal
+    signal(pool.waitQueue)
 
 proc pull(pool: NThreadPool): NThreadTask =
   withLock(pool.lockQueue):
-    result = pool.front
-    case pool.tasking:
-    of 0: discard
-    of 1: # One Task
-      pool.front = nil
-      pool.back = nil
-      pool.tasking = 0
-    else: # Many Tasks
-      pool.front = result.prev
-      dec(pool.tasking)
+    # Wait if Ring is Empty
+    while pool.head == pool.tail:
+      wait(pool.waitQueue, pool.lockQueue)
+    # Dequeue Task from Ring Buffer
+    result = pool.ring[pool.head and 255]
+    # Increment Head
+    inc(pool.head)
+    # Send Wait Signal
+    signal(pool.waitQueue)
 
 # ----------------------
 # Main Thread Task Procs
 # ----------------------
 
 proc threading(pool: NThreadPool) =
-  # Decrement Initialization
-  withLock(pool.lockCount):
-    dec(pool.working)
-    if pool.working == 0:
-      signal(pool.waitCount)
   # Main Loop
   while true:
-    # Wait Semaphore
-    wait(pool.taskSem)
+    # Lookup Task
+    let task = pool.pull()
     # Check Loop Brake
     if not pool.running: 
       break
-    # Increment Working
-    withLock(pool.lockCount):
-      inc(pool.working)
-    # Dequeue Pool
-    let task = pool.pull()
-    if not isNil(task):
-      # Execute Task
-      task.fn(task.data)
-      deallocShared(task)
+    # Execute Task
+    task.fn(task.data)
     # Decrement Working
     withLock(pool.lockCount):
       dec(pool.working)
@@ -150,7 +102,7 @@ proc spawn*[T: object](pool: NThreadPool, fn: NThreadGenericProc[T], data: ptr T
 
 proc sync*(pool: NThreadPool) =
   withLock(pool.lockCount):
-    while pool.tasking > 0 or pool.working > 0:
+    while pool.working > 0:
       wait(pool.waitCount, pool.lockCount)
 
 # -----------------------
@@ -161,22 +113,17 @@ proc newThreadPool*(n: int): NThreadPool =
   assert(n > 0, "invalid thread number")
   # - Allocate Syncronization
   result = create(ThreadPool)
-  # Allocate Idle Semaphore
-  initSemaphore(result.taskSem, 0)
   # Allocate Syncronization
   initLock(result.lockQueue)
   initLock(result.lockCount)
+  initCond(result.waitQueue)
   initCond(result.waitCount)
+  # Initialize Brake
+  result.running = true
   # - Create Each Thread
   setLen(result.threads, n)
-  result.working = n
-  result.running = true
   for thr in mitems(result.threads):
     thr.createThread(threading, result)
-  # Wait Until Threads Are Idle
-  withLock(result.lockCount):
-    while result.working > 0:
-      wait(result.waitCount, result.lockCount)
 
 # ----------------------
 # Thread Pool Destructor
@@ -187,16 +134,18 @@ proc destroy*(pool: NThreadPool) =
   # Brake Main Loops
   pool.running = false
   # Wake Up Each Thread
-  for i in 0..<len(pool.threads):
-    post(pool.taskSem)
+  withLock(pool.lockQueue):
+    pool.tail = 256
+    pool.head = 0
+    # Send Wait Signal
+    signal(pool.waitQueue)
   # Join Each Thread
   for thr in mitems(pool.threads):
     thr.joinThread()
-  # Deinitialize Idle Semaphore
-  deinitSemaphore(pool.taskSem)
   # Deinitialize Syncronization
   deinitLock(pool.lockQueue)
   deinitLock(pool.lockCount)
+  deinitCond(pool.waitQueue)
   deinitCond(pool.waitCount)
   # Deallocate Thread Seq
   `=destroy`(pool.threads)
