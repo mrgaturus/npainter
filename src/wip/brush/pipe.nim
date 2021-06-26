@@ -385,7 +385,7 @@ proc mt_stage1(tile: ptr NBrushTile) =
   case tile.blend
   of bnAverage: brush_normal_blend(render)
   of bnWater: brush_water_blend(render)
-  of bnMarker: brush_marker_blend(render)
+  of bnMarker: brush_flat_blend(render)
   # Special Blending Modes
   of bnSmudge: brush_smudge_blend(render)
   of bnBlur: brush_blur_blend(render)

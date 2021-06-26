@@ -96,9 +96,7 @@ proc brush_flat_blend(render: ptr NBrushRender)
 proc brush_erase_blend(render: ptr NBrushRender)
 # ------------------------------------------------
 proc brush_water_first(render: ptr NBrushRender)
-
 proc brush_water_blend(render: ptr NBrushRender)
-proc brush_marker_blend(render: ptr NBrushRender)
 # --------------------------------------------
 proc brush_blur_first(render: ptr NBrushRender)
 proc brush_blur_blend(render: ptr NBrushRender)
