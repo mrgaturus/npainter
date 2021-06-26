@@ -82,8 +82,8 @@ typedef struct {
   int x, y, w, h;
   // Shape Color
   short* color;
-  // Shape Basic
-  int alpha, size;
+  // Shape Alpha
+  int alpha, flow;
   // Canvas Target Buffers
   brush_canvas_t* canvas;
   // Aditional Data
@@ -110,9 +110,7 @@ void brush_flat_blend(brush_render_t* render);
 void brush_erase_blend(brush_render_t* render);
 // --------------------------------------------
 void brush_water_first(brush_render_t* render);
-
 void brush_water_blend(brush_render_t* render);
-void brush_marker_blend(brush_render_t* render);
 // --------------------------------------------
 void brush_blur_first(brush_render_t* render);
 void brush_blur_blend(brush_render_t* render);

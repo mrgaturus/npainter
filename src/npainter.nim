@@ -6,6 +6,11 @@ import libs/gl
 import omath
 # Import Brush Engine
 import wip/brush
+import spmc
+
+const
+  bw = 1280
+  bh = 720
 
 type
   GUICanvasPanel = ref object of GUIWidget
@@ -22,17 +27,17 @@ type
     # Canvas Brush Panel
     panel: GUICanvasPanel
     # Mask & Color Buffer
-    buffer0: array[1280*720, int16]
-    buffer1: array[1280*720*4, int16]
+    buffer0: array[bw*bh, int16]
+    buffer1: array[bw*bh*4, int16]
     # Destination Color Buffer
-    dst: array[1280*720*4, int16]
-    dst_copy: array[1280*720*4, uint8]
+    dst: array[bw*bh*4, int16]
+    dst_copy: array[bw*bh*4, uint8]
     # OpenGL Texture
     tex: GLuint
     # Brush Engine
     path: NBrushStroke
     # Busy Indicator
-    busy: bool
+    busy, eraser: bool
     handle: uint
 
 # -------------------------
@@ -43,7 +48,7 @@ type
 proc copy(self: GUICanvas, x, y, w, h: int) =
   var
     cursor_src = 
-      (y * 1280 + x) shl 2
+      (y * bw + x) shl 2
     cursor_dst: int
   # Convert to RGBA8
   for yi in 0..<h:
@@ -59,7 +64,7 @@ proc copy(self: GUICanvas, x, y, w, h: int) =
       # Next Pixel
       cursor_src += 4; cursor_dst += 4
     # Next Row
-    cursor_src += (1280 - w) shl 2
+    cursor_src += (bw - w) shl 2
     #cursor_dst += w shl 2
   # Copy To Texture
   glBindTexture(GL_TEXTURE_2D, self.tex)
@@ -74,7 +79,9 @@ proc copy(self: GUICanvas, x, y, w, h: int) =
 
 proc prepare(self: GUICanvas) =
   self.path.shape = bsCircle
-  self.path.blend = bnPencil
+  if self.eraser:
+    self.path.blend = bnEraser
+  else: self.path.blend = bnFlat
   let
     panel = self.panel
     color = panel.color
@@ -88,32 +95,39 @@ proc prepare(self: GUICanvas) =
     b = int16(color.b * 255.0)
   # Set Pipeline Color
   color(path.pipe, r, g, b)
-  # TEMPORAL - Calculate Size
-  basic.size = 2.5 + (1000.0 - 2.5) * distance(panel.size)
+  # Calculate Size
+  basic.size = distance(panel.size)
   basic.p_size = distance(panel.min_size)
-  # TEMPORAL - Calculate Alpha
-  basic.alpha = # Needs to be clamped
-    distance(panel.alpha).min(0.995)
+  # Calculate Alpha
+  basic.alpha = distance(panel.alpha)
   basic.p_alpha = distance(panel.min_alpha)
-  # TEMPORAL - Calculate Hardness & Step
-  let hardness = distance(panel.hard)
-  circle.hard = 0.5 * hardness
-  circle.step = 0.075 + (0.025 - 0.075) * hardness
-  # TEMPORAL - Calculate Sharpness
-  circle.sharp = 1.0 + (0.5 - 1.0) * distance(panel.sharp)
-  # Prepare Path Rendering
-  self.path.prepare()
-  # Amplify Size
+  # Calculate Circle Style
+  circle.hard = distance(panel.hard)
+  circle.sharp = distance(panel.sharp)
+  # Calculate Dynamics Amplification
   basic.amp_size = 1.0
   basic.amp_alpha = 1.0
+  # Prepare Path Rendering
+  self.path.prepare()
 
 proc cb_dispatch(g: pointer, w: ptr GUITarget) =
   let self = cast[GUICanvas](w[])
   # Draw Point Line
   dispatch(self.path)
-  # Copy To Canvas
-  self.copy(0, 0, 1280, 720)
-  # Release Busy
+  let aabb = addr self.path.aabb
+  # Clamp to Canvas
+  aabb.x1 = max(0, aabb.x1)
+  aabb.y1 = max(0, aabb.y1)
+  aabb.x2 = min(bw, aabb.x2)
+  aabb.y2 = min(bh, aabb.y2)
+  # Copy To Buffer
+  self.copy(aabb.x1, aabb.y1, 
+    aabb.x2 - aabb.x1,
+    aabb.y2 - aabb.y1)
+  # Reset Dirty Region
+  aabb.x1 = high(int32); aabb.x2 = 0
+  aabb.y1 = high(int32); aabb.y2 = 0
+  # Recover Status
   self.busy = false
 
 proc cb_clear(g: pointer, w: ptr GUITarget) =
@@ -126,7 +140,7 @@ proc cb_clear(g: pointer, w: ptr GUITarget) =
   # Copy Cleared Buffer
   glBindTexture(GL_TEXTURE_2D, self.tex)
   glTexSubImage2D(GL_TEXTURE_2D, 0, 
-    0, 0, 1280, 720, GL_RGBA, GL_UNSIGNED_BYTE, 
+    0, 0, bw, bh, GL_RGBA, GL_UNSIGNED_BYTE, 
     addr self.dst_copy[0])
   glBindTexture(GL_TEXTURE_2D, 0)
   # Recover Status
@@ -143,6 +157,8 @@ method event(self: GUICanvas, state: ptr GUIState) =
         pushCallback(cb_clear, target)
         # Avoid Repeat
         self.busy = true
+    elif state.key == MiddleButton:
+      self.eraser = not self.eraser
     # Store Who Clicked
     self.handle = state.key
   # Perform Brush Path, if is moving
@@ -242,14 +258,6 @@ proc newBrushPanel(): GUICanvasPanel =
   slider = newSlider(addr result.sharp)
   slider.geometry(90, 380, 150, slider.hint.h)
   result.add(slider)
-  # -- Color Opacity --
-  interval(result.color_alpha, 0, 255)
-  label = newLabel("Color Opacity", hoLeft, veMiddle)
-  label.geometry(5, 420, 80, label.hint.h)
-  result.add(label)
-  slider = newSlider(addr result.color_alpha)
-  slider.geometry(90, 420, 150, slider.hint.h)
-  result.add(slider)
   # -- Default Values --
   val(result.size, 10)
   val(result.min_size, 20)
@@ -257,7 +265,6 @@ proc newBrushPanel(): GUICanvasPanel =
   val(result.min_alpha, 100)
   val(result.hard, 100)
   val(result.sharp, 50)
-  val(result.color_alpha, 255)
 
 proc newCanvas(): GUICanvas =
   new result
@@ -271,7 +278,7 @@ proc newCanvas(): GUICanvas =
   glGenTextures(1, addr result.tex)
   glBindTexture(GL_TEXTURE_2D, result.tex)
   glTexImage2D(GL_TEXTURE_2D, 0, cast[GLint](GL_RGBA8), 
-    1280, 720, 0, GL_RGBA, GL_UNSIGNED_BYTE, addr result.dst_copy[0])
+    bw, bh, 0, GL_RGBA, GL_UNSIGNED_BYTE, addr result.dst_copy[0])
   # Set Mig/Mag Filter
   glTexParameteri(GL_TEXTURE_2D, 
     GL_TEXTURE_MIN_FILTER, cast[GLint](GL_NEAREST))
@@ -281,8 +288,8 @@ proc newCanvas(): GUICanvas =
   # Bind Brush Engine to Canvas
   let canvas = 
     addr result.path.pipe.canvas
-  canvas.w = 1280
-  canvas.h = 720
+  canvas.w = bw
+  canvas.h = bh
   # Set Canvas Stride
   canvas.stride = canvas.w
   # Working Buffers
@@ -298,6 +305,8 @@ when isMainModule:
   var # Create Basic Widgets
     win = newGUIWindow(1280, 720, nil)
     root = newCanvas()
+    pool = newThreadPool(6)
+  root.path.pipe.pool = pool
   # Open Window
   if win.open(root):
     loop(16):
@@ -311,3 +320,5 @@ when isMainModule:
       win.render()
   # Close Window
   win.close()
+  pool.destroy()
+  echo "reached?"

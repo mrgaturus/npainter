@@ -68,7 +68,7 @@ type
     # Shape Color
     color: ptr array[4, cshort]
     # Shape Alpha
-    alpha, size: cint
+    alpha, flow: cint
     # Canvas Target
     canvas: ptr NBrushCanvas
     # Aditional Data
@@ -125,15 +125,18 @@ proc basic*(circle: var NBrushCircle, x, y, size: cfloat) =
   circle.size = size
 
 proc style*(circle: var NBrushCircle, hard, sharp: cfloat) =
-  var calc: cfloat
-  # Reciprocal Circle Size
   let
+    hard = 0.5 * hard
+    sharp = 1.0 - (0.5 * sharp)
+    # Size And Reciprocal
     size = circle.size
     rcp = 1.0 / size
+  # Calculate Smoth Constant
+  var calc: cfloat
   # Smothstep Sharpness & Hardness
   calc = (6.0 - log2(size) * 0.5) * (rcp * sharp)
   calc = 1.0 / (hard - calc - 0.5)
-  # Replace Smooth Constant
+  # Set Smooth Constant
   circle.smooth = calc
 
 # ----------------------------

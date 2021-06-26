@@ -1,6 +1,6 @@
 import brush/pipe
 from math import 
-  floor, ceil,
+  floor, ceil, round,
   sqrt, pow, log2
 # Export Brush Kinds
 export NBrushShape, NBrushBlend, color
@@ -15,9 +15,9 @@ type
     alpha*, p_alpha*, amp_alpha*: cfloat
   # ---------------------------
   NStrokeCircle = object
-    hard*, sharp*, step*: cfloat
+    hard*, sharp*: cfloat
   NStrokeBlotmap = object
-    hard*, sharp*, step*: cfloat
+    hard*, sharp*: cfloat
     # Interpolation
     fract*: cshort
     # Texture Buffer
@@ -61,10 +61,21 @@ type
 type
   NStrokePoint = object
     x, y, press: float32
+  # ----------------
+  NStrokeFlow = enum
+    fwAuto, fwFlat, fwCustom
+  NStrokeGeneric = object
+    size, angle: cfloat
+    # Staged Opacity
+    alpha, flow: cfloat
+    # Constant Flow Kind
+    kind: NStrokeFlow
+    magic: cfloat
+  # --------------------
   NStrokeRegion = object
     shift: cint
     # Rendering Region
-    x1, y1, x2, y2: cint
+    x1*, y1*, x2*, y2*: cint
   # -----------------------------
   NStrokeShape {.union.} = object
     circle*: NStrokeCircle
@@ -88,38 +99,67 @@ type
     # Blending Mode Config
     data*: NStrokeBlend
     # Continuous Stroke
-    step*, flow, prev_t: float32
+    step, prev_t: float32
+    generic: NStrokeGeneric
     points: seq[NStrokePoint]
     # --TEMPORALY PUBLIC--
     # Brush Engine Pipeline
     pipe*: NBrushPipeline
+    aabb*: NStrokeRegion
 
 # ----------------------
 # BRUSH STROKE PREPARING
 # ----------------------
 
-proc prepare*(path: var NBrushStroke) =
+proc clear*(path: var NBrushStroke) =
   # Reset Path
   path.prev_t = 0.0
   setLen(path.points, 0)
-  # Decide Which Step Use
+  # Region Shortcut
+  let aabb = addr path.aabb
+  # Reset Dirty Region -TEMPORAL-
+  aabb.x1 = high(int32); aabb.x2 = 0
+  aabb.y1 = high(int32); aabb.y2 = 0
+
+proc prepare*(path: var NBrushStroke) =
+  # Reset Path
+  path.clear()
+  # Shortcuts
   let
-    check0 = # Check if Opacity is Flat
-      path.blend in {bnFlat, bnMarker, bnSmudge}
-    check1 = # Check if Opacity is Custom
-      path.shape == bsBitmap
-    # Shortcut Pipeline
-    pipe = addr path.pipe
+    shape = path.shape
+    blend = path.blend
+    # Generic Dynamics
+    dyn = addr path.generic
+    basic = addr path.basic
+  # Ajust Size And Alpha Parameters
+  basic.size = 2.5 + (1000.0 - 2.5) * basic.size
+  basic.alpha = min(basic.alpha, 0.995)
   # Decide Which Step Use
-  path.step = if not check1:
-    path.mask.circle.step
-  else: path.mask.bitmap.step
-  # Check if needs opacity ajust
-  path.flow = if check0 or check1:
-    0.0 else: path.step * 2.0
+  case shape
+  of bsCircle, bsBlotmap:
+    let hard = path.mask.circle.hard
+    path.step = # Automatic Step
+      0.075 + (0.025 - 0.075) * hard
+  of bsBitmap:
+    path.step = # Custom Step
+      path.mask.bitmap.step
+  # Define Which Flow Use
+  if shape == bsBitmap:
+    dyn.kind = fwCustom
+    dyn.magic = # Alpha Per Shape
+      path.mask.bitmap.alpha
+  elif blend in {bnFlat, bnMarker}:
+    dyn.kind = fwFlat
+    dyn.magic = basic.alpha
+    # Ajust Sharpness on Flatness
+    if shape in {bsCircle, bsBlotmap}:
+      path.mask.circle.sharp -= 2.0
+  else: # Use Automatic
+    dyn.kind = fwAuto
+    dyn.magic = path.step * 2.0
   # Prepare Pipeline Kind
-  pipe.shape = path.shape
-  pipe.blend = path.blend
+  path.pipe.shape = shape
+  path.pipe.blend = blend
 
 # ------------------------
 # BRUSH STROKE REGION SIZE
@@ -135,7 +175,7 @@ proc region(x, y, size: cfloat): NStrokeRegion =
     x2 = ceil(x + radius).cint
     y2 = ceil(y + radius).cint
   # Block Size Shifting
-  result.shift = min(shift, 5)
+  result.shift = shift
   # Position
   result.x1 = x1
   result.y1 = y1
@@ -146,21 +186,27 @@ proc region(x, y, size: cfloat): NStrokeRegion =
 proc region(x, y, size: cfloat; bitmap: NStrokeBitmap): NStrokeRegion {.used.} =
   discard
 
+proc dirty(path: var NBrushStroke, region: NStrokeRegion) =
+  let aabb = addr path.aabb
+  # Sum Dirty AABB Region
+  aabb.x1 = min(region.x1, aabb.x1)
+  aabb.x2 = max(region.x2, aabb.x2)
+  aabb.y1 = min(region.y1, aabb.y1)
+  aabb.y2 = max(region.y2, aabb.y2)
+
 # --------------------------------------
 # BRUSH STROKE PER SHAPE RENDERING PROCS
 # --------------------------------------
 
-proc prepare_stage0(path: var NBrushStroke, x, y, size, alpha: cfloat) =
+proc prepare_stage0(path: var NBrushStroke, x, y, size, alpha, flow: cfloat) =
   let 
     r = region(x, y, size)
     mask = addr path.pipe.mask
-  # Pipeline Stage Size & Alpha
-  path.pipe.size =
-    if path.blend == bnBlur:
-      cint(path.data.blur.radius)
-    else: cint(1 shl r.shift)
+  # Pipeline Stage Alpha
   path.pipe.alpha =
     cint(alpha * 32767.0)
+  path.pipe.flow =
+    cint(flow * 32767.0)
   # Pipeline Stage Shape
   case path.shape
   of bsCircle, bsBlotmap:
@@ -181,6 +227,11 @@ proc prepare_stage0(path: var NBrushStroke, x, y, size, alpha: cfloat) =
     r.x1, r.y1,
     r.x2, r.y2,
     r.shift)
+  # Check if Parallel
+  path.pipe.parallel = 
+    r.shift > 6
+  # Sum Dirty AABB
+  path.dirty(r)
 
 proc prepare_stage1(path: var NBrushStroke, press: cfloat): bool =
   result = true
@@ -226,9 +277,10 @@ proc prepare_stage1(path: var NBrushStroke, press: cfloat): bool =
   of bnBlur, bnSmudge: discard
   else: result = false
 
-proc stage(path: var NBrushStroke, x, y, size, alpha, press: cfloat) =
+proc stage(path: var NBrushStroke; dyn: ptr NStrokeGeneric; x, y, press: cfloat) =
   # Pipeline Stage 0
-  prepare_stage0(path, x, y, size, alpha)
+  prepare_stage0(path, x, y, 
+    dyn.size, dyn.alpha, dyn.flow)
   dispatch_stage0(path.pipe)
   # Pipeline Stage 1
   if prepare_stage1(path, press):
@@ -238,7 +290,7 @@ proc stage(path: var NBrushStroke, x, y, size, alpha, press: cfloat) =
 # BRUSH STROKE PATH DISPATCH
 # --------------------------
 
-proc evaluate(basic: ptr NStrokeBasic, p, flow: cfloat): tuple[s, a: cfloat] =
+proc evaluate(dyn: ptr NStrokeGeneric, basic: ptr NStrokeBasic, p: cfloat) =
   let
     # Size Interval
     s_st = basic.p_size
@@ -252,7 +304,7 @@ proc evaluate(basic: ptr NStrokeBasic, p, flow: cfloat): tuple[s, a: cfloat] =
     # Alpha Pressure Amplify
     a_amp = basic.amp_alpha
   # Shortcurts
-  var size, alpha: cfloat
+  var size, alpha, flow: cfloat
   # Pressure Amplify
   size = pow(p, s_amp)
   alpha = pow(p, a_amp)
@@ -264,13 +316,17 @@ proc evaluate(basic: ptr NStrokeBasic, p, flow: cfloat): tuple[s, a: cfloat] =
     alpha *= size * 0.4
     # Clamp Size
     size = 2.5
-  # Calculate Proper Opacity
-  if flow > 0.0:
-    alpha = 1.0 - pow(alpha, alpha + 1.25)
-    alpha = 1.0 - pow(alpha, flow)
+  # Calculate Flow Opacity
+  case dyn.kind
+  of fwAuto:
+    flow = 1.0 - pow(alpha, alpha + 1.25)
+    flow = 1.0 - pow(flow, dyn.magic)
+  of fwFlat, fwCustom:
+    flow = dyn.magic
   # Return Values
-  result.s = size
-  result.a = alpha
+  dyn.size = size
+  dyn.alpha = alpha
+  dyn.flow = flow
 
 proc line(path: var NBrushStroke, a, b: NStrokePoint, start: cfloat): cfloat =
   let
@@ -278,16 +334,15 @@ proc line(path: var NBrushStroke, a, b: NStrokePoint, start: cfloat): cfloat =
     dy = b.y - a.y
     # Stroke Line Length
     length = sqrt(dx * dx + dy * dy)
-    # Basic Shortcut
+    # Dynamics Shortcut
     basic = addr path.basic
+    dyn = addr path.generic
   # Avoid Zero Length
   if length < 0.0001:
     return start
-  let 
+  let
     # Stroke Shape Step
     step = path.step / length
-    # Stroke Opacity Step
-    flow = path.flow
     # Pressure Interval
     p_start = a.press
     p_dist = # Distance
@@ -300,16 +355,14 @@ proc line(path: var NBrushStroke, a, b: NStrokePoint, start: cfloat): cfloat =
     # Pressure Interpolation
     press = p_start + p_dist * t
     # Basic Parameters
-    let basic =
-      basic.evaluate(press, flow)
+    dyn.evaluate(basic, press)
     # Current Position
     x = a.x + dx * t
     y = a.y + dy * t
-    # Render Shape
-    path.stage(x, y,
-      basic.s, basic.a, press)
+    # Render Current Shape
+    path.stage(dyn, x, y, press)
     # Step to next point
-    t += basic.s * step
+    t += dyn.size * step
   # Return Remainder
   result = length * (t - 1.0)
 

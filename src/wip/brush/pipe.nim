@@ -55,14 +55,16 @@ type
     color1: array[4, cshort]
     # Rendering Color
     color: array[4, cshort]
-    # Alpha & Size
-    alpha*, size*: cint
+    # Alpha Mask & Blend
+    alpha*, flow*: cint
     # Rendering Size
-    w, h, s: cint
+    w, h, size: cint
     # Rendering Blocks
     tiles: seq[NBrushTile]
     # Thread Pool Pointer
-    pool*: ptr NThreadPool
+    pool*: NThreadPool
+    # Thread Pool Check
+    parallel*: bool
 
 # -----------------------------------
 # BRUSH PIPELINE COLOR INITIALIZATION
@@ -102,14 +104,16 @@ proc configure(tile: ptr NBrushTile, pipe: var NBrushPipeline) =
   # Rendering Target & Color
   render.canvas = addr pipe.canvas
   render.color = addr pipe.color
-  # Rendering Alpha & Radius
+  # Rendering Opacity
   render.alpha = pipe.alpha
-  render.size = pipe.size
+  render.flow = pipe.flow
   # Tile Rendering Blend Data
   render.opaque = addr tile.data
 
-proc reserve*(pipe: var NBrushPipeline; x1, y1, x2, y2, s: cint) =
+proc reserve*(pipe: var NBrushPipeline; x1, y1, x2, y2, shift: cint) =
   let
+    s = min(shift, 6)
+    # Current Target Canvas
     canvas = addr pipe.canvas
     # Block Size
     size = cint(1 shl s)
@@ -160,10 +164,7 @@ proc reserve*(pipe: var NBrushPipeline; x1, y1, x2, y2, s: cint) =
         # Next Tile
         inc(idx)
   # Store Rendering Size
-  pipe.w = pw
-  pipe.h = ph
-  # Store Rendering Shift
-  pipe.s = s
+  pipe.w = pw; pipe.h = ph
 
 proc move*(pipe: var NBrushPipeline, x, y: cint) =
   discard
@@ -295,11 +296,11 @@ proc water*(pipe: var NBrushPipeline; keep: bool) =
     # Tiled Dimensions
     w = pipe.w
     h = pipe.h
-    # Size Shift
-    s = pipe.s
+    # Render Block Size
+    size = pipe.size
     # Fixed Bilinear Steps
-    fx = fixed(w shl s, w - 1)
-    fy = fixed(h shl s, h - 1)
+    fx = fixed(size, w - 1)
+    fy = fixed(size, h - 1)
   var 
     tile: ptr NBrushTile
     water: ptr NBrushWater
@@ -397,22 +398,22 @@ proc mt_stage1(tile: ptr NBrushTile) =
 
 proc dispatch_stage0*(pipe: var NBrushPipeline) =
   let pool = pipe.pool
-  # Check if there is enough blocks
-  if len(pipe.tiles) > 32 and false:
+  # Check if tile is 64x64
+  if pipe.parallel:
     for tile in mitems(pipe.tiles):
-      pool[].spawn(mt_stage0, addr tile)
-    pool[].sync()
+      pool.spawn(mt_stage0, addr tile)
+    pool.sync()
   else: # Single Threaded
     for tile in mitems(pipe.tiles):
       mt_stage0(addr tile)
 
 proc dispatch_stage1*(pipe: var NBrushPipeline) =
   let pool = pipe.pool
-  # Check if there is enough blocks
-  if len(pipe.tiles) > 32 and false:
+  # Check if tile is 64x64
+  if pipe.parallel:
     for tile in mitems(pipe.tiles):
-      pool[].spawn(mt_stage1, addr tile)
-    pool[].sync()
+      pool.spawn(mt_stage1, addr tile)
+    pool.sync()
   else: # Single Threaded
     for tile in mitems(pipe.tiles):
       mt_stage1(addr tile)

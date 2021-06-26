@@ -64,7 +64,7 @@ static void brush_circle_four(brush_render_t* render, brush_circle_t* circle) {
 
   float alpha;
   // Load Shape Opacity
-  alpha = (float) render->alpha;
+  alpha = (float) render->flow;
 
   // SIMD Center Positions
   __m128 xmm_cx, xmm_cy;
@@ -189,7 +189,7 @@ static void brush_circle_one(brush_render_t* render, brush_circle_t* circle) {
 
   float alpha;
   // Load Shape Opacity
-  alpha = (float) render->alpha;
+  alpha = (float) render->flow;
 
   float cx, xx;
   float cy, yy;
