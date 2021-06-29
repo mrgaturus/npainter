@@ -153,7 +153,7 @@ proc prepare*(path: var NBrushStroke) =
     dyn.magic = basic.alpha
     # Ajust Sharpness on Flatness
     if shape in {bsCircle, bsBlotmap}:
-      path.mask.circle.sharp -= 2.0
+      path.mask.circle.sharp -= 1.0
   else: # Use Automatic
     dyn.kind = fwAuto
     dyn.magic = path.step * 2.0
