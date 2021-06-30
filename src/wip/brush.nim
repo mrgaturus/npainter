@@ -146,11 +146,14 @@ proc prepare*(path: var NBrushStroke) =
   # Define Which Flow Use
   if shape == bsBitmap:
     dyn.kind = fwCustom
-    dyn.magic = # Alpha Per Shape
+    dyn.magic = # Custom Alpha
       path.mask.bitmap.alpha
   elif blend in {bnFlat, bnMarker}:
     dyn.kind = fwFlat
-    dyn.magic = basic.alpha
+    # Decide Which Flow Use
+    if blend == bnMarker:
+      dyn.magic = basic.alpha
+    else: dyn.magic = 1.0
     # Ajust Sharpness on Flatness
     if shape in {bsCircle, bsBlotmap}:
       path.mask.circle.sharp -= 1.0
@@ -229,7 +232,7 @@ proc prepare_stage0(path: var NBrushStroke, x, y, size, alpha, flow: cfloat) =
     r.shift)
   # Check if Parallel
   path.pipe.parallel = 
-    r.shift > 6
+    size > 100.0
   # Sum Dirty AABB
   path.dirty(r)
 

@@ -371,7 +371,7 @@ proc mt_stage0(tile: ptr NBrushTile) =
   of bnEraser: brush_erase_blend(render)
   # Watercolor Blending Modes
   of bnAverage, bnWater, bnMarker: 
-    brush_water_first(render)  
+    brush_water_first(render)
   # Special Blending Modes
   of bnSmudge: brush_smudge_first(render)
   of bnBlur: brush_blur_first(render)
