@@ -206,8 +206,15 @@ proc prepare_stage0(path: var NBrushStroke, x, y, size, alpha, flow: cfloat) =
     r = region(x, y, size)
     mask = addr path.pipe.mask
   # Pipeline Stage Alpha
-  path.pipe.alpha =
-    cint(alpha * 32767.0)
+  case path.blend
+  of bnFlat, bnMarker:
+    path.pipe.alpha =
+      cint(alpha * 32767.0)
+  of bnBlur:
+    path.pipe.alpha =
+      path.data.blur.radius
+  else: discard
+  # Pipeline Stage Flow
   path.pipe.flow =
     cint(flow * 32767.0)
   # Pipeline Stage Shape

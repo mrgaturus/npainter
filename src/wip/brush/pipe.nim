@@ -58,7 +58,7 @@ type
     # Alpha Mask & Blend
     alpha*, flow*: cint
     # Rendering Size
-    w, h, size: cint
+    w, h, shift: cint
     # Rendering Blocks
     tiles: seq[NBrushTile]
     # Thread Pool Pointer
@@ -163,8 +163,11 @@ proc reserve*(pipe: var NBrushPipeline; x1, y1, x2, y2, shift: cint) =
         render.h = if yy1 == ch: rh else: size
         # Next Tile
         inc(idx)
-  # Store Rendering Size
-  pipe.w = pw; pipe.h = ph
+  # Store Dimensions
+  pipe.w = pw
+  pipe.h = ph
+  # Store Shift
+  pipe.shift = s
 
 proc move*(pipe: var NBrushPipeline, x, y: cint) =
   discard
@@ -296,8 +299,10 @@ proc water*(pipe: var NBrushPipeline; keep: bool) =
     # Tiled Dimensions
     w = pipe.w
     h = pipe.h
-    # Render Block Size
-    size = pipe.size
+    # Tiled Shift
+    s = pipe.shift
+    # Tiled Dimension
+    size = cint(1) shl s
     # Fixed Bilinear Steps
     fx = fixed(size, w - 1)
     fy = fixed(size, h - 1)
@@ -333,9 +338,12 @@ proc water*(pipe: var NBrushPipeline; keep: bool) =
         pixel[1] = cshort(avg[1])
         pixel[2] = cshort(avg[2])
         pixel[3] = cshort(avg[3])
-        # Water Position
-        water.x = x; water.y = y
-        water.w = w; water.h = h
+        # Water Position, Bilinear
+        water.x = fx * size * x
+        water.y = fy * size * y
+        # Water Dimensions
+        water.w = w
+        water.h = h
         # Water Interpolation
         water.count0 = fx
         water.count1 = fy
