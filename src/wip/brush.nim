@@ -148,21 +148,22 @@ proc prepare*(path: var NBrushStroke) =
     dyn.kind = fwCustom
     dyn.magic = # Custom Alpha
       path.mask.bitmap.alpha
-  elif blend in {bnFlat, bnMarker}:
+  elif blend in {bnFlat, bnMarker, bnSmudge}:
     dyn.kind = fwFlat
     # Decide Which Flow Use
-    if blend == bnMarker:
-      dyn.magic = basic.alpha
-    else: dyn.magic = 1.0
-    # Ajust Sharpness on Flatness
-    if shape in {bsCircle, bsBlotmap}:
-      path.mask.circle.sharp -= 1.0
+    dyn.magic = case blend
+      of bnFlat, bnSmudge: 1.0
+      else: basic.alpha
+    # Ajust Circle Sharpness
+    path.mask.circle.sharp -= 1.0
   else: # Use Automatic
     dyn.kind = fwAuto
     dyn.magic = path.step * 2.0
   # Prepare Pipeline Kind
   path.pipe.shape = shape
   path.pipe.blend = blend
+  # Prepare Pipeline Opacity
+  path.pipe.alpha = 32767
 
 # ------------------------
 # BRUSH STROKE REGION SIZE

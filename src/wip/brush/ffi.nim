@@ -8,28 +8,31 @@ from math import
 
 {.compile: "shape.c".}
 {.compile: "clip.c".}
-# --------------------------
+# --------------------
 {.compile: "basic.c".}
 {.compile: "water.c".}
 {.compile: "blur.c".}
-
+# ----------------------------------
 {.push header: "wip/brush/brush.h".}
 
 type
-  NBrushCircle {.importc: "brush_circle_t" } = object
-    x, y, size: cfloat
-    # Hard & Sharp
-    smooth: cfloat
   NBrushTexture {.importc: "brush_texture_t" } = object
     alpha, fract: cshort
     # Texture Buffer
     w, h: cint
     buffer: cstring
+  # -------------------------------------------------
+  NBrushCircle {.importc: "brush_circle_t" } = object
+    x, y, size: cfloat
+    # Hard & Sharp
+    smooth: cfloat
   NBrushBlotmap {.importc: "brush_blotmap_t" } = object
+    # Blotmap Circle
     circle: NBrushCircle
     # Blotmap Texture Pointer
     texture: ptr NBrushTexture
   NBrushBitmap {.importc: "brush_bitmap_t" } = object
+    x, y: cfloat
     # Inverse Affine
     a, b, c: cfloat
     d, e, f: cfloat
@@ -50,9 +53,8 @@ type
     # Water Tiled
     x, y, w, h: cint
   NBrushSmudge {.importc: "brush_smudge_t" } = object
-    x, y, w, h: cint
-    # Render Offset
-    ox, oy: cint
+    # Copy Position
+    x, y: cfloat
   # ----------------------------------TEMPORALY PUBLIC
   NBrushCanvas {.importc: "brush_canvas_t"} = object
     w*, h*, stride*: cint
@@ -90,24 +92,21 @@ proc brush_texture_mask(render: ptr NBrushRender, tex: ptr NBrushTexture)
 # BRUSH ENGINE BLENDING MODES
 # ---------------------------
 
+proc brush_clip_blend(render: ptr NBrushRender)
+# -----------------------------------------------
 proc brush_normal_blend(render: ptr NBrushRender)
 proc brush_func_blend(render: ptr NBrushRender)
 proc brush_flat_blend(render: ptr NBrushRender)
 proc brush_erase_blend(render: ptr NBrushRender)
-# ------------------------------------------------
+# ----------------------------------------------
 proc brush_water_first(render: ptr NBrushRender)
 proc brush_water_blend(render: ptr NBrushRender)
-# --------------------------------------------
+# ---------------------------------------------
 proc brush_blur_first(render: ptr NBrushRender)
 proc brush_blur_blend(render: ptr NBrushRender)
-# --------------------------------------------
+# -----------------------------------------------
 proc brush_smudge_first(render: ptr NBrushRender)
 proc brush_smudge_blend(render: ptr NBrushRender)
-# --------------------------------------------
-proc brush_selection_clip(render: ptr NBrushRender)
-
-proc brush_selection_blend(render: ptr NBrushRender)
-proc brush_selection_erase(render: ptr NBrushRender)
 
 {.pop.} # End Importc
 {.pop.} # End Header
@@ -163,10 +162,17 @@ proc derivative(bitmap: var NBrushBitmap) =
   # Return Subpixel Level
   bitmap.level = cint(calc)
 
-proc affine*(bitmap: var NBrushBitmap, x, y, angle, scale, aspect: cfloat) =
-  assert(not bitmap.texture.isNil)
+proc basic*(bitmap: var NBrushBitmap; x, y: cfloat) =
+  # Change Position
+  bitmap.x = x
+  bitmap.y = y
+
+proc affine*(bitmap: var NBrushBitmap; angle, scale, aspect: cfloat) =
   # -- Calculate Affine Transformation
   let
+    x = bitmap.x
+    y = bitmap.y
+    # Orientation
     sa = sin(angle)
     ca = cos(angle)
     # Center Of Texture Rectangle
@@ -183,12 +189,10 @@ proc affine*(bitmap: var NBrushBitmap, x, y, angle, scale, aspect: cfloat) =
   # Convert To Reciprocal
   sx = 1.0 / sx; sy = 1.0 / sy
   # X Affine Transformation
-  bitmap.a = ca * sx
-  bitmap.b = sa * sx
+  bitmap.a = ca * sx; bitmap.b = sa * sx
   bitmap.c = -(ca * x + sa * y + cx * sx) * sx
   # Y Affine Transformation
-  bitmap.d = -sa * sy
-  bitmap.e = ca * sy
+  bitmap.d = -sa * sy; bitmap.e = ca * sy
   bitmap.f = (sa * x - ca * y - cy * sy) * sy
   # Calculate Subpixel Level
   bitmap.derivative()

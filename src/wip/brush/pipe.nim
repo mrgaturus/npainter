@@ -15,9 +15,6 @@ type
     bnFunc, bnFlat, bnEraser
     # Water Color Brushes
     bnAverage, bnWater, bnMarker
-    # Selection Brushes
-    bnSelectionPen
-    bnSelectionEraser
     # Special Brushes
     bnBlur, bnSmudge
   # -------------------
@@ -28,7 +25,6 @@ type
   NBrushData {.union.} = object
     average: NBrushAverage
     water: NBrushWater
-    # Smudge Backup Region
     smudge: NBrushSmudge
   NBrushTile = object
     shape: NBrushShape
@@ -168,9 +164,6 @@ proc reserve*(pipe: var NBrushPipeline; x1, y1, x2, y2, shift: cint) =
   pipe.h = ph
   # Store Shift
   pipe.shift = s
-
-proc move*(pipe: var NBrushPipeline, x, y: cint) =
-  discard
 
 # --------------------------------
 # BRUSH PIPELINE COLOR FIX15 PROCS
@@ -363,13 +356,13 @@ proc mt_stage0(tile: ptr NBrushTile) =
   of bsCircle: brush_circle_mask(render, addr mask.circle)
   of bsBlotmap: brush_blotmap_mask(render, addr mask.blotmap)
   of bsBitmap: brush_bitmap_mask(render, addr mask.bitmap)
-  # -- Apply Texture Mask
+  # -- Render Brush Texture Mask
   if not isNil(tile.tex.buffer):
     brush_texture_mask(render, tile.tex)
-  # -- Clip Brush Shape Mask
+  # -- Render Brush Clipping
   if not isNil(render.canvas.clip) or 
   not isNil(render.canvas.alpha):
-    brush_selection_clip(render)
+    brush_clip_blend(render)
   # -- Stage0 Blending Mode
   case tile.blend
   of bnPencil, bnAirbrush: 
@@ -381,11 +374,16 @@ proc mt_stage0(tile: ptr NBrushTile) =
   of bnAverage, bnWater, bnMarker: 
     brush_water_first(render)
   # Special Blending Modes
-  of bnSmudge: brush_smudge_first(render)
   of bnBlur: brush_blur_first(render)
-  # Selection Blending Modes
-  of bnSelectionPen: brush_selection_blend(render)
-  of bnSelectionEraser: brush_selection_erase(render)
+  of bnSmudge:
+    if render.alpha == 0:
+      brush_smudge_first(render)
+      brush_smudge_blend(render)
+    # Change Current Copy Position
+    tile.data.smudge.x = mask.circle.x
+    tile.data.smudge.y = mask.circle.y
+    # Remove Skip
+    render.alpha = 0
 
 proc mt_stage1(tile: ptr NBrushTile) =
   let render = addr tile.render
@@ -394,8 +392,6 @@ proc mt_stage1(tile: ptr NBrushTile) =
   of bnAverage: brush_normal_blend(render)
   of bnWater: brush_water_blend(render)
   of bnMarker: brush_flat_blend(render)
-  # Special Blending Modes
-  of bnSmudge: brush_smudge_blend(render)
   of bnBlur: brush_blur_blend(render)
   # Doesn't Need Stage1
   else: discard

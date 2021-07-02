@@ -1,6 +1,19 @@
 #include <smmintrin.h>
 
 // -------------------
+// BRUSH SHAPE TEXTURE
+// -------------------
+
+typedef struct {
+  // Interpolation
+  short alpha, fract;
+  // Texture Size
+  int w, h;
+  // Texture Buffer
+  unsigned char* buffer;
+} brush_texture_t;
+
+// -------------------
 // BRUSH SHAPE MASKING
 // -------------------
 
@@ -12,22 +25,15 @@ typedef struct {
 } brush_circle_t;
 
 typedef struct {
-  // Interpolation
-  short alpha, fract;
-  // Texture Size
-  int w, h;
-  // Texture Buffer
-  unsigned char* buffer;
-} brush_texture_t;
-
-typedef struct {
+  // Blotmap Circle
   brush_circle_t circle;
-  // Difference Masking
+  // Blotmap Texture Difference
   brush_texture_t* texture;
   // ---------------------
 } brush_blotmap_t;
 
 typedef struct {
+  float x, y;
   // Inverse Affine
   float a, b, c;
   float d, e, f;
@@ -38,9 +44,9 @@ typedef struct {
   // ------------------
 } brush_bitmap_t;
 
-// ---------------------
-// BRUSH BLENDING ENGINE
-// ---------------------
+// --------------------
+// BRUSH SHAPE BLENDING
+// --------------------
 
 typedef struct {
   int count0, count1;
@@ -57,15 +63,13 @@ typedef struct {
 } brush_water_t;
 
 typedef struct {
-  // Backup Region
-  int x, y, w, h;
-  // Render Offset
-  int ox, oy;
+  // Copy Position
+  float x, y;
 } brush_smudge_t;
 
-// -----------------
-// BRUSH RENDER TILE
-// -----------------
+// --------------------
+// BRUSH RENDERING TILE
+// --------------------
 
 typedef struct {
   int w, h, stride;
@@ -104,6 +108,8 @@ void brush_texture_mask(brush_render_t* render, brush_texture_t* tex);
 // BRUSH ENGINE BLENDING MODES
 // ---------------------------
 
+void brush_clip_blend(brush_render_t* render);
+// ---------------------------------------------
 void brush_normal_blend(brush_render_t* render);
 void brush_func_blend(brush_render_t* render);
 void brush_flat_blend(brush_render_t* render);
@@ -117,8 +123,3 @@ void brush_blur_blend(brush_render_t* render);
 // --------------------------------------------
 void brush_smudge_first(brush_render_t* render);
 void brush_smudge_blend(brush_render_t* render);
-// --------------------------------------------
-void brush_selection_clip(brush_render_t* render);
-
-void brush_selection_blend(brush_render_t* render);
-void brush_selection_erase(brush_render_t* render);
