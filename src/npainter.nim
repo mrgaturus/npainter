@@ -1,5 +1,5 @@
 import gui/[window, widget, render, event, signal, timer]
-import gui/widgets/[slider, label, color]
+import gui/widgets/[slider, label, color, check]
 # Import OpenGL
 import libs/gl
 # Import Maths
@@ -22,7 +22,10 @@ type
     # Pressure Minimun
     min_size, min_alpha: Value
     # ----------------
-    color_alpha: Value
+    blending: Value
+    dilution: Value
+    persistence: Value
+    water, keep: bool
   GUICanvas = ref object of GUIWidget
     # Canvas Brush Panel
     panel: GUICanvasPanel
@@ -78,10 +81,6 @@ proc copy(self: GUICanvas, x, y, w, h: int) =
 # -----------------------
 
 proc prepare(self: GUICanvas) =
-  self.path.shape = bsCircle
-  if self.eraser:
-    self.path.blend = bnEraser
-  else: self.path.blend = bnFlat
   let
     panel = self.panel
     color = panel.color
@@ -89,6 +88,7 @@ proc prepare(self: GUICanvas) =
     path = addr self.path
     basic = addr path.basic
     circle = addr path.mask.circle
+    avg = addr path.data.avg
     # Unpack Color to Fix15
     r = int16(color.r * 255.0)
     g = int16(color.g * 255.0)
@@ -105,8 +105,24 @@ proc prepare(self: GUICanvas) =
   circle.hard = distance(panel.hard)
   circle.sharp = distance(panel.sharp)
   # Calculate Dynamics Amplification
-  basic.amp_size = 1.0
+  basic.amp_size = 2.5
   basic.amp_alpha = 1.0
+  # -------------------
+  avg.blending = 
+    cshort(distance(panel.blending) * 32767.0)
+  avg.dilution = 
+    cshort(distance(panel.dilution) * 32767.0)
+  avg.persistence = 
+    cshort(distance(panel.persistence) * 32767.0)
+  # Keep Opacity
+  avg.keep_alpha = panel.keep
+  # ------------------
+  self.path.shape = bsCircle
+  if self.eraser:
+    self.path.blend = bnEraser
+  elif panel.water:
+    self.path.blend = bnAverage
+  else: self.path.blend = bnPencil
   # Prepare Path Rendering
   self.path.prepare()
 
@@ -178,7 +194,7 @@ method draw(self: GUICanvas, ctx: ptr CTXRender) =
   ctx.color(uint32 0xFFFFFFFF)
   #ctx.color(uint32 0xFFFF2f2f)
   var r: CTXRect
-  r = rect(0, 0, 640, 720)
+  r = rect(0, 0, 1280, 720)
   ctx.fill(r)
   ctx.color(uint32 0xFF000000)
   r = rect(640, 0, 640, 720)
@@ -200,12 +216,13 @@ proc newBrushPanel(): GUICanvasPanel =
   # Set Mouse Attribute
   result.flags = wMouse
   # Set Geometry To Floating
-  result.geometry(20, 20, 250, 450)
+  result.geometry(20, 20, 250, 540)
   # Create Label: |Slider|
   var 
     label: GUILabel
     slider: GUISlider
     color: GUIColorBar
+    check: GUIWidget
   # -- Color Square --
   color = newColorBar(addr result.color)
   color.geometry(5, 5, 240, 240)
@@ -265,6 +282,38 @@ proc newBrushPanel(): GUICanvasPanel =
   val(result.min_alpha, 100)
   val(result.hard, 100)
   val(result.sharp, 50)
+  # WaterColor Switch
+  check = newCheckbox("Watercolor", addr result.water)
+  check.geometry(90, 420, 150, check.hint.h)
+  result.add(check)
+  # Blending Slider
+  interval(result.blending, 0, 100)
+  label = newLabel("Blending", hoLeft, veMiddle)
+  label.geometry(5, 440, 80, label.hint.h)
+  result.add(label)
+  slider = newSlider(addr result.blending)
+  slider.geometry(90, 440, 150, slider.hint.h)
+  result.add(slider)
+  # Dilution Slider
+  interval(result.dilution, 0, 100)
+  label = newLabel("Dilution", hoLeft, veMiddle)
+  label.geometry(5, 460, 80, label.hint.h)
+  result.add(label)
+  slider = newSlider(addr result.dilution)
+  slider.geometry(90, 460, 150, slider.hint.h)
+  result.add(slider)
+  # Persistence Slider
+  interval(result.persistence, 0, 100)
+  label = newLabel("Persistence", hoLeft, veMiddle)
+  label.geometry(5, 480, 80, label.hint.h)
+  result.add(label)
+  slider = newSlider(addr result.persistence)
+  slider.geometry(90, 480, 150, slider.hint.h)
+  result.add(slider)
+  # Keep Opacity Switch
+  check = newCheckbox("Keep Opacity", addr result.keep)
+  check.geometry(90, 500, 150, check.hint.h)
+  result.add(check)
 
 proc newCanvas(): GUICanvas =
   new result

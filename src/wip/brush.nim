@@ -82,10 +82,9 @@ type
     blot*: NStrokeBlotmap
     bitmap*: NStrokeBitmap
   NStrokeBlend {.union.} = object
-    avg: NStrokeAverage
-    marker: NStrokeMarker
-    # ---------------
-    blur: NStrokeBlur
+    avg*: NStrokeAverage
+    marker*: NStrokeMarker
+    blur*: NStrokeBlur
   # ---------------------
   NBrushStroke* = object
     # Shape & Blend Kind
@@ -163,7 +162,7 @@ proc prepare*(path: var NBrushStroke) =
   path.pipe.shape = shape
   path.pipe.blend = blend
   # Prepare Pipeline Opacity
-  path.pipe.alpha = 32767
+  path.pipe.alpha = 0
 
 # ------------------------
 # BRUSH STROKE REGION SIZE
@@ -257,6 +256,7 @@ proc prepare_stage1(path: var NBrushStroke, press: cfloat): bool =
       m_dist = 1.0 - m_st
       # Current Calculated Pressure Inverted
       m_press = 1.0 - (m_st + m_dist * press)
+      m_fract = cint(m_press * 32767.0)
     var b, d, p: cint
     # Calculate Parameters
     b = avg.blending
@@ -264,9 +264,15 @@ proc prepare_stage1(path: var NBrushStroke, press: cfloat): bool =
     p = avg.persistence
     # Interpolate With Pressure
     if avg.p_blending:
-      b = cint(m_press * b.cfloat)
+      b = div_32767(b * m_fract)
     if avg.p_dilution:
-      d = cint(m_press * d.cfloat)
+      d = div_32767(d * m_fract)
+    # Ajust Blending
+    b = sqrt_32767(b)
+    d = sqrt_32767(d)
+    # Ajust Persistence
+    p = sqrt_32767(p)
+    p = sqrt_32767(p)
     # Calcultate Averaged
     average(path.pipe, 
       b, d, p, avg.keep_alpha)

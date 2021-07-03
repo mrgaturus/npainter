@@ -142,21 +142,26 @@ proc reserve*(pipe: var NBrushPipeline; x1, y1, x2, y2, shift: cint) =
   if pw > 0 and ph > 0:
     setLen(pipe.tiles, pw * ph)
     # Tile Index
-    var idx: int
+    var 
+      idx: int
+      px, py: cint
     # Locate Each Tile
     for ty in 0..<ph:
       for tx in 0..<pw:
-        let 
+        let
           tile = addr pipe.tiles[idx]
           render = addr tile.render
+        # Calculate Position
+        px = xx1 + tx
+        py = yy1 + ty
         # Configure Tile
         configure(tile, pipe)
         # Rendering Position
-        render.x = (xx1 + tx) shl s
-        render.y = (yy1 + ty) shl s
+        render.x = px shl s
+        render.y = py shl s
         # Rendering Dimensions
-        render.w = if xx1 == cw: rw else: size
-        render.h = if yy1 == ch: rh else: size
+        render.w = if px == cw: rw else: size
+        render.h = if py == ch: rh else: size
         # Next Tile
         inc(idx)
   # Store Dimensions
@@ -169,7 +174,24 @@ proc reserve*(pipe: var NBrushPipeline; x1, y1, x2, y2, shift: cint) =
 # BRUSH PIPELINE COLOR FIX15 PROCS
 # --------------------------------
 
-proc div_32767(c: cint): cint =
+proc sqrt_32767*(x: cint): cint =
+  var
+    a = cuint(x shl 15)
+    # Aproximation
+    rem, root: cuint
+  # Try Hard Square Root
+  for i in 0 ..< 16:
+    root = root shl 1
+    rem = # Binary Magic
+      (rem shl 2) or (a shr 30)
+    a = a shl 2
+    if root < rem:
+      rem -= root or 1
+      root += 2
+  # Return Estimated
+  result = cast[cint](root shr 1)
+
+proc div_32767*(c: cint): cint =
   result = (c + 32767) shr 15
   result = (c + result) shr 15
 
@@ -187,60 +209,76 @@ proc straight(c, a: cint): cint =
 
 proc average*(pipe: var NBrushPipeline; blending, dilution, persistence: cint; keep: bool) =
   var
-    count0, count1: cint
+    count, opacity: cint
     r, g, b, a: cint
   # only occurs on some blends
   case pipe.blend
   of bnAverage, bnWater, bnMarker:
     for tile in mitems(pipe.tiles):
       let avg = addr tile.data.average
-      # Sum Counters
-      count0 += avg.count0
-      count1 += avg.count1
+      # Sum Color Count
+      if keep:
+        count += avg.count0
+      else: count += avg.count1
       # Sum Each Color Channel
       r += avg.color_sum[0]
       g += avg.color_sum[1]
       b += avg.color_sum[2]
       a += avg.color_sum[3]
-    # Keep Opacity?
-    if not keep and count1 > 0: 
-      count0 = count1
+    if count == 0: count = 1
     # Divide Color Average and Convert
-    r = (r div count0 shl 7) or r
-    g = (g div count0 shl 7) or g
-    b = (b div count0 shl 7) or b
-    a = (a div count0 shl 7) or a
-    # Convert to Straight
+    r = r div count shl 4
+    g = g div count shl 4
+    b = b div count shl 4
+    a = a div count shl 4
+    # Keep Opacity?
+    if keep:
+      opacity = div_32767(blending * opacity)
+      opacity = interpolate(blending, opacity, 1024)
+      # Replace Blending Count
+      unsafeAddr(blending)[] = opacity
+    # Backup Opacity
+    opacity = a
+    # Calculate Straigth
     if a > 0:
       r = straight(r, a)
       g = straight(g, a)
       b = straight(b, a)
-    # Keep Opacity?
-    count0 = if keep:
-      div_32767(a * blending)
-    else: blending
-    # Interpolate Blended Color
-    r = interpolate(pipe.color0[0], r, count0)
-    g = interpolate(pipe.color0[1], g, count0)
-    b = interpolate(pipe.color0[2], b, count0)
-    # Interpolate With Previous Auxiliar Color
-    r = interpolate(pipe.color1[0], r, persistence)
-    g = interpolate(pipe.color1[1], g, persistence)
-    b = interpolate(pipe.color1[2], b, persistence)
-    a = interpolate(pipe.color1[3], a, persistence)
+      # Complete Opacity
+      a = 32767
+    else: # Dont Interpolate
+      r = pipe.color1[0]
+      g = pipe.color1[1]
+      b = pipe.color1[2]
+      a = pipe.color1[3]
+    # Interpolate With Blending
+    r = interpolate(pipe.color0[0], r, blending)
+    g = interpolate(pipe.color0[1], g, blending)
+    b = interpolate(pipe.color0[2], b, blending)
+    a = interpolate(pipe.color0[3], a, blending)
+    # Calculate Dilution Opacity
+    opacity = interpolate(
+      32767, opacity, dilution)
+    # Interpolate with Dilution
+    r = div_32767(r * opacity)
+    g = div_32767(g * opacity)
+    b = div_32767(b * opacity)
+    a = div_32767(a * opacity)
+    # Interpolate With Persistence
+    if pipe.alpha == 32767:
+      r = interpolate(r, pipe.color1[0], persistence)
+      g = interpolate(g, pipe.color1[1], persistence)
+      b = interpolate(b, pipe.color1[2], persistence)
+      a = interpolate(a, pipe.color1[3], persistence)
+    # Replace Skip Check
+    pipe.alpha = 32767
     # Replace Auxiliar Color
     pipe.color1[0] = cshort(r)
     pipe.color1[1] = cshort(g)
     pipe.color1[2] = cshort(b)
     pipe.color1[3] = cshort(a)
-    # Apply Dilution Interpolation
-    a = interpolate(32767, a, dilution)
-    # Premultiply Rendering Color
-    pipe.color[0] = div_32767(r * a).cshort
-    pipe.color[1] = div_32767(g * a).cshort
-    pipe.color[2] = div_32767(b * a).cshort
-    # Set Rendering Alpha
-    pipe.color[3] = cshort(a)
+    # Replace Rendering Color
+    pipe.color = pipe.color1
   else: discard
 
 # -------------------------------
