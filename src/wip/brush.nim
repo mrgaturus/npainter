@@ -161,8 +161,8 @@ proc prepare*(path: var NBrushStroke) =
   # Prepare Pipeline Kind
   path.pipe.shape = shape
   path.pipe.blend = blend
-  # Prepare Pipeline Opacity
-  path.pipe.alpha = 0
+  # Prepare Pipeline Skip
+  path.pipe.skip = true
 
 # ------------------------
 # BRUSH STROKE REGION SIZE
@@ -213,6 +213,9 @@ proc prepare_stage0(path: var NBrushStroke, x, y, size, alpha, flow: cfloat) =
   of bnBlur:
     path.pipe.alpha =
       path.data.blur.radius
+  of bnSmudge:
+    path.pipe.alpha =
+      cshort(path.pipe.skip)
   else: discard
   # Pipeline Stage Flow
   path.pipe.flow =
@@ -302,6 +305,8 @@ proc stage(path: var NBrushStroke; dyn: ptr NStrokeGeneric; x, y, press: cfloat)
   # Pipeline Stage 1
   if prepare_stage1(path, press):
     dispatch_stage1(path.pipe)
+  # Pipeline Stage Skip
+  path.pipe.skip = false
 
 # --------------------------
 # BRUSH STROKE PATH DISPATCH

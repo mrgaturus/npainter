@@ -59,8 +59,8 @@ type
     tiles: seq[NBrushTile]
     # Thread Pool Pointer
     pool*: NThreadPool
-    # Thread Pool Check
-    parallel*: bool
+    # Pipeline Status
+    parallel*, skip*: bool
 
 # -----------------------------------
 # BRUSH PIPELINE COLOR INITIALIZATION
@@ -265,13 +265,11 @@ proc average*(pipe: var NBrushPipeline; blending, dilution, persistence: cint; k
     b = div_32767(b * opacity)
     a = div_32767(a * opacity)
     # Interpolate With Persistence
-    if pipe.alpha == 32767:
+    if not pipe.skip:
       r = interpolate(r, pipe.color1[0], persistence)
       g = interpolate(g, pipe.color1[1], persistence)
       b = interpolate(b, pipe.color1[2], persistence)
       a = interpolate(a, pipe.color1[3], persistence)
-    # Replace Skip Check
-    pipe.alpha = 32767
     # Replace Auxiliar Color
     pipe.color1[0] = cshort(r)
     pipe.color1[1] = cshort(g)
@@ -414,14 +412,12 @@ proc mt_stage0(tile: ptr NBrushTile) =
   # Special Blending Modes
   of bnBlur: brush_blur_first(render)
   of bnSmudge:
-    if render.alpha == 0:
+    if render.alpha > 0:
       brush_smudge_first(render)
       brush_smudge_blend(render)
     # Change Current Copy Position
     tile.data.smudge.x = mask.circle.x
     tile.data.smudge.y = mask.circle.y
-    # Remove Skip
-    render.alpha = 0
 
 proc mt_stage1(tile: ptr NBrushTile) =
   let render = addr tile.render
