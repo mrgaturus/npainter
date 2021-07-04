@@ -290,10 +290,17 @@ proc prepare_stage1(path: var NBrushStroke, press: cfloat): bool =
     p = marker.persistence
     # Interpolate With Pressure
     if marker.p_blending:
-      b = cint(press * b.cfloat)
+      let fract = # Pressure
+        cint(press * 32767.0)
+      b = div_32767(b * fract)
+    # Ajust Blending
+    b = sqrt_32767(b)
+    # Ajust Persistence
+    p = sqrt_32767(p)
+    p = sqrt_32767(p)
     # Calculate Averaged
     average(path.pipe,
-      b, 0, p, true)
+      b, 0, p, false)
   of bnBlur, bnSmudge: discard
   else: result = false
 
