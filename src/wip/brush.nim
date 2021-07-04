@@ -132,7 +132,7 @@ proc prepare*(path: var NBrushStroke) =
     basic = addr path.basic
   # Ajust Size And Alpha Parameters
   basic.size = 2.5 + (1000.0 - 2.5) * basic.size
-  basic.alpha = min(basic.alpha, 0.995)
+  basic.alpha = min(basic.alpha, 0.9999)
   # Decide Which Step Use
   case shape
   of bsCircle, bsBlotmap:
