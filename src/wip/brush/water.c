@@ -340,11 +340,12 @@ static short* brush_water_expand(brush_render_t* render) {
     for (int x = x1; x <= x2; x++) {
       // Convolve Current Pixel
       pixel = brush_water_convolve(src, w, h, x, y);
-      // Apply Color Alpha
+      // Get Pixel Current Alpha
+      xmm0 = _mm_shuffle_epi32(pixel, 0xFF);
+      // Apply Color Alpha to Pixel
       pixel = _mm_mullo_epi32(pixel, alpha);
       pixel = _mm_div_32767(pixel);
       // Blend With Current Color
-      xmm0 = _mm_shuffle_epi32(pixel, 0xFF);
       xmm0 = _mm_mullo_epi32(xmm0, color);
       xmm0 = _mm_div_32767(xmm0);
       xmm0 = _mm_sub_epi32(color, xmm0);
