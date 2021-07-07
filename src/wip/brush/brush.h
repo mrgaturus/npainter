@@ -59,7 +59,11 @@ typedef struct {
   // Color Acumulation
   int color_sum[4];
   // Water Tiled
-  int x, y, w, h;
+  int x, y, fx, fy;
+  // Water Size
+  short s, ss;
+  // Water Buffer
+  short stride, rows;
 } brush_water_t;
 
 typedef struct {
@@ -115,7 +119,9 @@ void brush_func_blend(brush_render_t* render);
 void brush_flat_blend(brush_render_t* render);
 void brush_erase_blend(brush_render_t* render);
 // --------------------------------------------
+void brush_average_first(brush_render_t* render);
 void brush_water_first(brush_render_t* render);
+
 void brush_water_blend(brush_render_t* render);
 // --------------------------------------------
 void brush_blur_first(brush_render_t* render);

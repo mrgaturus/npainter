@@ -147,6 +147,8 @@ proc cb_dispatch(g: pointer, w: ptr GUITarget) =
   self.copy(aabb.x1, aabb.y1, 
     aabb.x2 - aabb.x1,
     aabb.y2 - aabb.y1)
+  #self.copy(0, 0, 
+  #  1280, 720)
   # Reset Dirty Region
   aabb.x1 = high(int32); aabb.x2 = 0
   aabb.y1 = high(int32); aabb.y2 = 0
@@ -157,6 +159,8 @@ proc cb_clear(g: pointer, w: ptr GUITarget) =
   let self = cast[GUICanvas](w[])
   # Clear Both Canvas Buffers
   zeroMem(addr self.dst[0], 
+    sizeof(self.dst))
+  zeroMem(addr self.buffer1[0], 
     sizeof(self.dst))
   zeroMem(addr self.dst_copy[0], 
     sizeof(self.dst_copy))
@@ -170,6 +174,8 @@ proc cb_clear(g: pointer, w: ptr GUITarget) =
   self.busy = false
 
 method event(self: GUICanvas, state: ptr GUIState) =
+  #state.px *= 4.0
+  #state.py *= 4.0
   # If clicked, reset points
   if state.kind == evCursorClick:
     self.prepare()
@@ -307,7 +313,7 @@ proc newBrushPanel(): GUICanvasPanel =
     bnAverage.byte, cast[ptr byte](addr result.blend))
   check.geometry(5, 440, 80, check.hint.h)
   result.add(check)
-  check = newRadio("Wet Brush",
+  check = newRadio("Water",
     bnWater.byte, cast[ptr byte](addr result.blend))
   check.geometry(85, 440, 80, check.hint.h)
   result.add(check)

@@ -132,34 +132,33 @@ proc reserve*(pipe: var NBrushPipeline; x1, y1, x2, y2, shift: cint) =
   if yy2 >= zh: yy2 = zh
   # Tiled Dimensions
   let
-    pw = xx2 - xx1
-    ph = yy2 - yy1
+    pw = max(xx2 - xx1, 0)
+    ph = max(yy2 - yy1, 0)
   # Reserve Tiled Regions
-  if pw > 0 and ph > 0:
-    setLen(pipe.tiles, pw * ph)
-    # Tile Index
-    var 
-      idx: int
-      px, py: cint
-    # Locate Each Tile
-    for ty in 0..<ph:
-      for tx in 0..<pw:
-        let
-          tile = addr pipe.tiles[idx]
-          render = addr tile.render
-        # Calculate Position
-        px = xx1 + tx
-        py = yy1 + ty
-        # Configure Tile
-        configure(tile, pipe)
-        # Rendering Position
-        render.x = px shl s
-        render.y = py shl s
-        # Rendering Dimensions
-        render.w = if px == cw: rw else: size
-        render.h = if py == ch: rh else: size
-        # Next Tile
-        inc(idx)
+  setLen(pipe.tiles, pw * ph)
+  # Tile Index
+  var
+    idx: int
+    px, py: cint
+  # Locate Each Tile
+  for ty in 0..<ph:
+    for tx in 0..<pw:
+      let
+        tile = addr pipe.tiles[idx]
+        render = addr tile.render
+      # Calculate Position
+      px = xx1 + tx
+      py = yy1 + ty
+      # Configure Tile
+      configure(tile, pipe)
+      # Rendering Position
+      render.x = px shl s
+      render.y = py shl s
+      # Rendering Dimensions
+      render.w = if px == cw: rw else: size
+      render.h = if py == ch: rh else: size
+      # Next Tile
+      inc(idx)
   # Store Dimensions
   pipe.w = pw
   pipe.h = ph
@@ -191,6 +190,15 @@ proc div_32767*(c: cint): cint =
   result = (c + 32767) shr 15
   result = (c + result) shr 15
 
+proc fixlinear(size, scale: cint): cint =
+  var calc: float32
+  calc = 1.0 / float32(size)
+  # Calculate Step
+  calc *= float32(scale)
+  calc *= 32768.0
+  # Convert Step
+  result = cint(calc)
+
 proc interpolate(a, b, fract: cint): cint =
   result = (b - a) * fract
   result = div_32767(result)
@@ -219,6 +227,7 @@ proc average*(pipe: var NBrushPipeline; blending, dilution, persistence: cint; k
     g += avg.color_sum[1]
     b += avg.color_sum[2]
     a += avg.color_sum[3]
+  # Avoid Zero Division
   if count == 0: count = 1
   # Divide Color Average
   r = r div count shl 4
@@ -274,101 +283,43 @@ proc average*(pipe: var NBrushPipeline; blending, dilution, persistence: cint; k
 # BRUSH PIPELINE WATERCOLOR PROCS
 # -------------------------------
 
-proc fixed(size, scale: cint): cint =
-  var calc: float32
-  calc = 1.0 / float32(size)
-  # Calculate Step
-  calc *= float32(scale)
-  calc *= 32768.0
-  # Convert Step
-  result = cint(calc)
-
-proc average(water: ptr NBrushWater; keep: bool): array[4, cint] =
-  var r, g, b, a, count: cint
-  # Load Each Color Channel
-  r = water.color_sum[0]
-  g = water.color_sum[1]
-  b = water.color_sum[2]
-  a = water.color_sum[3]
-  # Keep Opacity?
-  count = if keep:
-    water.count0
-  else: water.count1
-  # Divide Color Average and Convert
-  r = (r div count shl 7) or r
-  g = (g div count shl 7) or g
-  b = (b div count shl 7) or b
-  a = (a div count shl 7) or a
-  # Keep Opacity?
-  if not keep and a > 0:
-    # Convert to Straight
-    r = straight(r, a)
-    g = straight(g, a)
-    b = straight(b, a)
-    # Set Alpha to 100%
-    a = 32767
-  # Return Color
-  result[0] = r
-  result[1] = g
-  result[2] = b
-  result[3] = a
-
-proc water*(pipe: var NBrushPipeline; keep: bool) =
-  let 
-    color = pipe.color
-    # Tiled Dimensions
-    w = pipe.w
-    h = pipe.h
+proc water*(pipe: var NBrushPipeline) =
+  let
     # Tiled Shift
     s = pipe.shift
-    # Tiled Dimension
-    size = cint(1) shl s
-    # Fixed Bilinear Steps
-    fx = fixed(size, w - 1)
-    fy = fixed(size, h - 1)
+    ss = max(s - 2, 0)
+    # Tiled Size
+    w = pipe.w
+    h = pipe.h
+    # Subdivided Dimensions
+    sw = w shl (s - ss)
+    sh = h shl (s - ss)
+    # Fixed-Point Bilinear Steps
+    fx = fixlinear(sw shl ss, sw - 1)
+    fy = fixlinear(sh shl ss, sh - 1)
   var 
     tile: ptr NBrushTile
     water: ptr NBrushWater
-    # Pixel Averaging
-    avg: array[4, cint]
-    # Pixel Destintation Target
-    pixel: ptr array[4, cshort]
     # Tile Index
-    idx: int
-  # Ensure that is Watercolor Brush
-  if pipe.blend == bnWater:
-    let buffer = # Load Auxiliar Buffer
-      cast[ptr UncheckedArray[cshort]](
-        pipe.canvas.buffer1)
-    for y in 0..<h:
-      for x in 0..<w:
-        tile = addr pipe.tiles[idx]
-        water = addr tile.data.water
-        # Block Pixel Averaging
-        avg = average(water, keep)
-        # Blend With Current Color
-        avg[0] += color[0] - div32767(color[0] * avg[3])
-        avg[1] += color[1] - div32767(color[1] * avg[3])
-        avg[2] += color[2] - div32767(color[2] * avg[3])
-        avg[3] += color[3] - div32767(color[3] * avg[3])
-        # Pointer To Current Watercolor Pixel
-        pixel = cast[pixel.type](addr buffer[idx shl 2])
-        # Store Current Color
-        pixel[0] = cshort(avg[0])
-        pixel[1] = cshort(avg[1])
-        pixel[2] = cshort(avg[2])
-        pixel[3] = cshort(avg[3])
-        # Water Position, Bilinear
-        water.x = fx * size * x
-        water.y = fy * size * y
-        # Water Dimensions
-        water.w = w
-        water.h = h
-        # Water Interpolation
-        water.count0 = fx
-        water.count1 = fy
-        # Next Tile
-        inc(idx)
+    idx: cint
+  for y in 0..<h:
+    for x in 0..<w:
+      tile = addr pipe.tiles[idx]
+      water = addr tile.data.water
+      # Water Position
+      water.x = x
+      water.y = y
+      # Water Fixlinear
+      water.fx = fx
+      water.fy = fy
+      # Water Dimensions
+      water.s = cshort(s)
+      water.ss = cshort(ss)
+      # Water Buffer Stride
+      water.stride = cshort(sw)
+      water.rows = cshort(sh)
+      # Next Tile
+      inc(idx)
 
 # --------------------------
 # BRUSH MULTI-THREADED PROCS
@@ -398,8 +349,9 @@ proc mt_stage0(tile: ptr NBrushTile) =
   of bnFlat: brush_flat_blend(render)
   of bnEraser: brush_erase_blend(render)
   # Watercolor Blending Modes
-  of bnAverage, bnWater, bnMarker: 
-    brush_water_first(render)
+  of bnAverage, bnMarker: 
+    brush_average_first(render)
+  of bnWater: brush_water_first(render)
   # Special Blending Modes
   of bnBlur: brush_blur_first(render)
   of bnSmudge:

@@ -51,7 +51,11 @@ type
     # Color Acumulation
     color_sum: array[4, cint]
     # Water Tiled
-    x, y, w, h: cint
+    x, y, fx, fy: cint
+    # Water Size
+    s, ss: cshort
+    # Water Buffer
+    stride, rows: cshort
   NBrushSmudge {.importc: "brush_smudge_t" } = object
     # Copy Position
     x, y: cfloat
@@ -99,7 +103,9 @@ proc brush_func_blend(render: ptr NBrushRender)
 proc brush_flat_blend(render: ptr NBrushRender)
 proc brush_erase_blend(render: ptr NBrushRender)
 # ----------------------------------------------
+proc brush_average_first(render: ptr NBrushRender)
 proc brush_water_first(render: ptr NBrushRender)
+
 proc brush_water_blend(render: ptr NBrushRender)
 # ---------------------------------------------
 proc brush_blur_first(render: ptr NBrushRender)

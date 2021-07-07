@@ -210,11 +210,14 @@ proc prepare_stage0(path: var NBrushStroke, x, y, size, alpha, flow: cfloat) =
   of bnFlat, bnMarker:
     path.pipe.alpha =
       cint(alpha * 32767.0)
+  of bnWater:
+    path.pipe.alpha = # Keep Opacity
+      cshort(path.data.avg.keep_alpha)
   of bnBlur:
-    path.pipe.alpha =
+    path.pipe.alpha = # Radius
       path.data.blur.radius
   of bnSmudge:
-    path.pipe.alpha =
+    path.pipe.alpha = # Skip
       cshort(path.pipe.skip)
   else: discard
   # Pipeline Stage Flow
@@ -240,6 +243,9 @@ proc prepare_stage0(path: var NBrushStroke, x, y, size, alpha, flow: cfloat) =
     r.x1, r.y1,
     r.x2, r.y2,
     r.shift)
+  # Pipeline State Water Blocks
+  if path.blend == bnWater:
+    water(path.pipe)
   # Check if Parallel
   path.pipe.parallel = 
     size > 100.0
@@ -279,9 +285,6 @@ proc prepare_stage1(path: var NBrushStroke, press: cfloat): bool =
     # Calcultate Averaged
     average(path.pipe, 
       b, d, p, avg.keep_alpha)
-    # Watercolor Buffer
-    if path.blend == bnWater:
-      water(path.pipe, avg.keep_alpha)
   of bnMarker:
     let marker = 
       addr path.data.marker
