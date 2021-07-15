@@ -164,6 +164,8 @@ proc reserve*(pipe: var NBrushPipeline; x1, y1, x2, y2, shift: cint) =
   pipe.h = ph
   # Store Shift
   pipe.shift = s
+  # Set Parallel Check
+  pipe.parallel = (s >= 5)
 
 # --------------------------------
 # BRUSH PIPELINE COLOR FIX15 PROCS

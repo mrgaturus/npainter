@@ -9,8 +9,8 @@ import wip/brush
 import spmc
 
 const
-  bw = 1280
-  bh = 720
+  bw = 1280*4
+  bh = 720*4
 
 type
   GUICanvasPanel = ref object of GUIWidget
@@ -44,6 +44,8 @@ type
     # Busy Indicator
     busy, eraser: bool
     handle: uint
+    # Thread Pool
+    pool: NThreadPool
 
 # -------------------------
 # GUI CANVAS PIXEL TRANSFER
@@ -130,13 +132,17 @@ proc prepare(self: GUICanvas) =
   else: discard
   # Set Current Blendig Mode
   self.path.blend = panel.blend
+  # Set Current Thread Pool
+  self.path.pipe.pool = self.pool
   # Prepare Path Rendering
   self.path.prepare()
 
 proc cb_dispatch(g: pointer, w: ptr GUITarget) =
   let self = cast[GUICanvas](w[])
   # Draw Point Line
+  self.pool.start()
   dispatch(self.path)
+  self.pool.stop()
   let aabb = addr self.path.aabb
   # Clamp to Canvas
   aabb.x1 = max(0, aabb.x1)
@@ -174,8 +180,8 @@ proc cb_clear(g: pointer, w: ptr GUITarget) =
   self.busy = false
 
 method event(self: GUICanvas, state: ptr GUIState) =
-  #state.px *= 4.0
-  #state.py *= 4.0
+  state.px *= 4.0
+  state.py *= 4.0
   # If clicked, reset points
   if state.kind == evCursorClick:
     self.prepare()
@@ -390,7 +396,7 @@ when isMainModule:
     win = newGUIWindow(1280, 720, nil)
     root = newCanvas()
     pool = newThreadPool(6)
-  root.path.pipe.pool = pool
+  root.pool = pool
   # Open Window
   if win.open(root):
     loop(16):

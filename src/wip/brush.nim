@@ -246,9 +246,6 @@ proc prepare_stage0(path: var NBrushStroke, x, y, size, alpha, flow: cfloat) =
   # Pipeline State Water Blocks
   if path.blend == bnWater:
     water(path.pipe)
-  # Check if Parallel
-  path.pipe.parallel = 
-    size > 100.0
   # Sum Dirty AABB
   path.dirty(r)
 
