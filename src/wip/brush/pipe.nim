@@ -48,6 +48,7 @@ type
     mask*: NBrushMask
     # Base Rendering Color
     color0: array[4, cshort]
+    color1: array[4, cshort]
     # Current Rendering Color
     color: array[4, cshort]
     # Alpha Mask & Blend
@@ -66,20 +67,22 @@ type
 # -----------------------------------
 
 proc color*(pipe: var NBrushPipeline; r, g, b: cshort) =
-  pipe.color0[0] = (r shl 7) or r
-  pipe.color0[1] = (g shl 7) or g
-  pipe.color0[2] = (b shl 7) or b
+  pipe.color[0] = (r shl 7) or r
+  pipe.color[1] = (g shl 7) or g
+  pipe.color[2] = (b shl 7) or b
   # Set Alpha to 100%
-  pipe.color0[3] = 32767
-  # Replace Rendering Color
-  pipe.color = pipe.color0
+  pipe.color[3] = 32767
+  # Replace Base Color
+  pipe.color0 = pipe.color
+  pipe.color1 = pipe.color
 
 proc transparent*(pipe: var NBrushPipeline) =
   var empty: array[4, cshort]
+  # Replace Current Color
+  pipe.color = empty
   # Replace Base Color
   pipe.color0 = empty
-  # Replace Rendering Color
-  pipe.color = empty
+  pipe.color1 = empty
 
 # -----------------------------------
 # BRUSH PIPELINE TILES INITIALIZATION
@@ -206,9 +209,6 @@ proc interpolate(a, b, fract: cint): cint =
   result = div_32767(result)
   result = a + result
 
-proc straight(c, a: cint): cint =
-  result = cint(c.cfloat / a.cfloat * 32767.0)
-
 # ------------------------------------
 # BRUSH PIPELINE COLOR AVERAGING PROCS
 # ------------------------------------
@@ -218,53 +218,61 @@ proc average*(pipe: var NBrushPipeline; blending, dilution, persistence: cint; k
     count, opacity: cint
     r, g, b, a: cint
   # Sum Each Average Tile
-  for tile in mitems(pipe.tiles):
-    let avg = addr tile.data.average
-    # Sum Color Count
-    if keep:
-      count += avg.count0
-    else: count += avg.count1
-    # Sum Each Color Channel
-    r += avg.color_sum[0]
-    g += avg.color_sum[1]
-    b += avg.color_sum[2]
-    a += avg.color_sum[3]
-  # Avoid Zero Division
-  if count == 0: count = 1
-  # Divide Color Average
-  r = r div count shl 4
-  g = g div count shl 4
-  b = b div count shl 4
-  a = a div count shl 4
-  # Keep Opacity?
-  if keep:
-    opacity = div_32767(blending * opacity)
-    opacity = interpolate(blending, opacity, 1024)
-    # Replace Blending Count
-    unsafeAddr(blending)[] = opacity
-  # Backup Opacity
-  opacity = a
-  # Calculate Straigth
-  if a > 0:
-    r = straight(r, a)
-    g = straight(g, a)
-    b = straight(b, a)
-    # Complete Opacity
-    a = 32767
-  else: # Dont Interpolate
-    r = pipe.color[0]
-    g = pipe.color[1]
-    b = pipe.color[2]
-    a = pipe.color[3]
+  block:
+    var rr, gg, bb, aa: int64
+    for tile in mitems(pipe.tiles):
+      let avg = addr tile.data.average
+      # Sum Color Count
+      if keep:
+        count += avg.count0
+      else: count += avg.count1
+      # Sum Each Color Channel
+      rr += avg.color_sum[0]
+      gg += avg.color_sum[1]
+      bb += avg.color_sum[2]
+      aa += avg.color_sum[3]
+    # Avoid Zero Division
+    if count == 0: count = 1
+    # Divide Color Average
+    if aa > 0:
+      let w = 32767.0 / cfloat(aa)
+      # Apply Weigthed Average
+      r = cint(rr.cfloat * w)
+      g = cint(gg.cfloat * w)
+      b = cint(bb.cfloat * w)
+      a = cint(aa.cfloat * w)
+    # Calculate Current Opacity
+    opacity = cint(aa div count)
+  # Quantize Averaged Color
+  if not pipe.skip:
+    r = interpolate(r shr 7 shl 7, r, opacity)
+    g = interpolate(g shr 7 shl 7, g, opacity)
+    b = interpolate(b shr 7 shl 7, b, opacity)
+    a = interpolate(a shr 7 shl 7, a, opacity)
   # Interpolate With Blending
   r = interpolate(pipe.color0[0], r, blending)
   g = interpolate(pipe.color0[1], g, blending)
   b = interpolate(pipe.color0[2], b, blending)
   a = interpolate(pipe.color0[3], a, blending)
-  # Calculate Dilution Opacity
-  opacity = interpolate(
-    32767, opacity, dilution)
-  # Interpolate with Dilution
+  # Blend With Current Color
+  r += pipe.color1[0] - div_32767(pipe.color1[0] * a)
+  g += pipe.color1[1] - div_32767(pipe.color1[1] * a)
+  b += pipe.color1[2] - div_32767(pipe.color1[2] * a)
+  a += pipe.color1[3] - div_32767(pipe.color1[3] * a)
+  # Calculate Dilution Opacity Interpolation
+  opacity = interpolate(32767, opacity, dilution)
+  # Interpolate With Persistence
+  if persistence > 0 and not pipe.skip:
+    r = interpolate(r, pipe.color1[0], persistence)
+    g = interpolate(g, pipe.color1[1], persistence)
+    b = interpolate(b, pipe.color1[2], persistence)
+    a = interpolate(a, pipe.color1[3], persistence)
+  # Replace Blended Color
+  pipe.color1[0] = cshort(r)
+  pipe.color1[1] = cshort(g)
+  pipe.color1[2] = cshort(b)
+  pipe.color1[3] = cshort(a)
+  # Apply Current Opacity
   r = div_32767(r * opacity)
   g = div_32767(g * opacity)
   b = div_32767(b * opacity)
@@ -275,7 +283,7 @@ proc average*(pipe: var NBrushPipeline; blending, dilution, persistence: cint; k
     g = interpolate(g, pipe.color[1], persistence)
     b = interpolate(b, pipe.color[2], persistence)
     a = interpolate(a, pipe.color[3], persistence)
-  # Replace Auxiliar Color
+  # Replace Current Color
   pipe.color[0] = cshort(r)
   pipe.color[1] = cshort(g)
   pipe.color[2] = cshort(b)

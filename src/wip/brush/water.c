@@ -65,11 +65,9 @@ static int brush_average_total(brush_render_t* render, __m128i* pixel, int x, in
       if (sh = *sh_x) {
         color1 = _mm_loadl_epi64((__m128i*) dst_x);
         color1 = _mm_cvtepi16_epi32(color1);
-        color1 = _mm_srli_epi32(color1, 4);
         // Sum Color Average & Color Count
         color0 = _mm_add_epi32(color0, color1);
-        // Sum Mask Count
-        count++;
+        count += _mm_testz_si128(color1, color1) == 0;
       }
       // Step Shape & Color
       sh_x++; dst_x += 4;

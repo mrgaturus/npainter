@@ -275,6 +275,8 @@ proc prepare_stage1(path: var NBrushStroke, press: cfloat): bool =
       d = div_32767(d * m_fract)
     # Ajust Blending
     b = sqrt_32767(b)
+    b = sqrt_32767(b)
+    # Ajust Dilution
     d = sqrt_32767(d)
     # Ajust Persistence
     p = sqrt_32767(p)
@@ -294,6 +296,7 @@ proc prepare_stage1(path: var NBrushStroke, press: cfloat): bool =
         cint(press * 32767.0)
       b = div_32767(b * fract)
     # Ajust Blending
+    b = sqrt_32767(b)
     b = sqrt_32767(b)
     # Ajust Persistence
     p = sqrt_32767(p)
