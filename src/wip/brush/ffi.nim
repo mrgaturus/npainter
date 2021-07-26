@@ -43,19 +43,17 @@ type
 
 type
   NBrushAverage {.importc: "brush_average_t" } = object
-    count0, count1: cint
+    count: cint
     # Color Acumulation
-    color_sum: array[4, cint]
+    total: array[4, cint]
   NBrushWater {.importc: "brush_water_t" } = object
-    count0, count1: cint
+    count: cint
     # Color Acumulation
-    color_sum: array[4, cint]
+    total: array[4, cint]
     # Water Tiled
     x, y, fx, fy: cint
-    # Water Size
-    s, ss: cshort
-    # Water Buffer
-    stride, rows: cshort
+    # Water Stride
+    stride: cint
   NBrushSmudge {.importc: "brush_smudge_t" } = object
     # Copy Position
     x, y: cfloat
@@ -103,9 +101,7 @@ proc brush_func_blend(render: ptr NBrushRender)
 proc brush_flat_blend(render: ptr NBrushRender)
 proc brush_erase_blend(render: ptr NBrushRender)
 # ----------------------------------------------
-proc brush_average_first(render: ptr NBrushRender)
 proc brush_water_first(render: ptr NBrushRender)
-
 proc brush_water_blend(render: ptr NBrushRender)
 # ---------------------------------------------
 proc brush_blur_first(render: ptr NBrushRender)

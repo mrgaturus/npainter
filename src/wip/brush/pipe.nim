@@ -107,7 +107,7 @@ proc configure(tile: ptr NBrushTile, pipe: var NBrushPipeline) =
 
 proc reserve*(pipe: var NBrushPipeline; x1, y1, x2, y2, shift: cint) =
   let
-    s = min(shift, 6)
+    s = clamp(shift - 2, 1, 7)
     # Current Target Canvas
     canvas = addr pipe.canvas
     # Block Size
@@ -168,7 +168,7 @@ proc reserve*(pipe: var NBrushPipeline; x1, y1, x2, y2, shift: cint) =
   # Store Shift
   pipe.shift = s
   # Set Parallel Check
-  pipe.parallel = (s >= 5)
+  pipe.parallel = (s >= 4)
 
 # --------------------------------
 # BRUSH PIPELINE COLOR FIX15 PROCS
@@ -223,14 +223,12 @@ proc average*(pipe: var NBrushPipeline; blending, dilution, persistence: cint; k
     for tile in mitems(pipe.tiles):
       let avg = addr tile.data.average
       # Sum Color Count
-      if keep:
-        count += avg.count0
-      else: count += avg.count1
-      # Sum Each Color Channel
-      rr += avg.color_sum[0]
-      gg += avg.color_sum[1]
-      bb += avg.color_sum[2]
-      aa += avg.color_sum[3]
+      count += avg.count
+      # Sum Color Channels
+      rr += avg.total[0]
+      gg += avg.total[1]
+      bb += avg.total[2]
+      aa += avg.total[3]
     # Avoid Zero Division
     if count == 0: count = 1
     # Divide Color Average
@@ -293,43 +291,131 @@ proc average*(pipe: var NBrushPipeline; blending, dilution, persistence: cint; k
 # BRUSH PIPELINE WATERCOLOR PROCS
 # -------------------------------
 
-proc water*(pipe: var NBrushPipeline) =
+proc convolve(buffer: ptr UncheckedArray[cshort], x, y, w, h: cint): array[4, cint] =
   let
-    # Tiled Shift
-    s = pipe.shift
-    ss = max(s - 2, 0)
-    # Tiled Size
+    x1 = max(x - 1, 0)
+    y1 = max(y - 1, 0)
+    x2 = min(x + 1, w - 1)
+    y2 = min(y + 1, h - 1)
+  # Current Position
+  var 
+    count: cint
+    cursor, cursor_row =
+      (y1 * w + x1) shl 2
+  # Convolve Pixels
+  for yy in y1 .. y2:
+    cursor = cursor_row
+    # Convolve Row
+    for xx in x1 .. x2:
+      if buffer[cursor + 3] >= 0:
+        result[0] += buffer[cursor + 0]
+        result[1] += buffer[cursor + 1]
+        result[2] += buffer[cursor + 2]
+        result[3] += buffer[cursor + 3]
+        # Add Count
+        inc(count)
+      # Next Pixel
+      cursor += 4
+    # Next Pixel Stride
+    cursor_row += w shl 2
+  # Divide Pixel
+  if count > 1:
+    result[0] = result[0] div count
+    result[1] = result[1] div count
+    result[2] = result[2] div count
+    result[3] = result[3] div count
+
+proc blur(pipe: var NBrushPipeline, buffer: ptr UncheckedArray[cshort]) =
+  let 
+    dst = cast[buffer.type](pipe.canvas.buffer1)
+    # Tiled Dimensions
     w = pipe.w
     h = pipe.h
-    # Subdivided Dimensions
-    sw = w shl (s - ss)
-    sh = h shl (s - ss)
-    # Fixed-Point Bilinear Steps
-    fx = fixlinear(sw shl ss, sw - 1)
-    fy = fixlinear(sh shl ss, sh - 1)
+    # Pixel Color
+    color = pipe.color
+  # Current Pixel
   var 
-    tile: ptr NBrushTile
-    water: ptr NBrushWater
-    # Tile Index
-    idx: cint
-  for y in 0..<h:
-    for x in 0..<w:
-      tile = addr pipe.tiles[idx]
-      water = addr tile.data.water
-      # Water Position
-      water.x = x
-      water.y = y
-      # Water Fixlinear
-      water.fx = fx
-      water.fy = fy
-      # Water Dimensions
-      water.s = cshort(s)
-      water.ss = cshort(ss)
-      # Water Buffer Stride
-      water.stride = cshort(sw)
-      water.rows = cshort(sh)
-      # Next Tile
-      inc(idx)
+    pixel: array[4, cint]
+    cursor, opacity: cint
+  # Blur Each Pixel
+  for y in 0 ..< h:
+    for x in 0 ..< w:
+      if buffer[cursor + 3] > 0:
+        pixel[0] = buffer[cursor + 0]
+        pixel[1] = buffer[cursor + 1]
+        pixel[2] = buffer[cursor + 2]
+        pixel[3] = buffer[cursor + 3]
+      else: # Convolve Dead Pixel
+        pixel = convolve(buffer, x, y, w, h)
+      # Current Opacity
+      opacity = pixel[3]
+      # Blend With Current Color
+      pixel[0] += color[0] - div_32767(color[0] * opacity)
+      pixel[1] += color[1] - div_32767(color[1] * opacity)
+      pixel[2] += color[2] - div_32767(color[2] * opacity)
+      pixel[3] += color[3] - div_32767(color[3] * opacity)
+      # Store Current Pixel
+      dst[cursor + 0] = cast[cshort](pixel[0])
+      dst[cursor + 1] = cast[cshort](pixel[1])
+      dst[cursor + 2] = cast[cshort](pixel[2])
+      dst[cursor + 3] = cast[cshort](pixel[3])
+      # Next Pixel
+      cursor += 4
+
+proc water*(pipe: var NBrushPipeline; keep: bool) =
+  let
+    w = pipe.w
+    h = pipe.h
+    # Block Size
+    s = pipe.shift
+    size = cint(1 shl s)
+    # Fixlinear Step Deltas
+    fx = fixlinear(w shl s, w - 1)
+    fy = fixlinear(h shl s, h - 1)
+  var
+    buffer = cast[ptr UncheckedArray[cshort]](
+      pipe.canvas.buffer1)
+    # Current Position
+    idx, cursor: int
+    # Current Block Average
+    avg: ptr NBrushWater
+    # Pixel Average
+    count, r, g, b, a: cint
+  # Locate Buffer to Auxiliar Buffer
+  buffer = cast[buffer.type](addr buffer[w * h * 4])
+  # Arrange Each Pixel
+  for y in 0 ..< h:
+    for x in 0 ..< w:
+      avg = addr pipe.tiles[idx].data.water
+      # Get Current Color Average
+      count = avg.count
+      if count > 0:
+        r = avg.total[0] div count
+        g = avg.total[1] div count
+        b = avg.total[2] div count
+        a = avg.total[3] div count
+      else: # Dead Pixel
+        r = 0xFFFF
+        g = 0xFFFF
+        b = 0xFFFF
+        a = 0xFFFF
+      # Store Current Pixel
+      buffer[cursor + 0] = cast[cshort](r)
+      buffer[cursor + 1] = cast[cshort](g)
+      buffer[cursor + 2] = cast[cshort](b)
+      buffer[cursor + 3] = cast[cshort](a)
+      # Fixlinear Steps
+      avg.fx = fx
+      avg.fy = fy
+      # Filinear Position
+      avg.x = x * size * fx
+      avg.y = y * size * fy
+      # Filinear Stride
+      avg.stride = cast[cint](w)
+      # Next Tile & Pixel
+      inc(idx); cursor += 4
+  # Apply Blur
+  pipe.blur(buffer)
 
 # --------------------------
 # BRUSH MULTI-THREADED PROCS
@@ -359,9 +445,8 @@ proc mt_stage0(tile: ptr NBrushTile) =
   of bnFlat: brush_flat_blend(render)
   of bnEraser: brush_erase_blend(render)
   # Watercolor Blending Modes
-  of bnAverage, bnMarker: 
-    brush_average_first(render)
-  of bnWater: brush_water_first(render)
+  of bnAverage, bnWater, bnMarker:
+    brush_water_first(render)
   # Special Blending Modes
   of bnBlur: brush_blur_first(render)
   of bnSmudge:

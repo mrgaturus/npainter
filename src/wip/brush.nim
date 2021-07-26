@@ -243,9 +243,6 @@ proc prepare_stage0(path: var NBrushStroke, x, y, size, alpha, flow: cfloat) =
     r.x1, r.y1,
     r.x2, r.y2,
     r.shift)
-  # Pipeline State Water Blocks
-  if path.blend == bnWater:
-    water(path.pipe)
   # Sum Dirty AABB
   path.dirty(r)
 
@@ -284,6 +281,9 @@ proc prepare_stage1(path: var NBrushStroke, press: cfloat): bool =
     # Calcultate Averaged
     average(path.pipe, 
       b, d, p, avg.keep_alpha)
+    # Calculate Watercolor
+    if path.blend == bnWater:
+      water(path.pipe, avg.keep_alpha)
   of bnMarker:
     let marker = 
       addr path.data.marker
