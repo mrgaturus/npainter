@@ -53,8 +53,10 @@ type
     color: array[4, cshort]
     # Alpha Mask & Blend
     alpha*, flow*: cint
-    # Rendering Size
+    # Rendering Blocks
     w, h, shift: cint
+    # Rendering Region
+    rx, ry, rw, rh: cint
     # Rendering Blocks
     tiles: seq[NBrushTile]
     # Thread Pool Pointer
@@ -107,68 +109,74 @@ proc configure(tile: ptr NBrushTile, pipe: var NBrushPipeline) =
 
 proc reserve*(pipe: var NBrushPipeline; x1, y1, x2, y2, shift: cint) =
   let
-    s = clamp(shift - 2, 1, 7)
-    # Current Target Canvas
-    canvas = addr pipe.canvas
-    # Block Size
-    size = cint(1 shl s)
-    # Canvas Residual
-    rw = canvas.w and (size - 1)
-    rh = canvas.h and (size - 1)
-    # Canvas Tiled Dimensions
-    cw = (canvas.w shr s)
-    ch = (canvas.h shr s)
-    # Canvas Tiled + Residual
-    zw = cw + cint(rw > 0)
-    zh = ch + cint(rh > 0)
+    # Region Size
+    rw = x2 - x1
+    rh = y2 - y1
+    # Region Steps
+    sw = rw / shift
+    sh = rh / shift
+    # Canvas Dimensions
+    cw = pipe.canvas.w
+    ch = pipe.canvas.h
   var
-    # Tiled Initial
-    xx1 = x1 shr s
-    yy1 = y1 shr s
-    # Tiled Final
-    xx2 = (x2 shr s) + 1
-    yy2 = (y2 shr s) + 1
-  # Clip Reserved Region
-  if xx1 < 0: xx1 = 0
-  if yy1 < 0: yy1 = 0
-  if xx2 >= zw: xx2 = zw
-  if yy2 >= zh: yy2 = zh
-  # Tiled Dimensions
-  let
-    pw = max(xx2 - xx1, 0)
-    ph = max(yy2 - yy1, 0)
-  # Reserve Tiled Regions
-  setLen(pipe.tiles, pw * ph)
-  # Tile Index
-  var
-    idx: int
-    px, py: cint
-  # Locate Each Tile
-  for ty in 0..<ph:
-    for tx in 0..<pw:
-      let
-        tile = addr pipe.tiles[idx]
-        render = addr tile.render
-      # Calculate Position
-      px = xx1 + tx
-      py = yy1 + ty
-      # Configure Tile
-      configure(tile, pipe)
-      # Rendering Position
-      render.x = px shl s
-      render.y = py shl s
-      # Rendering Dimensions
-      render.w = if px == cw: rw else: size
-      render.h = if py == ch: rh else: size
+    x = cfloat(x1)
+    y = cfloat(y1)
+    # Integer Position
+    prev_x, xx = x1
+    prev_y, yy = y1
+    # Cliped Position
+    xx1, xx2, yy1, yy2: cint
+    # Current Tile
+    idx: cint
+  # Reserve Rendering Tiles
+  setLen(pipe.tiles, shift * shift)
+  # Arrange Y Tiles
+  for i in 0 ..< shift:
+    y += sh
+    yy = cint(y)
+    # Clip Y Position
+    yy1 = max(prev_y, 0)
+    yy2 = min(yy, ch)
+    # Arrange X Tiles
+    for j in 0 ..< shift:
+      x += sw
+      xx = cint(x)
+      # Clip X Position
+      xx1 = max(prev_x, 0)
+      xx2 = min(xx, cw)
+      block:
+        # Current Tile
+        let
+          tile = addr pipe.tiles[idx]
+          render = addr tile.render
+        # Configure Tile
+        configure(tile, pipe)
+        # Current Position
+        render.x = xx1
+        render.y = yy1
+        # Rendering Size
+        render.w = xx2 - xx1
+        render.h = yy2 - yy1
+      # Change Prev X
+      prev_x = xx
       # Next Tile
       inc(idx)
-  # Store Dimensions
-  pipe.w = pw
-  pipe.h = ph
-  # Store Shift
-  pipe.shift = s
-  # Set Parallel Check
-  pipe.parallel = (s >= 4)
+    # Reset X Step
+    prev_x = x1
+    x = cfloat(x1)
+    # Change Prev Y
+    prev_y = yy
+  # Region Size
+  pipe.rw = rw
+  pipe.rh = rh
+  # Tiled Size
+  pipe.w = shift
+  pipe.h = shift
+  # Region Position
+  pipe.rx = x1
+  pipe.ry = y1
+  # Parallel Condition
+  pipe.parallel = shift >= 7
 
 # --------------------------------
 # BRUSH PIPELINE COLOR FIX15 PROCS
@@ -340,13 +348,8 @@ proc blur(pipe: var NBrushPipeline, buffer: ptr UncheckedArray[cshort]) =
   # Blur Each Pixel
   for y in 0 ..< h:
     for x in 0 ..< w:
-      if buffer[cursor + 3] > 0:
-        pixel[0] = buffer[cursor + 0]
-        pixel[1] = buffer[cursor + 1]
-        pixel[2] = buffer[cursor + 2]
-        pixel[3] = buffer[cursor + 3]
-      else: # Convolve Dead Pixel
-        pixel = convolve(buffer, x, y, w, h)
+      # Apply Blur to Current Pixel
+      pixel = convolve(buffer, x, y, w, h)
       # Current Opacity
       opacity = pixel[3]
       # Blend With Current Color
@@ -366,54 +369,50 @@ proc water*(pipe: var NBrushPipeline; keep: bool) =
   let
     w = pipe.w
     h = pipe.h
-    # Block Size
-    s = pipe.shift
-    size = cint(1 shl s)
+    # Pivot Position
+    rx = pipe.rx
+    ry = pipe.ry
     # Fixlinear Step Deltas
-    fx = fixlinear(w shl s, w - 1)
-    fy = fixlinear(h shl s, h - 1)
+    fx = fixlinear(pipe.rw, w - 1)
+    fy = fixlinear(pipe.rh, h - 1)
   var
     buffer = cast[ptr UncheckedArray[cshort]](
       pipe.canvas.buffer1)
-    # Current Position
-    idx, cursor: int
-    # Current Block Average
-    avg: ptr NBrushWater
     # Pixel Average
-    count, r, g, b, a: cint
+    cursor, count: cint
+    r, g, b, a: cint
   # Locate Buffer to Auxiliar Buffer
   buffer = cast[buffer.type](addr buffer[w * h * 4])
   # Arrange Each Pixel
-  for y in 0 ..< h:
-    for x in 0 ..< w:
-      avg = addr pipe.tiles[idx].data.water
-      # Get Current Color Average
-      count = avg.count
-      if count > 0:
-        r = avg.total[0] div count
-        g = avg.total[1] div count
-        b = avg.total[2] div count
-        a = avg.total[3] div count
-      else: # Dead Pixel
-        r = 0xFFFF
-        g = 0xFFFF
-        b = 0xFFFF
-        a = 0xFFFF
-      # Store Current Pixel
-      buffer[cursor + 0] = cast[cshort](r)
-      buffer[cursor + 1] = cast[cshort](g)
-      buffer[cursor + 2] = cast[cshort](b)
-      buffer[cursor + 3] = cast[cshort](a)
-      # Fixlinear Steps
-      avg.fx = fx
-      avg.fy = fy
-      # Filinear Position
-      avg.x = x * size * fx
-      avg.y = y * size * fy
-      # Filinear Stride
-      avg.stride = cast[cint](w)
-      # Next Tile & Pixel
-      inc(idx); cursor += 4
+  for tile in mitems(pipe.tiles):
+    let avg = addr tile.data.water
+    # Get Current Color Average
+    count = avg.count
+    if count > 0:
+      r = avg.total[0] div count
+      g = avg.total[1] div count
+      b = avg.total[2] div count
+      a = avg.total[3] div count
+    else: # Dead Pixel
+      r = 0xFFFF
+      g = 0xFFFF
+      b = 0xFFFF
+      a = 0xFFFF
+    # Store Current Pixel
+    buffer[cursor + 0] = cast[cshort](r)
+    buffer[cursor + 1] = cast[cshort](g)
+    buffer[cursor + 2] = cast[cshort](b)
+    buffer[cursor + 3] = cast[cshort](a)
+    # Fixlinear Steps
+    avg.fx = fx
+    avg.fy = fy
+    # Filinear Position
+    avg.x = (tile.render.x - rx) * fx
+    avg.y = (tile.render.y - ry) * fy
+    # Filinear Stride
+    avg.stride = cast[cint](w)
+    # Next Tile & Pixel
+    cursor += 4
   # Apply Blur
   pipe.blur(buffer)
 
