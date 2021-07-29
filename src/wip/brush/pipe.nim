@@ -176,7 +176,7 @@ proc reserve*(pipe: var NBrushPipeline; x1, y1, x2, y2, shift: cint) =
   pipe.rx = x1
   pipe.ry = y1
   # Parallel Condition
-  pipe.parallel = shift >= 7
+  pipe.parallel = shift > 5
 
 # --------------------------------
 # BRUSH PIPELINE COLOR FIX15 PROCS
@@ -221,7 +221,7 @@ proc interpolate(a, b, fract: cint): cint =
 # BRUSH PIPELINE COLOR AVERAGING PROCS
 # ------------------------------------
 
-proc average*(pipe: var NBrushPipeline; blending, dilution, persistence: cint; keep: bool) =
+proc average*(pipe: var NBrushPipeline; blending, dilution, persistence: cint) =
   var
     count, opacity: cint
     r, g, b, a: cint
@@ -365,7 +365,7 @@ proc blur(pipe: var NBrushPipeline, buffer: ptr UncheckedArray[cshort]) =
       # Next Pixel
       cursor += 4
 
-proc water*(pipe: var NBrushPipeline; keep: bool) =
+proc water*(pipe: var NBrushPipeline) =
   let
     w = pipe.w
     h = pipe.h

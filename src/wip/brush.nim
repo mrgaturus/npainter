@@ -45,10 +45,8 @@ type
     # Pressure Flags
     p_blending*: bool
     p_dilution*: bool
-    # Pressure Min 
+    # Pressure Minimun
     p_minimun*: cfloat
-    # UnPremultiply?
-    keep_alpha*: bool
   NStrokeMarker = object
     blending*: cshort
     persistence*: cshort
@@ -210,9 +208,6 @@ proc prepare_stage0(path: var NBrushStroke, x, y, size, alpha, flow: cfloat) =
   of bnFlat, bnMarker:
     path.pipe.alpha =
       cint(alpha * 32767.0)
-  of bnWater:
-    path.pipe.alpha = # Keep Opacity
-      cshort(path.data.avg.keep_alpha)
   of bnBlur:
     path.pipe.alpha = # Radius
       path.data.blur.radius
@@ -279,11 +274,10 @@ proc prepare_stage1(path: var NBrushStroke, press: cfloat): bool =
     p = sqrt_32767(p)
     p = sqrt_32767(p)
     # Calcultate Averaged
-    average(path.pipe, 
-      b, d, p, avg.keep_alpha)
+    average(path.pipe, b, d, p)
     # Calculate Watercolor
     if path.blend == bnWater:
-      water(path.pipe, avg.keep_alpha)
+      water(path.pipe)
   of bnMarker:
     let marker = 
       addr path.data.marker
@@ -302,8 +296,7 @@ proc prepare_stage1(path: var NBrushStroke, press: cfloat): bool =
     p = sqrt_32767(p)
     p = sqrt_32767(p)
     # Calculate Averaged
-    average(path.pipe,
-      b, 0, p, false)
+    average(path.pipe, b, 0, p)
   of bnBlur, bnSmudge: discard
   else: result = false
 

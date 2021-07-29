@@ -1,5 +1,5 @@
 import gui/[window, widget, render, event, signal, timer]
-import gui/widgets/[slider, label, color, check, radio]
+import gui/widgets/[slider, label, color, radio]
 # Import OpenGL
 import libs/gl
 # Import Maths
@@ -27,7 +27,6 @@ type
     blending: Value
     dilution: Value
     persistence: Value
-    keep: bool
   GUICanvas = ref object of GUIWidget
     # Canvas Brush Panel
     panel: GUICanvasPanel
@@ -122,7 +121,6 @@ proc prepare(self: GUICanvas) =
       cshort(distance(panel.dilution) * 32767.0)
     avg.persistence = 
       cshort(distance(panel.persistence) * 32767.0)
-    avg.keep_alpha = panel.keep
   of bnMarker:
     let marker = addr self.path.data.marker
     marker.blending = 
@@ -351,10 +349,6 @@ proc newBrushPanel(): GUICanvasPanel =
   slider = newSlider(addr result.persistence)
   slider.geometry(90, 520, 150, slider.hint.h)
   result.add(slider)
-  # Keep Opacity Switch
-  check = newCheckbox("Keep Opacity", addr result.keep)
-  check.geometry(90, 540, 150, check.hint.h)
-  result.add(check)
 
 proc newCanvas(): GUICanvas =
   new result
