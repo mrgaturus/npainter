@@ -247,14 +247,22 @@ proc average*(pipe: var NBrushPipeline; blending, dilution, persistence: cint) =
       g = cint(gg.cfloat * w)
       b = cint(bb.cfloat * w)
       a = cint(aa.cfloat * w)
-    # Calculate Current Opacity
-    opacity = cint(aa div count)
+      # Calculate Averaged Opacity
+      opacity = cint(aa div count)
+    else:
+      r = pipe.color0[0]
+      g = pipe.color0[1]
+      b = pipe.color0[2]
+      a = pipe.color0[3]
+      # Straigth Opacity
+      opacity = a
   # Quantize Averaged Color
   if not pipe.skip:
-    r = interpolate(r shr 7 shl 7, r, opacity)
-    g = interpolate(g shr 7 shl 7, g, opacity)
-    b = interpolate(b shr 7 shl 7, b, opacity)
-    a = interpolate(a shr 7 shl 7, a, opacity)
+    let o = max(opacity, pipe.flow)
+    r = interpolate(r and not 0xFF, r, o)
+    g = interpolate(g and not 0xFF, g, o)
+    b = interpolate(b and not 0xFF, b, o)
+    a = interpolate(a and not 0xFF, a, o)
   # Interpolate With Blending
   r = interpolate(pipe.color0[0], r, blending)
   g = interpolate(pipe.color0[1], g, blending)

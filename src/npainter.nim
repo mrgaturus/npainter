@@ -122,11 +122,13 @@ proc prepare(self: GUICanvas) =
     avg.persistence = 
       cshort(distance(panel.persistence) * 32767.0)
   of bnMarker:
-    let marker = addr self.path.data.marker
+    let marker = addr path.data.marker
     marker.blending = 
       cshort(distance(panel.blending) * 32767.0)
     marker.persistence = 
       cshort(distance(panel.persistence) * 32767.0)
+    # Press Not Yet
+    marker.p_blending = false
   else: discard
   # Set Current Blendig Mode
   self.path.blend = panel.blend
