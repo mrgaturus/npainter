@@ -258,7 +258,7 @@ proc average*(pipe: var NBrushPipeline; blending, dilution, persistence: cint) =
       opacity = a
   # Quantize Averaged Color
   if not pipe.skip:
-    let o = max(opacity, pipe.flow)
+    let o = min(opacity, pipe.flow)
     r = interpolate(r and not 0xFF, r, o)
     g = interpolate(g and not 0xFF, g, o)
     b = interpolate(b and not 0xFF, b, o)

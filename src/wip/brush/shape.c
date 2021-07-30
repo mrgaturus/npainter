@@ -162,12 +162,12 @@ void brush_circle_mask(brush_render_t* render, brush_circle_t* circle) {
       if (count >= 2) {
         _mm_storeu_si32((__m128*) dst_x, xmm_c);
         // Step Two Pixels
+        xmm_c = _mm_srli_si128(xmm_c, 4);
         dst_x += 2; count -= 2;
       }
 
       // Store One Pixel
       if (count == 1) {
-        xmm_c = _mm_srli_epi64(xmm_c, 48);
         _mm_storeu_si16((__m128*) dst_x, xmm_c);
         // Step One Pixel
         dst_x++; count--;

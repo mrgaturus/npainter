@@ -169,7 +169,7 @@ proc prepare*(path: var NBrushStroke) =
 proc region(x, y, size: cfloat): NStrokeRegion =
   let
     shift = log2(size).cint
-    radius = size * 0.5
+    radius = size * 0.5 + 0.5
     # Interval Region
     x1 = floor(x - radius).cint
     y1 = floor(y - radius).cint
