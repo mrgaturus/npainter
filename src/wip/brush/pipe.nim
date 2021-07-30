@@ -178,33 +178,6 @@ proc reserve*(pipe: var NBrushPipeline; x1, y1, x2, y2, shift: cint) =
   # Parallel Condition
   pipe.parallel = shift > 5
 
-proc ratio(pipe: NBrushPipeline): cint =
-  let
-    cw = pipe.canvas.w
-    ch = pipe.canvas.h
-    # Region Area
-    rw = pipe.rw
-    rh = pipe.rh
-  var
-    x1 = pipe.rx
-    y1 = pipe.ry
-    x2 = x1 + rw
-    y2 = y1 + rh
-    # Calc Areas
-    a0, a1: cint
-  # Current Area
-  a0 = rw * rh
-  # Clip Region
-  x1 = max(x1, 0)
-  y1 = max(y1, 0)
-  x2 = min(x2, cw - 1)
-  y2 = min(y2, ch - 1)
-  # Clipped Region Area
-  a1 = (x2 - x1) * (y2 - y1)
-  # Calculate Region Ratio
-  result = cint(a1 / a0 * 32767.0)
-  result = clamp(result, 0, 32767)
-
 # --------------------------------
 # BRUSH PIPELINE COLOR FIX15 PROCS
 # --------------------------------
@@ -290,9 +263,6 @@ proc average*(pipe: var NBrushPipeline; blending, dilution, persistence: cint) =
     g = interpolate(g and not 0xFF, g, o)
     b = interpolate(b and not 0xFF, b, o)
     a = interpolate(a and not 0xFF, a, o)
-  # Apply Region Ratio to Blending
-  unsafeAddr(blending)[] = 
-    div_32767(blending * pipe.ratio)
   # Interpolate With Blending
   r = interpolate(pipe.color0[0], r, blending)
   g = interpolate(pipe.color0[1], g, blending)
