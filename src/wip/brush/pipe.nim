@@ -239,23 +239,23 @@ proc average*(pipe: var NBrushPipeline; blending, dilution, persistence: cint) =
       aa += avg.total[3]
     # Avoid Zero Division
     if count == 0: count = 1
+    # Calculate Averaged Opacity
+    opacity = cint(aa div count)
     # Divide Color Average
-    if aa > 0:
+    if aa > 0 and opacity >= 4096:
       let w = 32767.0 / cfloat(aa)
       # Apply Weigthed Average
       r = cint(rr.cfloat * w)
       g = cint(gg.cfloat * w)
       b = cint(bb.cfloat * w)
       a = cint(aa.cfloat * w)
-      # Calculate Averaged Opacity
-      opacity = cint(aa div count)
     else:
-      r = pipe.color0[0]
-      g = pipe.color0[1]
-      b = pipe.color0[2]
-      a = pipe.color0[3]
+      r = pipe.color1[0]
+      g = pipe.color1[1]
+      b = pipe.color1[2]
+      a = pipe.color1[3]
       # Straigth Opacity
-      opacity = a
+      opacity = pipe.color[3]
   # Quantize Averaged Color
   if not pipe.skip:
     let o = min(opacity, pipe.flow)
