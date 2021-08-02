@@ -242,8 +242,8 @@ proc average*(pipe: var NBrushPipeline; blending, dilution, persistence: cint) =
     # Calculate Averaged Opacity
     opacity = cint(aa div count)
     # Divide Color Average
-    if aa > 0 and opacity >= 4096:
-      let w = 32767.0 / cfloat(aa)
+    if opacity >= 255:
+      let w = 32760.0 / cfloat(aa)
       # Apply Weigthed Average
       r = cint(rr.cfloat * w)
       g = cint(gg.cfloat * w)
@@ -255,14 +255,9 @@ proc average*(pipe: var NBrushPipeline; blending, dilution, persistence: cint) =
       b = pipe.color1[2]
       a = pipe.color1[3]
       # Straigth Opacity
-      opacity = pipe.color[3]
-  # Quantize Averaged Color
-  if not pipe.skip:
-    let o = min(opacity, pipe.flow)
-    r = interpolate(r and not 0xFF, r, o)
-    g = interpolate(g and not 0xFF, g, o)
-    b = interpolate(b and not 0xFF, b, o)
-    a = interpolate(a and not 0xFF, a, o)
+      if not pipe.skip:
+        opacity = pipe.color[3]
+      else: opacity = 32767 - dilution
   # Interpolate With Blending
   r = interpolate(pipe.color0[0], r, blending)
   g = interpolate(pipe.color0[1], g, blending)
@@ -273,6 +268,26 @@ proc average*(pipe: var NBrushPipeline; blending, dilution, persistence: cint) =
   g += pipe.color1[1] - div_32767(pipe.color1[1] * a)
   b += pipe.color1[2] - div_32767(pipe.color1[2] * a)
   a += pipe.color1[3] - div_32767(pipe.color1[3] * a)
+  # Check Color Distance
+  if not pipe.skip:
+    var dist, limit, flow: cint
+    # Calculate Color Distance
+    dist += abs(r - pipe.color1[0])
+    dist += abs(g - pipe.color1[1])
+    dist += abs(b - pipe.color1[2])
+    # Calculate Color Threshold
+    limit = div_32767(opacity * opacity)
+    limit = (32767 - limit) shr 3
+    # Ajust Color Threshold
+    flow = div_32767(dilution * dilution)
+    limit = limit - div_32767(limit * flow)
+    limit = div_32767(limit * blending)
+    # Check Color Threshold
+    if dist < limit:
+      r = pipe.color1[0]
+      g = pipe.color1[1]
+      b = pipe.color1[2]
+      a = pipe.color1[3]
   # Calculate Dilution Opacity Interpolation
   opacity = interpolate(32767, opacity, dilution)
   # Interpolate With Persistence
