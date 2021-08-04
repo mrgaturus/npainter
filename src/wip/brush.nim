@@ -213,7 +213,7 @@ proc prepare_stage0(path: var NBrushStroke, x, y, size, alpha, flow: cfloat) =
       path.data.blur.radius
   of bnSmudge:
     path.pipe.alpha = # Skip
-      cshort(path.pipe.skip)
+      cint(path.pipe.skip)
   else: discard
   # Pipeline Stage Flow
   path.pipe.flow =
@@ -271,9 +271,6 @@ proc prepare_stage1(path: var NBrushStroke, press: cfloat): bool =
     # Ajust Dilution
     d = sqrt_32767(d)
     d = sqrt_32767(d)
-    # Ajust Persistence
-    p = sqrt_32767(p)
-    p = sqrt_32767(p)
     # Calcultate Averaged
     average(path.pipe, b, d, p)
     # Calculate Watercolor
@@ -293,9 +290,6 @@ proc prepare_stage1(path: var NBrushStroke, press: cfloat): bool =
     # Ajust Blending
     b = sqrt_32767(b)
     b = sqrt_32767(b)
-    # Ajust Persistence
-    p = sqrt_32767(p)
-    p = sqrt_32767(p)
     # Calculate Averaged
     average(path.pipe, b, 0, p)
   of bnBlur, bnSmudge: discard

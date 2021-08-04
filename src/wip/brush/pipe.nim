@@ -225,6 +225,8 @@ proc average*(pipe: var NBrushPipeline; blending, dilution, persistence: cint) =
   var
     count, opacity: cint
     r, g, b, a: cint
+    # Dilution & Persistence
+    dull, weak: cint
   # Sum Each Average Tile
   block:
     var rr, gg, bb, aa: int64
@@ -258,60 +260,79 @@ proc average*(pipe: var NBrushPipeline; blending, dilution, persistence: cint) =
       if not pipe.skip:
         opacity = pipe.color[3]
       else: opacity = 32767 - dilution
-  # Interpolate With Blending
-  r = interpolate(pipe.color0[0], r, blending)
-  g = interpolate(pipe.color0[1], g, blending)
-  b = interpolate(pipe.color0[2], b, blending)
-  a = interpolate(pipe.color0[3], a, blending)
   # Blend With Current Color
   r += pipe.color1[0] - div_32767(pipe.color1[0] * a)
   g += pipe.color1[1] - div_32767(pipe.color1[1] * a)
   b += pipe.color1[2] - div_32767(pipe.color1[2] * a)
   a += pipe.color1[3] - div_32767(pipe.color1[3] * a)
+  # Interpolate Opacity With Dilution
+  dull = interpolate(32767, opacity, dilution)
   # Check Color Distance
   if not pipe.skip:
-    var dist, limit, flow: cint
-    # Calculate Color Distance
-    dist += abs(r - pipe.color1[0])
-    dist += abs(g - pipe.color1[1])
-    dist += abs(b - pipe.color1[2])
-    # Calculate Color Threshold
-    limit = div_32767(opacity * opacity)
-    limit = (32767 - limit) shr 3
-    # Ajust Color Threshold
-    flow = div_32767(dilution * dilution)
-    limit = limit - div_32767(limit * flow)
-    limit = div_32767(limit * blending)
-    # Check Color Threshold
-    if dist < limit:
-      r = pipe.color1[0]
-      g = pipe.color1[1]
-      b = pipe.color1[2]
-      a = pipe.color1[3]
-  # Calculate Dilution Opacity Interpolation
-  opacity = interpolate(32767, opacity, dilution)
+    var limit, flow: cint
+    let
+      # Source Quantization
+      rs = div_32767(r * dull)
+      gs = div_32767(g * dull)
+      bs = div_32767(b * dull)
+      # Destination Quantization
+      rd = pipe.color[0]
+      gd = pipe.color[1]
+      bd = pipe.color[2]
+      # Color Distance
+      dr = abs(rs - rd)
+      dg = abs(gs - gd)
+      db = abs(bs - bd)
+    case pipe.blend
+    of bnAverage, bnWater:
+      flow = 32767 - sqrt_32767(pipe.flow)
+      limit = div_32767(opacity * opacity)
+      limit = flow - div_32767(limit * flow)
+      # Ajust Color Threshold With Dilution
+      limit = interpolate(limit, limit shr 3, dilution)
+      limit = div_32767(limit * blending)
+      # Limit Limit to 1024
+      limit = limit shr 5
+    of bnMarker:
+      flow = cint(opacity / pipe.alpha * 32767.0)
+      # Avoid Limit Overflow
+      limit = min(flow, 32767)
+      limit = (32767 - limit) shr 5
+    else: limit = 0
+    # Limit Each Channel By Threshold
+    if dr < limit: r = pipe.color1[0]
+    if dg < limit: g = pipe.color1[1]
+    if db < limit: b = pipe.color1[2]
+    # Ajust Persistence With Opacity
+    weak = 32767 - sqrt_32767(persistence)
+    weak = 32767 - div_32767(weak * flow)
+  # Interpolate With Blending
+  r = interpolate(pipe.color0[0], r, blending)
+  g = interpolate(pipe.color0[1], g, blending)
+  b = interpolate(pipe.color0[2], b, blending)
+  a = interpolate(pipe.color0[3], a, blending)
   # Interpolate With Persistence
   if persistence > 0 and not pipe.skip:
-    r = interpolate(r, pipe.color1[0], persistence)
-    g = interpolate(g, pipe.color1[1], persistence)
-    b = interpolate(b, pipe.color1[2], persistence)
-    a = interpolate(a, pipe.color1[3], persistence)
+    r = interpolate(r, pipe.color1[0], weak)
+    g = interpolate(g, pipe.color1[1], weak)
+    b = interpolate(b, pipe.color1[2], weak)
+    a = interpolate(a, pipe.color1[3], weak)
   # Replace Blended Color
   pipe.color1[0] = cshort(r)
   pipe.color1[1] = cshort(g)
   pipe.color1[2] = cshort(b)
   pipe.color1[3] = cshort(a)
-  # Apply Current Opacity
-  r = div_32767(r * opacity)
-  g = div_32767(g * opacity)
-  b = div_32767(b * opacity)
-  a = div_32767(a * opacity)
+  # Apply Current Dilution
+  r = div_32767(r * dull)
+  g = div_32767(g * dull)
+  b = div_32767(b * dull)
+  a = div_32767(a * dull)
   # Interpolate With Persistence
   if persistence > 0 and not pipe.skip:
-    r = interpolate(r, pipe.color[0], persistence)
-    g = interpolate(g, pipe.color[1], persistence)
-    b = interpolate(b, pipe.color[2], persistence)
-    a = interpolate(a, pipe.color[3], persistence)
+    r = interpolate(r, pipe.color[0], weak)
+    g = interpolate(g, pipe.color[1], weak)
+    b = interpolate(b, pipe.color[2], weak)
+    a = interpolate(a, pipe.color[3], weak)
   # Replace Current Color
   pipe.color[0] = cshort(r)
   pipe.color[1] = cshort(g)
