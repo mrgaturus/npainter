@@ -244,7 +244,7 @@ proc average*(pipe: var NBrushPipeline; blending, dilution, persistence: cint) =
     # Calculate Averaged Opacity
     opacity = cint(aa div count)
     # Divide Color Average
-    if opacity >= 255:
+    if opacity >= 1024:
       let w = 32760.0 / cfloat(aa)
       # Apply Weigthed Average
       r = cint(rr.cfloat * w)
@@ -290,10 +290,11 @@ proc average*(pipe: var NBrushPipeline; blending, dilution, persistence: cint) =
       limit = flow - div_32767(limit * flow)
       # Ajust Color Threshold With Dilution
       limit = interpolate(limit, limit shr 3, dilution)
-      limit = div_32767(limit * blending)
-      # Limit Limit to 1024
-      limit = limit shr 5
+      limit = div_32767(limit * blending) shr 5
+      # Ajust Color Persistence
+      flow = 32767 - flow
     of bnMarker:
+      # Calculate Relative Opacity as Limit
       flow = cint(opacity / pipe.alpha * 32767.0)
       # Avoid Limit Overflow
       limit = min(flow, 32767)
