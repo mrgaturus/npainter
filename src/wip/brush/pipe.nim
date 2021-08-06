@@ -244,8 +244,11 @@ proc average*(pipe: var NBrushPipeline; blending, dilution, persistence: cint) =
     # Calculate Averaged Opacity
     opacity = cint(aa div count)
     # Divide Color Average
-    if opacity >= 1024:
-      let w = 32760.0 / cfloat(aa)
+    if opacity > 255:
+      # Ajust Opacity With Dilution
+      dull = interpolate(opacity, 32760, dilution)
+      # Calculate Average Weight
+      let w = cfloat(opacity) / cfloat(aa)
       # Apply Weigthed Average
       r = cint(rr.cfloat * w)
       g = cint(gg.cfloat * w)
@@ -256,11 +259,11 @@ proc average*(pipe: var NBrushPipeline; blending, dilution, persistence: cint) =
       g = pipe.color1[1]
       b = pipe.color1[2]
       a = pipe.color1[3]
-      # Straigth Opacity
+      # Straight Opacity
       if not pipe.skip:
         opacity = pipe.color[3]
       else: opacity = 32767 - dilution
-  # Blend With Current Color
+  # Blend Averaged Color With Previous Color
   r += pipe.color1[0] - div_32767(pipe.color1[0] * a)
   g += pipe.color1[1] - div_32767(pipe.color1[1] * a)
   b += pipe.color1[2] - div_32767(pipe.color1[2] * a)
@@ -286,11 +289,13 @@ proc average*(pipe: var NBrushPipeline; blending, dilution, persistence: cint) =
     case pipe.blend
     of bnAverage, bnWater:
       flow = 32767 - sqrt_32767(pipe.flow)
-      limit = div_32767(opacity * opacity)
+      # Calculate Color Threshold
+      limit = max(opacity - 0x1FF, 0)
+      limit = div_32767(limit * limit)
       limit = flow - div_32767(limit * flow)
       # Ajust Color Threshold With Dilution
       limit = interpolate(limit, limit shr 3, dilution)
-      limit = div_32767(limit * blending) shr 5
+      limit = div_32767(limit * blending) shr 7
       # Ajust Color Persistence
       flow = 32767 - flow
     of bnMarker:
@@ -298,12 +303,12 @@ proc average*(pipe: var NBrushPipeline; blending, dilution, persistence: cint) =
       flow = cint(opacity / pipe.alpha * 32767.0)
       # Avoid Limit Overflow
       limit = min(flow, 32767)
-      limit = (32767 - limit) shr 5
+      limit = (32767 - limit) shr 7
     else: limit = 0
     # Limit Each Channel By Threshold
-    if dr < limit: r = pipe.color1[0]
-    if dg < limit: g = pipe.color1[1]
-    if db < limit: b = pipe.color1[2]
+    if dr <= limit: r = pipe.color1[0]
+    if dg <= limit: g = pipe.color1[1]
+    if db <= limit: b = pipe.color1[2]
     # Ajust Persistence With Opacity
     weak = 32767 - sqrt_32767(persistence)
     weak = 32767 - div_32767(weak * flow)
