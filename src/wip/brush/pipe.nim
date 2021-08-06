@@ -299,10 +299,12 @@ proc average*(pipe: var NBrushPipeline; blending, dilution, persistence: cint) =
       # Ajust Color Persistence
       flow = 32767 - flow
     of bnMarker:
-      # Calculate Relative Opacity as Limit
-      flow = cint(opacity / pipe.alpha * 32767.0)
-      # Avoid Limit Overflow
-      limit = min(flow, 32767)
+      flow = pipe.alpha
+      if flow > 0: # Calculate Opacity As Limit
+        flow = cint(opacity / flow * 32767.0)
+      else: flow = 0
+      # Avoid Limit Overflow/ Underflow
+      limit = clamp(flow - 0x1FF, 0, 32767)
       limit = (32767 - limit) shr 7
     else: limit = 0
     # Limit Each Channel By Threshold
