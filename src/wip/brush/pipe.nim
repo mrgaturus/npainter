@@ -248,7 +248,7 @@ proc average*(pipe: var NBrushPipeline; blending, dilution, persistence: cint) =
       # Ajust Opacity With Dilution
       dull = interpolate(opacity, 32760, dilution)
       # Calculate Average Weight
-      let w = cfloat(opacity) / cfloat(aa)
+      let w = cfloat(dull) / cfloat(aa)
       # Apply Weigthed Average
       r = cint(rr.cfloat * w)
       g = cint(gg.cfloat * w)
