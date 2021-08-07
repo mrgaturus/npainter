@@ -245,15 +245,12 @@ proc average*(pipe: var NBrushPipeline; blending, dilution, persistence: cint) =
     opacity = cint(aa div count)
     # Divide Color Average
     if opacity > 255:
-      # Ajust Opacity With Dilution
-      dull = interpolate(opacity, 32760, dilution)
-      # Calculate Average Weight
-      let w = cfloat(dull) / cfloat(aa)
+      let w = 32767.0 / cfloat(aa)
       # Apply Weigthed Average
-      r = cint(rr.cfloat * w)
-      g = cint(gg.cfloat * w)
-      b = cint(bb.cfloat * w)
-      a = cint(aa.cfloat * w)
+      r = cint(rr.cfloat * w + 0.5)
+      g = cint(gg.cfloat * w + 0.5)
+      b = cint(bb.cfloat * w + 0.5)
+      a = cint(aa.cfloat * w + 0.5)
     else:
       r = pipe.color1[0]
       g = pipe.color1[1]
@@ -263,55 +260,32 @@ proc average*(pipe: var NBrushPipeline; blending, dilution, persistence: cint) =
       if not pipe.skip:
         opacity = pipe.color[3]
       else: opacity = 32767 - dilution
-  # Blend Averaged Color With Previous Color
-  r += pipe.color1[0] - div_32767(pipe.color1[0] * a)
-  g += pipe.color1[1] - div_32767(pipe.color1[1] * a)
-  b += pipe.color1[2] - div_32767(pipe.color1[2] * a)
-  a += pipe.color1[3] - div_32767(pipe.color1[3] * a)
-  # Interpolate Opacity With Dilution
-  dull = interpolate(32767, opacity, dilution)
-  # Check Color Distance
+  # Color Quantization
   if not pipe.skip:
-    var limit, flow: cint
-    let
-      # Source Quantization
-      rs = div_32767(r * dull)
-      gs = div_32767(g * dull)
-      bs = div_32767(b * dull)
-      # Destination Quantization
-      rd = pipe.color[0]
-      gd = pipe.color[1]
-      bd = pipe.color[2]
-      # Color Distance
-      dr = abs(rs - rd)
-      dg = abs(gs - gd)
-      db = abs(bs - bd)
+    var mask, flow: cint
+    # Calculate Quantization Amount
+    flow = 32767 - sqrt_32767(pipe.flow)
+    mask = div_32767(opacity * opacity)
+    mask = flow - div_32767(mask * flow)
+    # Calculate Quantization Mask
+    mask = (32767 - opacity) shr 11
+    mask = cint(1 shl mask) - 1
+    mask = max(mask shr 4, 64)
+    # Apply Mask Quantization
+    if r > mask: r = r or mask
+    if g > mask: g = g or mask
+    if b > mask: b = b or mask
+    if a > mask: a = a or mask
+    # Ajust Persistence With Opacity
     case pipe.blend
     of bnAverage, bnWater:
-      flow = 32767 - sqrt_32767(pipe.flow)
-      # Calculate Color Threshold
-      limit = max(opacity - 0x1FF, 0)
-      limit = div_32767(limit * limit)
-      limit = flow - div_32767(limit * flow)
-      # Ajust Color Threshold With Dilution
-      limit = interpolate(limit, limit shr 3, dilution)
-      limit = div_32767(limit * blending) shr 7
-      # Ajust Color Persistence
       flow = 32767 - flow
     of bnMarker:
       flow = pipe.alpha
       if flow > 0: # Calculate Opacity As Limit
         flow = cint(opacity / flow * 32767.0)
       else: flow = 0
-      # Avoid Limit Overflow/ Underflow
-      limit = clamp(flow - 0x1FF, 0, 32767)
-      limit = (32767 - limit) shr 7
-    else: limit = 0
-    # Limit Each Channel By Threshold
-    if dr <= limit: r = pipe.color1[0]
-    if dg <= limit: g = pipe.color1[1]
-    if db <= limit: b = pipe.color1[2]
-    # Ajust Persistence With Opacity
+    else: flow = 32767
     weak = 32767 - sqrt_32767(persistence)
     weak = 32767 - div_32767(weak * flow)
   # Interpolate With Blending
@@ -330,6 +304,8 @@ proc average*(pipe: var NBrushPipeline; blending, dilution, persistence: cint) =
   pipe.color1[1] = cshort(g)
   pipe.color1[2] = cshort(b)
   pipe.color1[3] = cshort(a)
+  # Interpolate Opacity With Dilution
+  dull = interpolate(32767, opacity, dilution)
   # Apply Current Dilution
   r = div_32767(r * dull)
   g = div_32767(g * dull)
@@ -379,11 +355,13 @@ proc convolve(buffer: ptr UncheckedArray[cshort], x, y, w, h: cint): array[4, ci
     # Next Pixel Stride
     cursor_row += w shl 2
   # Divide Pixel
-  if count > 1:
-    result[0] = result[0] div count
-    result[1] = result[1] div count
-    result[2] = result[2] div count
-    result[3] = result[3] div count
+  cursor = result[3]
+  if cursor > 0:
+    let w = cursor / (cursor * count)
+    result[0] = cint(result[0].float * w)
+    result[1] = cint(result[1].float * w)
+    result[2] = cint(result[2].float * w)
+    result[3] = cint(result[3].float * w)
 
 proc blur(pipe: var NBrushPipeline, buffer: ptr UncheckedArray[cshort]) =
   let 
