@@ -331,11 +331,6 @@ proc evaluate(dyn: ptr NStrokeGeneric, basic: ptr NStrokeBasic, p: cfloat) =
   # Pressure Interpolation
   size = (s_st + s_dist * size) * basic.size
   alpha = (a_st + a_dist * alpha) * basic.alpha
-  # Simulate Smallest
-  if size < 2.5:
-    alpha *= size * 0.4
-    # Clamp Size
-    size = 2.5
   # Calculate Flow Opacity
   case dyn.kind
   of fwAuto:
@@ -343,6 +338,11 @@ proc evaluate(dyn: ptr NStrokeGeneric, basic: ptr NStrokeBasic, p: cfloat) =
     flow = 1.0 - pow(flow, dyn.magic)
   of fwFlat, fwCustom:
     flow = dyn.magic
+  # Simulate Smallest
+  if size < 2.5:
+    flow *= size * 0.4
+    # Clamp Size
+    size = 2.5
   # Return Values
   dyn.size = size
   dyn.alpha = alpha
