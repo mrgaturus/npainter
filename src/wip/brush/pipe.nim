@@ -264,7 +264,7 @@ proc average*(pipe: var NBrushPipeline; blending, dilution, persistence: cint) =
       else: opacity = 32767 - dilution
   # Color Semi-Stabilization
   if not pipe.skip:
-    let # Previous Color
+    let
       rd = pipe.color1[0]
       gd = pipe.color1[1]
       bd = pipe.color1[2]
@@ -273,6 +273,7 @@ proc average*(pipe: var NBrushPipeline; blending, dilution, persistence: cint) =
     of bnAverage, bnWater:
       # Calculate Color Ratio Limit
       dull = interpolate(16384, 32640, opacity)
+      dull = interpolate(dull, 32640, dilution)
       # Color Ratio
       w = dull / 32767
       # Persistence Flow
