@@ -223,6 +223,8 @@ proc interpolate(a, b, fract: cint): cint =
 
 proc average*(pipe: var NBrushPipeline; blending, dilution, persistence: cint) =
   var
+    w: cfloat
+    # Averaged Color
     count, opacity: cint
     r, g, b, a: cint
     # Dilution & Persistence
@@ -245,7 +247,7 @@ proc average*(pipe: var NBrushPipeline; blending, dilution, persistence: cint) =
     opacity = cint(aa div count)
     # Divide Color Average
     if opacity > 255:
-      let w = 32767.0 / cfloat(aa)
+      w = 32767.0 / cfloat(aa)
       # Apply Weigthed Average
       r = cint(rr.cfloat * w + 0.5)
       g = cint(gg.cfloat * w + 0.5)
@@ -260,34 +262,36 @@ proc average*(pipe: var NBrushPipeline; blending, dilution, persistence: cint) =
       if not pipe.skip:
         opacity = pipe.color[3]
       else: opacity = 32767 - dilution
-  # Color Quantization
+  # Color Semi-Stabilization
   if not pipe.skip:
-    var mask, flow: cint
-    # Calculate Quantization Amount
-    flow = 32767 - sqrt_32767(pipe.flow)
-    mask = div_32767(opacity * opacity)
-    mask = flow - div_32767(mask * flow)
-    # Calculate Quantization Mask
-    mask = (32767 - opacity) shr 11
-    mask = cint(1 shl mask) - 1
-    mask = max(mask shr 4, 64)
-    # Apply Mask Quantization
-    if r > mask: r = r or mask
-    if g > mask: g = g or mask
-    if b > mask: b = b or mask
-    if a > mask: a = a or mask
-    # Ajust Persistence With Opacity
+    let # Previous Color
+      rd = pipe.color1[0]
+      gd = pipe.color1[1]
+      bd = pipe.color1[2]
+    # Calculate Persistence Flow
     case pipe.blend
     of bnAverage, bnWater:
-      flow = 32767 - flow
+      # Calculate Color Ratio Limit
+      dull = interpolate(16384, 32640, opacity)
+      # Color Ratio
+      w = dull / 32767
+      # Persistence Flow
+      dull = sqrt_32767(pipe.flow)
     of bnMarker:
-      flow = pipe.alpha
-      if flow > 0: # Calculate Opacity As Limit
-        flow = cint(opacity / flow * 32767.0)
-      else: flow = 0
-    else: flow = 32767
+      dull = pipe.alpha
+      if dull > 0:
+        w = opacity / dull
+        # Persistence Flow
+        dull = cint(w * 32767.0)
+      else: w = 1.0; dull = 0
+    else: w = 1.0; dull = 0
+    # Check Color Ratio and Avoid Some Losses
+    if (rd > r) and (r / rd > w): r = rd
+    if (gd > g) and (g / gd > w): g = gd
+    if (bd > b) and (b / bd > w): b = bd
+    # Ajust Persistence With Opacity
     weak = 32767 - sqrt_32767(persistence)
-    weak = 32767 - div_32767(weak * flow)
+    weak = 32767 - div_32767(weak * dull)
   # Interpolate With Blending
   r = interpolate(pipe.color0[0], r, blending)
   g = interpolate(pipe.color0[1], g, blending)
@@ -304,7 +308,7 @@ proc average*(pipe: var NBrushPipeline; blending, dilution, persistence: cint) =
   pipe.color1[1] = cshort(g)
   pipe.color1[2] = cshort(b)
   pipe.color1[3] = cshort(a)
-  # Interpolate Opacity With Dilution
+  # Calculate Dilution Opacity Amount
   dull = interpolate(32767, opacity, dilution)
   # Apply Current Dilution
   r = div_32767(r * dull)
