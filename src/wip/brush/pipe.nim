@@ -223,8 +223,6 @@ proc interpolate(a, b, fract: cint): cint =
 
 proc average*(pipe: var NBrushPipeline; blending, dilution, persistence: cint) =
   var
-    w: cfloat
-    # Averaged Color
     count, opacity: cint
     r, g, b, a: cint
     # Dilution & Persistence
@@ -247,7 +245,7 @@ proc average*(pipe: var NBrushPipeline; blending, dilution, persistence: cint) =
     opacity = cint(aa div count)
     # Divide Color Average
     if opacity > 255:
-      w = 32767.0 / cfloat(aa)
+      let w = 32767.0 / cfloat(aa)
       # Apply Weigthed Average
       r = cint(rr.cfloat * w + 0.5)
       g = cint(gg.cfloat * w + 0.5)
@@ -265,31 +263,36 @@ proc average*(pipe: var NBrushPipeline; blending, dilution, persistence: cint) =
   # Color Semi-Stabilization
   if not pipe.skip:
     let
-      rd = pipe.color1[0]
-      gd = pipe.color1[1]
-      bd = pipe.color1[2]
-    # Calculate Persistence Flow
+      # Averaged Color
+      rs = div_32767(r * opacity)
+      gs = div_32767(g * opacity)
+      bs = div_32767(b * opacity)
+      # Destination Color
+      rd = div_32767(pipe.color1[0] * opacity)
+      gd = div_32767(pipe.color1[1] * opacity)
+      bd = div_32767(pipe.color1[2] * opacity)
+    # Calculate Color Threshold
     case pipe.blend
     of bnAverage, bnWater:
-      # Calculate Color Ratio Limit
-      dull = interpolate(16384, 32640, opacity)
-      dull = interpolate(dull, 32640, dilution)
-      # Color Ratio
-      w = dull / 32767
-      # Persistence Flow
-      dull = sqrt_32767(pipe.flow)
+      dull = 32767 - sqrt_32767(pipe.flow)
+      weak = div_32767(opacity * opacity)
+      weak = dull - div_32767(weak * dull)
+      # Ajust Color Threshold With Dilution
+      weak = interpolate(weak, weak shr 1, dilution)
+      # Convert to 127
+      weak = weak shr 8
+      dull = 32767 - dull
     of bnMarker:
-      dull = pipe.alpha
-      if dull > 0:
-        w = opacity / dull
-        # Persistence Flow
-        dull = cint(w * 32767.0)
-      else: w = 1.0; dull = 0
-    else: w = 1.0; dull = 0
+      # Calculate Relative Opacity as Limit
+      dull = cint(opacity / pipe.alpha * 32767.0)
+      # Avoid Limit Overflow
+      weak = min(dull, 32767)
+      weak = (32767 - dull) shr 8
+    else: weak = 0; dull = 32767
     # Check Color Ratio and Avoid Some Losses
-    if (rd > r) and (r / rd > w): r = rd
-    if (gd > g) and (g / gd > w): g = gd
-    if (bd > b) and (b / bd > w): b = bd
+    if rd > rs and (rd - rs) < weak: r = pipe.color1[0]
+    if gd > gs and (gd - gs) < weak: g = pipe.color1[1]
+    if bd > bs and (bd - bs) < weak: b = pipe.color1[2]
     # Ajust Persistence With Opacity
     weak = 32767 - sqrt_32767(persistence)
     weak = 32767 - div_32767(weak * dull)
