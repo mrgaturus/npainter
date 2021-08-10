@@ -290,9 +290,9 @@ proc average*(pipe: var NBrushPipeline; blending, dilution, persistence: cint) =
       weak = (32767 - dull) shr 8
     else: weak = 0; dull = 32767
     # Check Color Ratio and Avoid Some Losses
-    if rd > rs and (rd - rs) < weak: r = pipe.color1[0]
-    if gd > gs and (gd - gs) < weak: g = pipe.color1[1]
-    if bd > bs and (bd - bs) < weak: b = pipe.color1[2]
+    if abs(rd - rs) < weak: r = pipe.color1[0]
+    if abs(gd - gs) < weak: g = pipe.color1[1]
+    if abs(bd - bs) < weak: b = pipe.color1[2]
     # Ajust Persistence With Opacity
     weak = 32767 - sqrt_32767(persistence)
     weak = 32767 - div_32767(weak * dull)
