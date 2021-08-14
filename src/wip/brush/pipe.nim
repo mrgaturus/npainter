@@ -243,14 +243,42 @@ proc average*(pipe: var NBrushPipeline; blending, dilution, persistence: cint) =
     if count == 0: count = 1
     # Calculate Averaged Opacity
     opacity = cint(aa div count)
-    # Divide Color Average
+    # Calculate Averaged Color
     if opacity > 255:
-      let w = 32767.0 / cfloat(aa)
+      let 
+        w = 32767.0 / cfloat(aa)
+        # Previous Color
+        rd = pipe.color1[0]
+        gd = pipe.color1[1]
+        bd = pipe.color1[2]
+        ad = pipe.color1[3]
       # Apply Weigthed Average
-      r = cint(rr.cfloat * w + 0.5)
-      g = cint(gg.cfloat * w + 0.5)
-      b = cint(bb.cfloat * w + 0.5)
-      a = cint(aa.cfloat * w + 0.5)
+      r = cint(rr.cfloat * w)
+      g = cint(gg.cfloat * w)
+      b = cint(bb.cfloat * w)
+      a = cint(aa.cfloat * w)
+      # Calculate Averaged Ajust
+      weak = opacity
+      case pipe.blend
+      of bnAverage, bnWater:
+        dull = sqrt_32767(pipe.flow)
+        # Ajust Quantization
+        weak = (32767 - opacity) shr 5
+        weak = weak - div_32767(weak * dilution)
+      of bnMarker:
+        dull = cint(weak / pipe.alpha * 32767.0)
+        dull = min(dull, 32767)
+        # Ajust Quantization
+        weak = (32767 - dull) shr 5
+      else: weak = 0; dull = 32767
+      # Ajust Quantization With Blending
+      weak = div_32767(weak * blending)
+      weak = max(weak, 3)
+      # Calculate Quantization Amount
+      if r < rd: r = min(r + weak, rd)
+      if g < gd: g = min(g + weak, gd)
+      if b < bd: b = min(b + weak, bd)
+      if a < ad: a = min(a + weak, ad)
     else:
       r = pipe.color1[0]
       g = pipe.color1[1]
@@ -260,42 +288,11 @@ proc average*(pipe: var NBrushPipeline; blending, dilution, persistence: cint) =
       if not pipe.skip:
         opacity = pipe.color[3]
       else: opacity = 32767 - dilution
-  # Color Semi-Stabilization
-  if not pipe.skip:
-    let
-      # Averaged Color
-      rs = div_32767(r * opacity)
-      gs = div_32767(g * opacity)
-      bs = div_32767(b * opacity)
-      # Destination Color
-      rd = div_32767(pipe.color1[0] * opacity)
-      gd = div_32767(pipe.color1[1] * opacity)
-      bd = div_32767(pipe.color1[2] * opacity)
-    # Calculate Color Threshold
-    case pipe.blend
-    of bnAverage, bnWater:
-      dull = 32767 - sqrt_32767(pipe.flow)
-      weak = div_32767(opacity * opacity)
-      weak = dull - div_32767(weak * dull)
-      # Ajust Color Threshold With Dilution
-      weak = interpolate(weak, weak shr 2, dilution)
-      # Convert to 255
-      weak = weak shr 7
-      dull = 32767 - dull
-    of bnMarker:
-      # Calculate Relative Opacity as Limit
-      dull = cint(opacity / pipe.alpha * 32767.0)
-      # Avoid Limit Overflow
-      weak = min(dull, 32767)
-      weak = (32767 - dull) shr 7
-    else: weak = 0; dull = 32767
-    # Check Color Ratio and Avoid Some Losses
-    if abs(rd - rs) < weak: r = pipe.color1[0]
-    if abs(gd - gs) < weak: g = pipe.color1[1]
-    if abs(bd - bs) < weak: b = pipe.color1[2]
-    # Ajust Persistence With Opacity
-    weak = 32767 - sqrt_32767(persistence)
-    weak = 32767 - div_32767(weak * dull)
+      # 100% Persistence
+      dull = 32767
+  # Ajust Persistence With Opacity
+  weak = 32767 - sqrt_32767(persistence)
+  weak = 32767 - div_32767(weak * dull)
   # Interpolate With Blending
   r = interpolate(pipe.color0[0], r, blending)
   g = interpolate(pipe.color0[1], g, blending)

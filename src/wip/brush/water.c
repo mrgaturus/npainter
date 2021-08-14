@@ -34,7 +34,7 @@ void brush_water_first(brush_render_t* render) {
   x2 = x1 + render->w;
   y2 = y1 + render->h;
 
-  __m128i color0, color1;
+  __m128i color0, color1, xmm0;
   // Initialize Acumulator
   color0 = _mm_setzero_si128();
   // Initialize Count
@@ -72,8 +72,12 @@ void brush_water_first(brush_render_t* render) {
       if (sh = *sh_x) {
         color1 = _mm_loadl_epi64((__m128i*) dst_x);
         color1 = _mm_cvtepi16_epi32(color1);
+        // Check if Pixel is Visible Enough
+        xmm0 = _mm_srli_epi32(color1, 7);
         // Sum Color Average & Sum Color Count
-        color0 = _mm_add_epi32(color0, color1); count0++;
+        if (_mm_testz_si128(xmm0, xmm0) == 0) {
+          color0 = _mm_add_epi32(color0, color1); count0++;
+        }
       }
       // Step Shape & Color
       sh_x++; dst_x += 4;
