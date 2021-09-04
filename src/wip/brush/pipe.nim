@@ -263,10 +263,10 @@ proc average*(pipe: var NBrushPipeline; blending, dilution, persistence: cint) =
       weak = mix_65535(8, 12, dilution)
       weak = cast[cint](1 shl weak) - 1
       # Apply Color Quantization
-      r = mix_65535(r and not weak, r, opacity)
-      g = mix_65535(g and not weak, g, opacity)
-      b = mix_65535(b and not weak, b, opacity)
-      a = mix_65535(a and not weak, a, opacity)
+      r = mix_65535(r and not weak, r or 0x3, opacity)
+      g = mix_65535(g and not weak, g or 0x3, opacity)
+      b = mix_65535(b and not weak, b or 0x3, opacity)
+      a = mix_65535(a and not weak, a or 0x3, opacity)
     else:
       r = pipe.color1[0]
       g = pipe.color1[1]
