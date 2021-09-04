@@ -47,10 +47,10 @@ type
     # Brush Shape Mask
     mask*: NBrushMask
     # Base Rendering Color
-    color0: array[4, cshort]
-    color1: array[4, cshort]
+    color0: array[4, cint]
+    color1: array[4, cint]
     # Current Rendering Color
-    color: array[4, cshort]
+    color: array[4, cint]
     # Alpha Mask & Blend
     alpha*, flow*: cint
     # Rendering Blocks
@@ -68,18 +68,18 @@ type
 # BRUSH PIPELINE COLOR INITIALIZATION
 # -----------------------------------
 
-proc color*(pipe: var NBrushPipeline; r, g, b: cshort) =
-  pipe.color[0] = (r shl 7) or r
-  pipe.color[1] = (g shl 7) or g
-  pipe.color[2] = (b shl 7) or b
+proc color*(pipe: var NBrushPipeline; r, g, b: cint) =
+  pipe.color[0] = (r shl 8) or r
+  pipe.color[1] = (g shl 8) or g
+  pipe.color[2] = (b shl 8) or b
   # Set Alpha to 100%
-  pipe.color[3] = 32767
+  pipe.color[3] = 65535
   # Replace Base Color
   pipe.color0 = pipe.color
   pipe.color1 = pipe.color
 
 proc transparent*(pipe: var NBrushPipeline) =
-  var empty: array[4, cshort]
+  var empty: array[4, cint]
   # Replace Current Color
   pipe.color = empty
   # Replace Base Color
@@ -179,12 +179,12 @@ proc reserve*(pipe: var NBrushPipeline; x1, y1, x2, y2, shift: cint) =
   pipe.parallel = shift > 5
 
 # --------------------------------
-# BRUSH PIPELINE COLOR FIX15 PROCS
+# BRUSH PIPELINE COLOR FIX16 PROCS
 # --------------------------------
 
-proc sqrt_32767*(x: cint): cint =
+proc sqrt_65535*(x: cint): cint =
   var
-    a = cuint(x shl 15)
+    a = cuint(x shl 16)
     # Aproximation
     rem, root: cuint
   # Try Hard Square Root
@@ -199,23 +199,31 @@ proc sqrt_32767*(x: cint): cint =
   # Return Estimated
   result = cast[cint](root shr 1)
 
-proc div_32767*(c: cint): cint =
-  result = (c + 32767) shr 15
-  result = (c + result) shr 15
+proc mul_65535*(a, b: cint): cint =
+  var calc: cuint
+  # Calculate Interpolation
+  calc = cuint(a) * cuint(b)
+  calc = (calc + 65535) shr 16
+  # Cast Back to Int
+  result = cast[cint](calc)
 
-proc fixlinear(size, scale: cint): cint =
+proc mix_65535(a, b, fract: cint): cint =
+  var calc: cuint
+  # Calculate Interpolation
+  calc = cuint(a) * cuint(65535 - fract)
+  calc += cuint(b) * cuint(fract)
+  calc = (calc) shr 16
+  # Cast Back to Int
+  result = cast[cint](calc)
+
+proc fix_65535(size, scale: cint): cint =
   var calc: float32
   calc = 1.0 / float32(size)
   # Calculate Step
   calc *= float32(scale)
-  calc *= 32768.0
+  calc *= 65536.0
   # Convert Step
   result = cint(calc)
-
-proc interpolate(a, b, fract: cint): cint =
-  result = (b - a) * fract
-  result = div_32767(result)
-  result = a + result
 
 # ------------------------------------
 # BRUSH PIPELINE COLOR AVERAGING PROCS
@@ -245,40 +253,20 @@ proc average*(pipe: var NBrushPipeline; blending, dilution, persistence: cint) =
     opacity = cint(aa div count)
     # Calculate Averaged Color
     if opacity > 255:
-      let 
-        w = 32767.0 / cfloat(aa)
-        # Previous Color
-        rd = pipe.color1[0]
-        gd = pipe.color1[1]
-        bd = pipe.color1[2]
-        ad = pipe.color1[3]
+      var w = 65535.0 / float(aa)
       # Apply Weigthed Average
-      r = cint(rr.cfloat * w)
-      g = cint(gg.cfloat * w)
-      b = cint(bb.cfloat * w)
-      a = cint(aa.cfloat * w)
-      # Calculate Averaged Ajust
-      weak = opacity
-      case pipe.blend
-      of bnAverage, bnWater:
-        dull = sqrt_32767(pipe.flow)
-        # Ajust Quantization
-        weak = (32767 - opacity) shr 5
-        weak = weak - div_32767(weak * dilution)
-      of bnMarker:
-        dull = cint(weak / pipe.alpha * 32767.0)
-        dull = min(dull, 32767)
-        # Ajust Quantization
-        weak = (32767 - dull) shr 5
-      else: weak = 0; dull = 32767
-      # Ajust Quantization With Blending
-      weak = div_32767(weak * blending)
-      weak = max(weak, 3)
-      # Calculate Quantization Amount
-      if r < rd: r = min(r + weak, rd)
-      if g < gd: g = min(g + weak, gd)
-      if b < bd: b = min(b + weak, bd)
-      if a < ad: a = min(a + weak, ad)
+      r = cint(rr.float * w)
+      g = cint(gg.float * w)
+      b = cint(bb.float * w)
+      a = cint(aa.float * w)
+      # Ajust Color Quantization
+      weak = mix_65535(8, 12, dilution)
+      weak = cast[cint](1 shl weak) - 1
+      # Apply Color Quantization
+      r = mix_65535(r and not weak, r, opacity)
+      g = mix_65535(g and not weak, g, opacity)
+      b = mix_65535(b and not weak, b, opacity)
+      a = mix_65535(a and not weak, a, opacity)
     else:
       r = pipe.color1[0]
       g = pipe.color1[1]
@@ -287,52 +275,59 @@ proc average*(pipe: var NBrushPipeline; blending, dilution, persistence: cint) =
       # Straight Opacity
       if not pipe.skip:
         opacity = pipe.color[3]
-      else: opacity = 32767 - dilution
-      # 100% Persistence
-      dull = 32767
-  # Ajust Persistence With Opacity
-  weak = 32767 - sqrt_32767(persistence)
-  weak = 32767 - div_32767(weak * dull)
+      else: opacity = 65535 - dilution
+  # Calculate Persistence
+  if not pipe.skip:
+    case pipe.blend
+    of bnAverage, bnWater:
+      dull = sqrt_65535(pipe.flow)
+    of bnMarker:
+      dull = cint(opacity / pipe.alpha * 65535.0)
+      dull = min(dull, 65535)
+    else: dull = 65535
+    # Ajust Persistence With Opacity
+    weak = 65535 - sqrt_65535(persistence)
+    weak = 65535 - mul_65535(weak, dull)
   # Interpolate With Blending
-  r = interpolate(pipe.color0[0], r, blending)
-  g = interpolate(pipe.color0[1], g, blending)
-  b = interpolate(pipe.color0[2], b, blending)
-  a = interpolate(pipe.color0[3], a, blending)
+  r = mix_65535(pipe.color0[0], r, blending)
+  g = mix_65535(pipe.color0[1], g, blending)
+  b = mix_65535(pipe.color0[2], b, blending)
+  a = mix_65535(pipe.color0[3], a, blending)
   # Interpolate With Persistence
   if persistence > 0 and not pipe.skip:
-    r = interpolate(r, pipe.color1[0], weak)
-    g = interpolate(g, pipe.color1[1], weak)
-    b = interpolate(b, pipe.color1[2], weak)
-    a = interpolate(a, pipe.color1[3], weak)
+    r = mix_65535(r, pipe.color1[0], weak)
+    g = mix_65535(g, pipe.color1[1], weak)
+    b = mix_65535(b, pipe.color1[2], weak)
+    a = mix_65535(a, pipe.color1[3], weak)
   # Replace Blended Color
-  pipe.color1[0] = cshort(r)
-  pipe.color1[1] = cshort(g)
-  pipe.color1[2] = cshort(b)
-  pipe.color1[3] = cshort(a)
+  pipe.color1[0] = r
+  pipe.color1[1] = g
+  pipe.color1[2] = b
+  pipe.color1[3] = a
   # Calculate Dilution Opacity Amount
-  dull = interpolate(32767, opacity, dilution)
+  dull = mix_65535(65535, opacity, dilution)
   # Apply Current Dilution
-  r = div_32767(r * dull)
-  g = div_32767(g * dull)
-  b = div_32767(b * dull)
-  a = div_32767(a * dull)
+  r = mul_65535(r, dull)
+  g = mul_65535(g, dull)
+  b = mul_65535(b, dull)
+  a = mul_65535(a, dull)
   # Interpolate With Persistence
   if persistence > 0 and not pipe.skip:
-    r = interpolate(r, pipe.color[0], weak)
-    g = interpolate(g, pipe.color[1], weak)
-    b = interpolate(b, pipe.color[2], weak)
-    a = interpolate(a, pipe.color[3], weak)
+    r = mix_65535(r, pipe.color[0], weak)
+    g = mix_65535(g, pipe.color[1], weak)
+    b = mix_65535(b, pipe.color[2], weak)
+    a = mix_65535(a, pipe.color[3], weak)
   # Replace Current Color
-  pipe.color[0] = cshort(r)
-  pipe.color[1] = cshort(g)
-  pipe.color[2] = cshort(b)
-  pipe.color[3] = cshort(a)
+  pipe.color[0] = r
+  pipe.color[1] = g
+  pipe.color[2] = b
+  pipe.color[3] = a
 
 # -------------------------------
 # BRUSH PIPELINE WATERCOLOR PROCS
 # -------------------------------
 
-proc convolve(buffer: ptr UncheckedArray[cshort], x, y, w, h: cint): array[4, cint] =
+proc convolve(buffer: ptr UncheckedArray[cint], x, y, w, h: cint): array[4, cint] =
   let
     x1 = max(x - 1, 0)
     y1 = max(y - 1, 0)
@@ -348,7 +343,7 @@ proc convolve(buffer: ptr UncheckedArray[cshort], x, y, w, h: cint): array[4, ci
     cursor = cursor_row
     # Convolve Row
     for xx in x1 .. x2:
-      if buffer[cursor + 3] >= 0:
+      if buffer[cursor + 3] < 65536:
         result[0] += buffer[cursor + 0]
         result[1] += buffer[cursor + 1]
         result[2] += buffer[cursor + 2]
@@ -361,25 +356,26 @@ proc convolve(buffer: ptr UncheckedArray[cshort], x, y, w, h: cint): array[4, ci
     cursor_row += w shl 2
   # Divide Pixel
   cursor = result[3]
-  if cursor > 0:
+  if count > 1 and cursor > 0:
     let w = cursor / (cursor * count)
     result[0] = cint(result[0].float * w)
     result[1] = cint(result[1].float * w)
     result[2] = cint(result[2].float * w)
     result[3] = cint(result[3].float * w)
 
-proc blur(pipe: var NBrushPipeline, buffer: ptr UncheckedArray[cshort]) =
+proc blur(pipe: var NBrushPipeline, buffer: ptr UncheckedArray[cint]) =
   let 
-    dst = cast[buffer.type](pipe.canvas.buffer1)
+    dst = cast[ptr UncheckedArray[cushort]](
+      pipe.canvas.buffer1)
     # Tiled Dimensions
     w = pipe.w
     h = pipe.h
-    # Pixel Color
-    color = pipe.color
   # Current Pixel
   var 
     pixel: array[4, cint]
     cursor, opacity: cint
+    # Current Color
+    color = pipe.color
   # Blur Each Pixel
   for y in 0 ..< h:
     for x in 0 ..< w:
@@ -388,15 +384,15 @@ proc blur(pipe: var NBrushPipeline, buffer: ptr UncheckedArray[cshort]) =
       # Current Opacity
       opacity = pixel[3]
       # Blend With Current Color
-      pixel[0] += color[0] - div_32767(color[0] * opacity)
-      pixel[1] += color[1] - div_32767(color[1] * opacity)
-      pixel[2] += color[2] - div_32767(color[2] * opacity)
-      pixel[3] += color[3] - div_32767(color[3] * opacity)
+      pixel[0] += color[0] - mul_65535(color[0], opacity)
+      pixel[1] += color[1] - mul_65535(color[1], opacity)
+      pixel[2] += color[2] - mul_65535(color[2], opacity)
+      pixel[3] += color[3] - mul_65535(color[3], opacity)
       # Store Current Pixel
-      dst[cursor + 0] = cast[cshort](pixel[0])
-      dst[cursor + 1] = cast[cshort](pixel[1])
-      dst[cursor + 2] = cast[cshort](pixel[2])
-      dst[cursor + 3] = cast[cshort](pixel[3])
+      dst[cursor + 0] = cast[cushort](pixel[0])
+      dst[cursor + 1] = cast[cushort](pixel[1])
+      dst[cursor + 2] = cast[cushort](pixel[2])
+      dst[cursor + 3] = cast[cushort](pixel[3])
       # Next Pixel
       cursor += 4
 
@@ -408,16 +404,16 @@ proc water*(pipe: var NBrushPipeline) =
     rx = pipe.rx
     ry = pipe.ry
     # Fixlinear Step Deltas
-    fx = fixlinear(pipe.rw, w - 1)
-    fy = fixlinear(pipe.rh, h - 1)
+    fx = fix_65535(pipe.rw, w - 1)
+    fy = fix_65535(pipe.rh, h - 1)
   var
-    buffer = cast[ptr UncheckedArray[cshort]](
+    buffer = cast[ptr UncheckedArray[cint]](
       pipe.canvas.buffer1)
     # Pixel Average
     cursor, count: cint
     r, g, b, a: cint
   # Locate Buffer to Auxiliar Buffer
-  buffer = cast[buffer.type](addr buffer[w * h * 4])
+  buffer = cast[buffer.type](addr buffer[w * h * 2])
   # Arrange Each Pixel
   for tile in mitems(pipe.tiles):
     let avg = addr tile.data.water
@@ -429,15 +425,15 @@ proc water*(pipe: var NBrushPipeline) =
       b = avg.total[2] div count
       a = avg.total[3] div count
     else: # Dead Pixel
-      r = 0xFFFF
-      g = 0xFFFF
-      b = 0xFFFF
-      a = 0xFFFF
+      r = 65536
+      g = 65536
+      b = 65536
+      a = 65536
     # Store Current Pixel
-    buffer[cursor + 0] = cast[cshort](r)
-    buffer[cursor + 1] = cast[cshort](g)
-    buffer[cursor + 2] = cast[cshort](b)
-    buffer[cursor + 3] = cast[cshort](a)
+    buffer[cursor + 0] = r
+    buffer[cursor + 1] = g
+    buffer[cursor + 2] = b
+    buffer[cursor + 3] = a
     # Fixlinear Steps
     avg.fx = fx
     avg.fy = fy

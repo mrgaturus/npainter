@@ -60,13 +60,13 @@ proc copy(self: GUICanvas, x, y, w, h: int) =
   for yi in 0..<h:
     for xi in 0..<w:
       self.dst_copy[cursor_dst] = 
-        cast[uint8](self.dst[cursor_src] shr 7)
+        cast[uint8](self.dst[cursor_src] shr 8)
       self.dst_copy[cursor_dst + 1] = 
-        cast[uint8](self.dst[cursor_src + 1] shr 7)
+        cast[uint8](self.dst[cursor_src + 1] shr 8)
       self.dst_copy[cursor_dst + 2] = 
-        cast[uint8](self.dst[cursor_src + 2] shr 7)
+        cast[uint8](self.dst[cursor_src + 2] shr 8)
       self.dst_copy[cursor_dst + 3] =
-        cast[uint8](self.dst[cursor_src + 3] shr 7)
+        cast[uint8](self.dst[cursor_src + 3] shr 8)
       # Next Pixel
       cursor_src += 4; cursor_dst += 4
     # Next Row
@@ -92,9 +92,9 @@ proc prepare(self: GUICanvas) =
     basic = addr path.basic
     circle = addr path.mask.circle
     # Unpack Color to Fix15
-    r = int16(color.r * 255.0)
-    g = int16(color.g * 255.0)
-    b = int16(color.b * 255.0)
+    r = cint(color.r * 255.0)
+    g = cint(color.g * 255.0)
+    b = cint(color.b * 255.0)
   # Set Pipeline Color
   color(path.pipe, r, g, b)
   # Calculate Size
@@ -116,17 +116,17 @@ proc prepare(self: GUICanvas) =
   of bnAverage, bnWater:
     let avg = addr path.data.avg
     avg.blending = 
-      cshort(distance(panel.blending) * 32767.0)
+      cint(distance(panel.blending) * 65535.0)
     avg.dilution = 
-      cshort(distance(panel.dilution) * 32767.0)
+      cint(distance(panel.dilution) * 65535.0)
     avg.persistence = 
-      cshort(distance(panel.persistence) * 32767.0)
+      cint(distance(panel.persistence) * 65535.0)
   of bnMarker:
     let marker = addr path.data.marker
     marker.blending = 
-      cshort(distance(panel.blending) * 32767.0)
+      cint(distance(panel.blending) * 65535.0)
     marker.persistence = 
-      cshort(distance(panel.persistence) * 32767.0)
+      cint(distance(panel.persistence) * 65535.0)
     # Press Not Yet
     marker.p_blending = false
   else: discard

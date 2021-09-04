@@ -85,7 +85,7 @@ typedef struct {
 typedef struct {
   int x, y, w, h;
   // Shape Color
-  short* color;
+  int* color;
   // Shape Alpha
   int alpha, flow;
   // Canvas Target Buffers

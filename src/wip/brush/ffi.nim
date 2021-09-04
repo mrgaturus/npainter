@@ -70,7 +70,7 @@ type
   NBrushRender {.importc: "brush_render_t" } = object
     x, y, w, h: cint
     # Shape Color
-    color: ptr array[4, cshort]
+    color: ptr array[4, cint]
     # Shape Alpha
     alpha, flow: cint
     # Canvas Target

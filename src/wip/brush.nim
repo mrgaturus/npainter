@@ -19,7 +19,7 @@ type
   NStrokeBlotmap = object
     hard*, sharp*: cfloat
     # Interpolation
-    fract*: cshort
+    fract*: cint
     # Texture Buffer
     buffer*: pointer
   NStrokeBitmap = object
@@ -34,27 +34,27 @@ type
     buffer*: pointer
   # ---------------------
   NStrokeTexture = object
-    scratch*, fract*: cshort
+    scratch*, fract*: cint
     # Texture Buffer
     buffer*: pointer
 type
   NStrokeAverage = object
-    blending*: cshort
-    dilution*: cshort
-    persistence*: cshort
+    blending*: cint
+    dilution*: cint
+    persistence*: cint
     # Pressure Flags
     p_blending*: bool
     p_dilution*: bool
     # Pressure Minimun
     p_minimun*: cfloat
   NStrokeMarker = object
-    blending*: cshort
-    persistence*: cshort
+    blending*: cint
+    persistence*: cint
     # Blending Pressure
     p_blending*: bool
   # -------------------
   NStrokeBlur = object
-    radius*: cshort
+    radius*: cint
 
 type
   NStrokePoint = object
@@ -207,7 +207,7 @@ proc prepare_stage0(path: var NBrushStroke, x, y, size, alpha, flow: cfloat) =
   case path.blend
   of bnFlat, bnMarker:
     path.pipe.alpha =
-      cint(alpha * 32767.0)
+      cint(alpha * 65535.0)
   of bnBlur:
     path.pipe.alpha = # Radius
       path.data.blur.radius
@@ -217,7 +217,7 @@ proc prepare_stage0(path: var NBrushStroke, x, y, size, alpha, flow: cfloat) =
   else: discard
   # Pipeline Stage Flow
   path.pipe.flow =
-    cint(flow * 32767.0)
+    cint(flow * 65535.0)
   # Pipeline Stage Shape
   case path.shape
   of bsCircle, bsBlotmap:
@@ -254,7 +254,7 @@ proc prepare_stage1(path: var NBrushStroke, press: cfloat): bool =
       m_dist = 1.0 - m_st
       # Current Calculated Pressure Inverted
       m_press = 1.0 - (m_st + m_dist * press)
-      m_fract = cint(m_press * 32767.0)
+      m_fract = cint(m_press * 65535.0)
     var b, d, p: cint
     # Calculate Parameters
     b = avg.blending
@@ -262,15 +262,15 @@ proc prepare_stage1(path: var NBrushStroke, press: cfloat): bool =
     p = avg.persistence
     # Interpolate With Pressure
     if avg.p_blending:
-      b = div_32767(b * m_fract)
+      b = mul_65535(b, m_fract)
     if avg.p_dilution:
-      d = div_32767(d * m_fract)
+      d = mul_65535(d, m_fract)
     # Ajust Blending
-    b = sqrt_32767(b)
-    b = sqrt_32767(b)
+    b = sqrt_65535(b)
+    b = sqrt_65535(b)
     # Ajust Dilution
-    d = sqrt_32767(d)
-    d = sqrt_32767(d)
+    d = sqrt_65535(d)
+    d = sqrt_65535(d)
     # Calcultate Averaged
     average(path.pipe, b, d, p)
     # Calculate Watercolor
@@ -285,11 +285,11 @@ proc prepare_stage1(path: var NBrushStroke, press: cfloat): bool =
     # Interpolate With Pressure
     if marker.p_blending:
       let fract = # Pressure
-        cint(press * 32767.0)
-      b = div_32767(b * fract)
+        cint(press * 65535.0)
+      b = mul_65535(b, fract)
     # Ajust Blending
-    b = sqrt_32767(b)
-    b = sqrt_32767(b)
+    b = sqrt_65535(b)
+    b = sqrt_65535(b)
     # Calculate Averaged
     average(path.pipe, b, 0, p)
   of bnBlur, bnSmudge: discard
