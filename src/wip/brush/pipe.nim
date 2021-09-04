@@ -259,14 +259,19 @@ proc average*(pipe: var NBrushPipeline; blending, dilution, persistence: cint) =
       g = cint(gg.float * w)
       b = cint(bb.float * w)
       a = cint(aa.float * w)
-      # Ajust Color Quantization
-      weak = mix_65535(8, 12, dilution)
-      weak = cast[cint](1 shl weak) - 1
       # Apply Color Quantization
-      r = mix_65535(r and not weak, r or 0x3, opacity)
-      g = mix_65535(g and not weak, g or 0x3, opacity)
-      b = mix_65535(b and not weak, b or 0x3, opacity)
-      a = mix_65535(a and not weak, a or 0x3, opacity)
+      r = mix_65535(r and not 0xFF, r or 0xF, opacity)
+      g = mix_65535(g and not 0xFF, g or 0xF, opacity)
+      b = mix_65535(b and not 0xFF, b or 0xF, opacity)
+      a = mix_65535(a and not 0xFF, a or 0xF, opacity)
+      # Ajust With Selected Color At Very Low Opacity
+      if pipe.blend != bnMarker and opacity < 4096:
+        weak = sqrt_65535(opacity shl 4)
+        # Interpolate to Selected Color
+        r = mix_65535(pipe.color0[0], r, weak)
+        g = mix_65535(pipe.color0[1], g, weak)
+        b = mix_65535(pipe.color0[2], b, weak)
+        a = mix_65535(pipe.color0[3], a, weak)
     else:
       r = pipe.color1[0]
       g = pipe.color1[1]
