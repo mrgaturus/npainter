@@ -146,7 +146,7 @@ void brush_circle_mask(brush_render_t* render, brush_circle_t* circle) {
       xmm_s1 = _mm_mul_ps(xmm_s1, xmm_fix);
       // Convert to Integer and Pack
       xmm_c = _mm_cvtps_epi32(xmm_s1);
-      xmm_c = _mm_packs_epi32(xmm_c, xmm_c);
+      xmm_c = _mm_packus_epi32(xmm_c, xmm_c);
 
       // Store Four Pixels
       if (count >= 4) {
