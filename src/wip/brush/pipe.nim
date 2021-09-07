@@ -255,10 +255,10 @@ proc average*(pipe: var NBrushPipeline; blending, dilution, persistence: cint) =
     if opacity > 255:
       var w = 65535.0 / float(aa)
       # Apply Weigthed Average
-      r = cint(rr.float * w)
-      g = cint(gg.float * w)
-      b = cint(bb.float * w)
-      a = cint(aa.float * w)
+      r = cint(rr.float * w + 0.5)
+      g = cint(gg.float * w + 0.5)
+      b = cint(bb.float * w + 0.5)
+      a = cint(aa.float * w + 0.5)
     else:
       r = pipe.color1[0]
       g = pipe.color1[1]
