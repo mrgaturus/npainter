@@ -1,3 +1,5 @@
+from bitops import fast_log2
+# Import Multithreading
 import ../../spmc
 include ffi
 
@@ -253,12 +255,32 @@ proc average*(pipe: var NBrushPipeline; blending, dilution, persistence: cint) =
     opacity = cint(aa div count)
     # Calculate Averaged Color
     if opacity > 255:
-      var w = 65535.0 / float(aa)
+      weak = opacity
+      # Calculate Quadratic Opacity
+      weak = mul_65535(weak, weak)
+      weak = mul_65535(weak, weak)
+      # Ajust for Marker
+      if pipe.blend == bnMarker:
+        weak = cint(weak / pipe.alpha * 65535.0)
+        weak = min(weak, 65535)
+      # Calculate Weighted Amount
+      weak = max(weak, 64)
+      weak = fast_log2(weak).cint
+      dull = cint(1 shl weak)
+      # Calculate Weigthed Average
+      let w = float(dull) / float(aa)
       # Apply Weigthed Average
-      r = cint(rr.float * w + 0.5)
-      g = cint(gg.float * w + 0.5)
-      b = cint(bb.float * w + 0.5)
-      a = cint(aa.float * w + 0.5)
+      r = cint(rr.float * w)
+      g = cint(gg.float * w)
+      b = cint(bb.float * w)
+      # Calculate Shift
+      weak = 16 - weak
+      # Convert to Fix16
+      r = min(r shl weak, 65535)
+      g = min(g shl weak, 65535)
+      b = min(b shl weak, 65535)
+      # Full Opacity
+      a = 65535
     else:
       r = pipe.color1[0]
       g = pipe.color1[1]
@@ -268,33 +290,19 @@ proc average*(pipe: var NBrushPipeline; blending, dilution, persistence: cint) =
       if not pipe.skip:
         opacity = pipe.color[3]
       else: opacity = 65535 - dilution
-  # Calculate Persistence
+  # Ajust Blended Color
   if not pipe.skip:
-    case pipe.blend
-    of bnAverage, bnWater:
-      weak = opacity
-      # Calculate Persistence
-      dull = sqrt_65535(pipe.flow)
-    of bnMarker:
-      weak = cint(opacity / pipe.alpha * 65535.0)
-      weak = min(weak, 65535)
-      # Calculate Persistence
-      dull = weak
-    else: dull = 65535
-    # Apply Color Quantization
-    r = mix_65535(r and not 0xFF, r, weak)
-    g = mix_65535(g and not 0xFF, g, weak)
-    b = mix_65535(b and not 0xFF, b, weak)
-    a = mix_65535(a and not 0xFF, a, weak)
-    # Ajust at Very Low
-    if weak < 4096:
-      weak = sqrt_65535(weak shl 4)
-      # Interpolate to Selected Color
+    # Reduce Blending at Low
+    if opacity < 1024:
+      weak = sqrt_65535(opacity shl 6)
+      # Interpolate to Current Color
       r = mix_65535(pipe.color0[0], r, weak)
       g = mix_65535(pipe.color0[1], g, weak)
       b = mix_65535(pipe.color0[2], b, weak)
       a = mix_65535(pipe.color0[3], a, weak)
-    # Ajust Persistence With Opacity
+    # Ajust Persistence Flow
+    dull = sqrt_65535(pipe.flow)
+    # Ajust Persistence With Flow
     weak = 65535 - sqrt_65535(persistence)
     weak = 65535 - mul_65535(weak, dull)
   # Interpolate With Blending
