@@ -54,7 +54,9 @@ type
     p_blending*: bool
   # -------------------
   NStrokeBlur = object
-    radius*: cint
+    radius*: cfloat
+    # Fake Gaussian Kernel
+    kernel: array[9, cuchar]
 
 type
   NStrokePoint = object
@@ -128,15 +130,16 @@ proc prepare*(path: var NBrushStroke) =
     # Generic Dynamics
     dyn = addr path.generic
     basic = addr path.basic
-  # Ajust Size And Alpha Parameters
+  # Ajust Size, Smallest is Resolved With Opacity
   basic.size = 2.5 + (1000.0 - 2.5) * basic.size
-  basic.alpha = min(basic.alpha, 0.99999)
   # Decide Which Step Use
   case shape
   of bsCircle, bsBlotmap:
     let hard = path.mask.circle.hard
     path.step = # Automatic Step
       0.075 + (0.025 - 0.075) * hard
+    # Ajust Current Step With Size
+    path.step += 1.0 / basic.size
   of bsBitmap:
     path.step = # Custom Step
       path.mask.bitmap.step
@@ -151,11 +154,13 @@ proc prepare*(path: var NBrushStroke) =
     dyn.magic = case blend
       of bnFlat, bnSmudge: 1.0
       else: basic.alpha
-    # Ajust Circle Sharpness
-    path.mask.circle.sharp -= 1.0
+    # Ajust Circle Sharpness a Bit
+    if shape in {bsCircle, bsBlotmap}:
+      path.mask.circle.sharp -= 0.5
+      path.step = max(path.step, 0.05)
   else: # Use Automatic
     dyn.kind = fwAuto
-    dyn.magic = path.step * 2.0
+    dyn.magic = path.step
   # Prepare Pipeline Kind
   path.pipe.shape = shape
   path.pipe.blend = blend
@@ -208,9 +213,6 @@ proc prepare_stage0(path: var NBrushStroke, x, y, size, alpha, flow: cfloat) =
   of bnFlat, bnMarker:
     path.pipe.alpha =
       cint(alpha * 65535.0)
-  of bnBlur:
-    path.pipe.alpha = # Radius
-      path.data.blur.radius
   of bnSmudge:
     path.pipe.alpha = # Skip
       cint(path.pipe.skip)
@@ -238,7 +240,14 @@ proc prepare_stage0(path: var NBrushStroke, x, y, size, alpha, flow: cfloat) =
     r.x1, r.y1,
     r.x2, r.y2,
     r.shift)
-  # Sum Dirty AABB
+  # Pipeline Stage Blur
+  if path.blend == bnBlur:
+    let
+      b = addr path.data.blur
+      radius = b.radius * size
+    # Calculate Gaussian Kernel
+    blur(path.pipe, b.kernel, radius)
+  # Expand Dirty AABB
   path.dirty(r)
 
 proc prepare_stage1(path: var NBrushStroke, press: cfloat): bool =
@@ -323,7 +332,7 @@ proc evaluate(dyn: ptr NStrokeGeneric, basic: ptr NStrokeBasic, p: cfloat) =
     a_dist = 1.0 - a_st
     # Alpha Pressure Amplify
     a_amp = basic.amp_alpha
-  # Shortcurts
+  # Parameter Dynamics Shortcurts
   var size, alpha, flow: cfloat
   # Pressure Amplify
   size = pow(p, s_amp)
@@ -331,18 +340,23 @@ proc evaluate(dyn: ptr NStrokeGeneric, basic: ptr NStrokeBasic, p: cfloat) =
   # Pressure Interpolation
   size = (s_st + s_dist * size) * basic.size
   alpha = (a_st + a_dist * alpha) * basic.alpha
+  # Simulate Smallest
+  if size < 2.5:
+    alpha *= size * 0.4
+    # Clamp Size
+    size = 2.5
   # Calculate Flow Opacity
   case dyn.kind
   of fwAuto:
-    flow = 1.0 - pow(alpha, alpha + 1.25)
-    flow = 1.0 - pow(flow, dyn.magic)
+    # Ajust Opacity With Size
+    flow = 1.0 - dyn.magic / size
+    alpha = min(alpha, flow)
+    # Calculate Flow
+    flow = 1.0 - alpha
+    flow = pow(flow, dyn.magic)
+    flow = 1.0 - flow
   of fwFlat, fwCustom:
     flow = dyn.magic
-  # Simulate Smallest
-  if size < 2.5:
-    flow *= size * 0.4
-    # Clamp Size
-    size = 2.5
   # Return Values
   dyn.size = size
   dyn.alpha = alpha

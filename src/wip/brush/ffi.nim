@@ -126,14 +126,14 @@ proc basic*(circle: var NBrushCircle, x, y, size: cfloat) =
 proc style*(circle: var NBrushCircle, hard, sharp: cfloat) =
   let
     hard = 0.5 * hard
-    sharp = 1.0 - (0.5 * sharp)
+    sharp = 1.5 - sharp
     # Size And Reciprocal
     size = circle.size
     rcp = 1.0 / size
   # Calculate Smoth Constant
   var calc: cfloat
   # Smothstep Sharpness & Hardness
-  calc = (6.5 - log2(size) * 0.5) * (rcp * sharp)
+  calc = 2.0 * (rcp * sharp)
   calc = 1.0 / (hard - calc - 0.5)
   # Set Smooth Constant
   circle.smooth = calc
