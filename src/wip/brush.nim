@@ -1,6 +1,6 @@
 import brush/pipe
 from math import 
-  floor, ceil, round,
+  floor, ceil,
   sqrt, pow, log2
 # Export Brush Kinds
 export NBrushShape, NBrushBlend, color
@@ -138,8 +138,6 @@ proc prepare*(path: var NBrushStroke) =
     let hard = path.mask.circle.hard
     path.step = # Automatic Step
       0.075 + (0.025 - 0.075) * hard
-    # Ajust Current Step With Size
-    path.step += 1.0 / basic.size
   of bsBitmap:
     path.step = # Custom Step
       path.mask.bitmap.step
@@ -154,10 +152,9 @@ proc prepare*(path: var NBrushStroke) =
     dyn.magic = case blend
       of bnFlat, bnSmudge: 1.0
       else: basic.alpha
-    # Ajust Circle Sharpness a Bit
+    # Ajust Circle Sharpness to Half
     if shape in {bsCircle, bsBlotmap}:
-      path.mask.circle.sharp -= 0.5
-      path.step = max(path.step, 0.05)
+      path.mask.circle.sharp *= 0.5
   else: # Use Automatic
     dyn.kind = fwAuto
     dyn.magic = path.step
@@ -319,7 +316,7 @@ proc stage(path: var NBrushStroke; dyn: ptr NStrokeGeneric; x, y, press: cfloat)
 # BRUSH STROKE PATH DISPATCH
 # --------------------------
 
-proc evaluate(dyn: ptr NStrokeGeneric, basic: ptr NStrokeBasic, p: cfloat) =
+proc evaluate(dyn: ptr NStrokeGeneric, basic: ptr NStrokeBasic, p, step: cfloat): cfloat =
   let
     # Size Interval
     s_st = basic.p_size
@@ -345,15 +342,16 @@ proc evaluate(dyn: ptr NStrokeGeneric, basic: ptr NStrokeBasic, p: cfloat) =
     alpha *= size * 0.4
     # Clamp Size
     size = 2.5
+  # Ajust Distance Step With Size
+  result = step + (1.0 / size)
   # Calculate Flow Opacity
   case dyn.kind
   of fwAuto:
     # Ajust Opacity With Size
-    flow = 1.0 - dyn.magic / size
-    alpha = min(alpha, flow)
+    alpha = min(alpha, 0.99995)
     # Calculate Flow
     flow = 1.0 - alpha
-    flow = pow(flow, dyn.magic)
+    flow = pow(flow, result)
     flow = 1.0 - flow
   of fwFlat, fwCustom:
     flow = dyn.magic
@@ -376,27 +374,27 @@ proc line(path: var NBrushStroke, a, b: NStrokePoint, start: cfloat): cfloat =
     return start
   let
     # Stroke Shape Step
-    step = path.step / length
+    step = path.step
     # Pressure Interval
     p_start = a.press
     p_dist = # Distance
       b.press - a.press
   var
     t = start / length
-    press, x, y: float32
+    press, x, y, s: cfloat
   # Draw Each Stroke Point
   while t < 1.0:
     # Pressure Interpolation
     press = p_start + p_dist * t
-    # Basic Parameters
-    dyn.evaluate(basic, press)
+    # Basic Brush Parameters
+    s = dyn.evaluate(basic, press, step)
     # Current Position
     x = a.x + dx * t
     y = a.y + dy * t
     # Render Current Shape
     path.stage(dyn, x, y, press)
-    # Step to next point
-    t += dyn.size * step
+    # Step to Next Point
+    t += dyn.size * (s / length)
   # Return Remainder
   result = length * (t - 1.0)
 
