@@ -296,6 +296,8 @@ proc prepare_stage1(path: var NBrushStroke, press: cfloat): bool =
     # Ajust Blending
     b = sqrt_65535(b)
     b = sqrt_65535(b)
+    # Ajust Blending
+    b = sqrt_65535(b)
     # Calculate Averaged
     average(path.pipe, b, 0, p)
   of bnBlur, bnSmudge: discard
