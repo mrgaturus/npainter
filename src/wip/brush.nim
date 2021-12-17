@@ -55,8 +55,6 @@ type
   # -------------------
   NStrokeBlur = object
     radius*: cfloat
-    # Fake Gaussian Kernel
-    kernel: array[9, cuchar]
 
 type
   NStrokePoint = object
@@ -138,6 +136,9 @@ proc prepare*(path: var NBrushStroke) =
     let hard = path.mask.circle.hard
     path.step = # Automatic Step
       0.075 + (0.025 - 0.075) * hard
+    # Double Spacing for Blur
+    if blend == bnBlur:
+      path.step *= 2.0
   of bsBitmap:
     path.step = # Custom Step
       path.mask.bitmap.step
@@ -171,7 +172,7 @@ proc prepare*(path: var NBrushStroke) =
 proc region(x, y, size: cfloat): NStrokeRegion =
   let
     shift = log2(size).cint
-    radius = size * 0.5 + 0.5
+    radius = size * 0.5
     # Interval Region
     x1 = floor(x - radius).cint
     y1 = floor(y - radius).cint
@@ -239,11 +240,9 @@ proc prepare_stage0(path: var NBrushStroke, x, y, size, alpha, flow: cfloat) =
     r.shift)
   # Pipeline Stage Blur
   if path.blend == bnBlur:
-    let
-      b = addr path.data.blur
-      radius = b.radius * size
+    let b = addr path.data.blur
     # Calculate Gaussian Kernel
-    blur(path.pipe, b.kernel, radius)
+    blur(path.pipe, b.radius)
   # Expand Dirty AABB
   path.dirty(r)
 

@@ -12,6 +12,7 @@ from math import
 {.compile: "basic.c".}
 {.compile: "water.c".}
 {.compile: "blur.c".}
+{.compile: "smudge.c".}
 # ----------------------------------
 {.push header: "wip/brush/brush.h".}
 
@@ -54,6 +55,16 @@ type
     x, y, fx, fy: cint
     # Water Stride
     stride: cint
+  NBrushBlur {.importc: "brush_blur_t" } = object
+    # Buffer Size
+    x, y, w, h: cshort
+    # Buffer Scale
+    sw, sh: cshort
+    # Buffer Bilinear Steps
+    down_fx, down_fy: cint
+    up_fx, up_fy: cint
+    # Buffer Bilinear Offset
+    offset: cint
   NBrushSmudge {.importc: "brush_smudge_t" } = object
     # Copy Position
     x, y: cfloat
@@ -62,7 +73,7 @@ type
     w*, h*, stride*: cint
     # Clipping Buffers
     clip*, alpha*: ptr cshort
-    # Auxiliar/Working Buffers
+    # Auxiliar Buffers
     buffer0*: ptr cshort
     buffer1*: ptr cshort
     # Destination

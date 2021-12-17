@@ -27,6 +27,8 @@ type
   NBrushData {.union.} = object
     average: NBrushAverage
     water: NBrushWater
+    # Blur & Smudge
+    blur: NBrushBlur
     smudge: NBrushSmudge
   NBrushTile = object
     shape: NBrushShape
@@ -135,14 +137,14 @@ proc reserve*(pipe: var NBrushPipeline; x1, y1, x2, y2, shift: cint) =
   # Arrange Y Tiles
   for i in 0 ..< shift:
     y += sh
-    yy = cint(y)
+    yy = cint(y + 0.5)
     # Clip Y Position
     yy1 = max(prev_y, 0)
     yy2 = min(yy, ch)
     # Arrange X Tiles
     for j in 0 ..< shift:
       x += sw
-      xx = cint(x)
+      xx = cint(x + 0.5)
       # Clip X Position
       xx1 = max(prev_x, 0)
       xx2 = min(xx, cw)
@@ -179,6 +181,30 @@ proc reserve*(pipe: var NBrushPipeline; x1, y1, x2, y2, shift: cint) =
   pipe.ry = y1
   # Parallel Condition
   pipe.parallel = shift > 5
+
+proc clip(pipe: var NBrushPipeline) =
+  let
+    # Canvas Dimensions
+    cw = pipe.canvas.w
+    ch = pipe.canvas.h
+  var
+    # Region Position
+    x1 = pipe.rx
+    y1 = pipe.ry
+    # Region Size
+    x2 = x1 + pipe.rw
+    y2 = y1 + pipe.rh
+  # Clip Current Region
+  x1 = clamp(x1, 0, cw)
+  y1 = clamp(y1, 0, ch)
+  x2 = clamp(x2, 0, cw)
+  y2 = clamp(y2, 0, ch)
+  # Change Region Position
+  pipe.rx = x1
+  pipe.ry = y1
+  # Change Region Size
+  pipe.rw = x2 - x1
+  pipe.rh = y2 - y1
 
 # --------------------------------
 # BRUSH PIPELINE COLOR FIX16 PROCS
@@ -219,10 +245,8 @@ proc mix_65535(a, b, fract: cint): cint =
   result = cast[cint](calc)
 
 proc fix_65535(size, scale: cint): cint =
-  var calc: float32
-  calc = 1.0 / float32(size)
-  # Calculate Step
-  calc *= float32(scale)
+  var calc = scale / size
+  # Convert to Fix16
   calc *= 65536.0
   # Convert Step
   result = cint(calc)
@@ -463,6 +487,64 @@ proc water*(pipe: var NBrushPipeline) =
     cursor += 4
   # Apply Blur
   pipe.blur(buffer)
+
+# -------------------------
+# BRUSH PIPELINE BLUR PROCS
+# -------------------------
+
+proc blur*(pipe: var NBrushPipeline, size: cfloat) =
+  # Scale Divisor Size
+  let
+    scale_w = 1.0 + (pipe.rw / pipe.w - 1.0) * size
+    scale_h = 1.0 + (pipe.rh / pipe.h - 1.0) * size
+    # Calculate Maximun Scale
+    scale = max(scale_w, scale_h)
+  # Clip Region Area
+  pipe.clip()
+  # Clip Scaled Size
+  let
+    # Region Position
+    rx = pipe.rx
+    ry = pipe.ry
+    # Region Size
+    rw = pipe.rw
+    rh = pipe.rh
+    # Calculate Scaled Size, Minimun 1
+    sw = ceil(rw.float / scale).cint
+    sh = ceil(rh.float / scale).cint
+    # Calculate Scaled Level
+    level = log2(scale).cint
+    offset = cint(scale * 32768.0)
+    # Calculate Fractional Downscale
+    down_fx = fix_65535(sw, rw)
+    down_fy = fix_65535(sh, rh)
+    # Calculate Fractional Upscale
+    up_fx = fix_65535(rw, sw)
+    up_fy = fix_65535(rh, sh)
+  # Configure Each Tile
+  for tile in mitems(pipe.tiles):
+    let
+      render = addr tile.render
+      b = addr tile.data.blur
+    # Set Region Position
+    b.x = cast[cshort](render.x - rx)
+    b.y = cast[cshort](render.y - ry)
+    # Set Region Size
+    b.w = cast[cshort](rw)
+    b.h = cast[cshort](rh)
+    # Set Scaled Size
+    b.sw = cast[cshort](sw)
+    b.sh = cast[cshort](sh)
+    # Set Downscale Fractional
+    b.down_fx = down_fx
+    b.down_fy = down_fy
+    # Set Upscale Fractional
+    b.up_fx = up_fx
+    b.up_fy = up_fy
+    # Set Offset Fractional
+    b.offset = offset
+    # Replace Current Level
+    render.alpha = level
 
 # --------------------------
 # BRUSH MULTI-THREADED PROCS

@@ -9,8 +9,8 @@ import wip/brush
 import spmc
 
 const
-  bw = 1280*4
-  bh = 720*4
+  bw = 1280#*4
+  bh = 720#*4
 
 type
   GUICanvasPanel = ref object of GUIWidget
@@ -27,6 +27,8 @@ type
     blending: Value
     dilution: Value
     persistence: Value
+    # ----------------
+    blur: Value
   GUICanvas = ref object of GUIWidget
     # Canvas Brush Panel
     panel: GUICanvasPanel
@@ -104,7 +106,7 @@ proc prepare(self: GUICanvas) =
   basic.alpha = distance(panel.alpha)
   basic.p_alpha = distance(panel.min_alpha)
   # Calculate Dynamics Amplification
-  basic.amp_size = 2.5
+  basic.amp_size = 1.0
   basic.amp_alpha = 1.0
   # Calculate Circle Style
   circle.hard = distance(panel.hard)
@@ -121,6 +123,8 @@ proc prepare(self: GUICanvas) =
       cint(distance(panel.dilution) * 65535.0)
     avg.persistence = 
       cint(distance(panel.persistence) * 65535.0)
+    # Press Not Yet
+    avg.p_blending = false
   of bnMarker:
     let marker = addr path.data.marker
     marker.blending = 
@@ -129,6 +133,9 @@ proc prepare(self: GUICanvas) =
       cint(distance(panel.persistence) * 65535.0)
     # Press Not Yet
     marker.p_blending = false
+  of bnBlur:
+    let b = addr path.data.blur
+    b.radius = distance(panel.blur)
   else: discard
   # Set Current Blendig Mode
   self.path.blend = panel.blend
@@ -180,8 +187,8 @@ proc cb_clear(g: pointer, w: ptr GUITarget) =
   self.busy = false
 
 method event(self: GUICanvas, state: ptr GUIState) =
-  state.px *= 4.0
-  state.py *= 4.0
+  #state.px *= 4.0
+  #state.py *= 4.0
   # If clicked, reset points
   if state.kind == evCursorClick:
     self.prepare()
@@ -217,7 +224,7 @@ method draw(self: GUICanvas, ctx: ptr CTXRender) =
   ctx.fill(r)
   ctx.color(uint32 0xFF000000)
   r = rect(640, 0, 640, 720)
-  ctx.fill(r)
+  #ctx.fill(r)
   r = rect(0, 0, 1280, 720)
   ctx.color(uint32 0xFFFFFFFF)
   ctx.texture(r, self.tex)
@@ -235,7 +242,7 @@ proc newBrushPanel(): GUICanvasPanel =
   # Set Mouse Attribute
   result.flags = wMouse
   # Set Geometry To Floating
-  result.geometry(20, 20, 250, 580)
+  result.geometry(20, 20, 250, 680)
   # Create Label: |Slider|
   var 
     label: GUILabel
@@ -314,7 +321,7 @@ proc newBrushPanel(): GUICanvasPanel =
     bnEraser.byte, cast[ptr byte](addr result.blend))
   check.geometry(175, 420, 80, check.hint.h)
   result.add(check)
-  # Water Color Blendings
+  # -- Water Color Blendings
   check = newRadio("Brush",
     bnAverage.byte, cast[ptr byte](addr result.blend))
   check.geometry(5, 440, 80, check.hint.h)
@@ -350,6 +357,23 @@ proc newBrushPanel(): GUICanvasPanel =
   result.add(label)
   slider = newSlider(addr result.persistence)
   slider.geometry(90, 520, 150, slider.hint.h)
+  result.add(slider)
+  # -- Blur Smudge
+  check = newRadio("Blur",
+    bnBlur.byte, cast[ptr byte](addr result.blend))
+  check.geometry(5, 580, 80, check.hint.h)
+  result.add(check)
+  check = newRadio("Smudge",
+    bnSmudge.byte, cast[ptr byte](addr result.blend))
+  check.geometry(90, 580, 80, check.hint.h)
+  result.add(check)
+  # Blur Size
+  interval(result.blur, 0, 100)
+  label = newLabel("Blur Size %", hoLeft, veMiddle)
+  label.geometry(5, 600, 80, label.hint.h)
+  result.add(label)
+  slider = newSlider(addr result.blur)
+  slider.geometry(90, 600, 150, slider.hint.h)
   result.add(slider)
 
 proc newCanvas(): GUICanvas =

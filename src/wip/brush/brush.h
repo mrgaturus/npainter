@@ -63,6 +63,18 @@ typedef struct {
 } brush_water_t;
 
 typedef struct {
+  // Buffer Size
+  short x, y, w, h;
+  // Buffer Position
+  short sw, sh;
+  // Buffer Bilinear Steps
+  int down_fx, down_fy;
+  int up_fx, up_fy;
+  // Buffer Bilinear Offset
+  int offset;
+} brush_blur_t;
+
+typedef struct {
   // Copy Position
   float x, y;
 } brush_smudge_t;
