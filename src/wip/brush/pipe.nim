@@ -545,6 +545,8 @@ proc blur*(pipe: var NBrushPipeline, size: cfloat) =
     b.offset = offset
     # Replace Current Level
     render.alpha = level
+  # Override Parallel Check
+  pipe.parallel = max(rw, rh) >= 32
 
 # --------------------------
 # BRUSH MULTI-THREADED PROCS
