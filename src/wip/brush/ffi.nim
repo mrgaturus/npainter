@@ -67,7 +67,7 @@ type
     offset: cint
   NBrushSmudge {.importc: "brush_smudge_t" } = object
     # Copy Position
-    x, y: cfloat
+    dx, dy: cint
   # ----------------------------------TEMPORALY PUBLIC
   NBrushCanvas {.importc: "brush_canvas_t"} = object
     w*, h*, stride*: cint

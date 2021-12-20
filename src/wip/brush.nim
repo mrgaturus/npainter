@@ -54,7 +54,7 @@ type
     p_blending*: bool
   # -------------------
   NStrokeBlur = object
-    radius*: cfloat
+    radius*, x, y: cfloat
 
 type
   NStrokePoint = object
@@ -136,9 +136,11 @@ proc prepare*(path: var NBrushStroke) =
     let hard = path.mask.circle.hard
     path.step = # Automatic Step
       0.075 + (0.025 - 0.075) * hard
-    # Double Spacing for Blur
-    if blend == bnBlur:
-      path.step *= 2.0
+    # Spacing for Special
+    case blend 
+    of bnBlur: path.step *= 2.0
+    of bnSmudge: path.step = 0.025
+    else: discard
   of bsBitmap:
     path.step = # Custom Step
       path.mask.bitmap.step
@@ -151,7 +153,7 @@ proc prepare*(path: var NBrushStroke) =
     dyn.kind = fwFlat
     # Decide Which Flow Use
     dyn.magic = case blend
-      of bnFlat, bnSmudge: 1.0
+      of bnFlat: 1.0
       else: basic.alpha
     # Ajust Circle Sharpness to Half
     if shape in {bsCircle, bsBlotmap}:
@@ -207,14 +209,8 @@ proc prepare_stage0(path: var NBrushStroke, x, y, size, alpha, flow: cfloat) =
     r = region(x, y, size)
     mask = addr path.pipe.mask
   # Pipeline Stage Alpha
-  case path.blend
-  of bnFlat, bnMarker:
-    path.pipe.alpha =
-      cint(alpha * 65535.0)
-  of bnSmudge:
-    path.pipe.alpha = # Skip
-      cint(path.pipe.skip)
-  else: discard
+  if path.blend in {bnFlat, bnMarker, bnSmudge}:
+    path.pipe.alpha = cint(alpha * 65535.0)
   # Pipeline Stage Flow
   path.pipe.flow =
     cint(flow * 65535.0)
@@ -238,11 +234,22 @@ proc prepare_stage0(path: var NBrushStroke, x, y, size, alpha, flow: cfloat) =
     r.x1, r.y1,
     r.x2, r.y2,
     r.shift)
-  # Pipeline Stage Blur
-  if path.blend == bnBlur:
+  # Pipeline Stage Special
+  case path.blend
+  of bnBlur:
     let b = addr path.data.blur
     # Calculate Gaussian Kernel
     blur(path.pipe, b.radius)
+  of bnSmudge: 
+    let b = addr path.data.blur
+    # Check Skip First
+    if path.pipe.skip:
+      path.pipe.alpha = 65536
+    # Calculate Smudge Offset
+    smudge(path.pipe, x - b.x, y - b.y)
+    # Set Previous Position
+    b.x = x; b.y = y
+  else: discard
   # Expand Dirty AABB
   path.dirty(r)
 

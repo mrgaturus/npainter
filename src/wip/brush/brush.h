@@ -76,7 +76,7 @@ typedef struct {
 
 typedef struct {
   // Copy Position
-  float x, y;
+  int dx, dy;
 } brush_smudge_t;
 
 // --------------------

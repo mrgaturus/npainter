@@ -548,6 +548,22 @@ proc blur*(pipe: var NBrushPipeline, size: cfloat) =
   # Override Parallel Check
   pipe.parallel = max(rw, rh) >= 32
 
+proc smudge*(pipe: var NBrushPipeline, dx, dy: cfloat) =
+  let
+    # Current Position
+    fx = cint(dx * 65536.0)
+    fy = cint(dy * 65536.0)
+  # Replace Copy Position
+  for tile in mitems(pipe.tiles):
+    let s = addr tile.data.smudge
+    # Don't Copy First Point
+    if pipe.alpha > 65535:
+      s.dx = 0
+      s.dy = 0
+    else: # Fix16 Delta
+      s.dx = fx
+      s.dy = fy
+
 # --------------------------
 # BRUSH MULTI-THREADED PROCS
 # --------------------------
@@ -580,13 +596,7 @@ proc mt_stage0(tile: ptr NBrushTile) =
     brush_water_first(render)
   # Special Blending Modes
   of bnBlur: brush_blur_first(render)
-  of bnSmudge:
-    if render.alpha > 0:
-      brush_smudge_first(render)
-      brush_smudge_blend(render)
-    # Change Current Copy Position
-    tile.data.smudge.x = mask.circle.x
-    tile.data.smudge.y = mask.circle.y
+  of bnSmudge: brush_smudge_first(render)
 
 proc mt_stage1(tile: ptr NBrushTile) =
   let render = addr tile.render
@@ -596,6 +606,7 @@ proc mt_stage1(tile: ptr NBrushTile) =
   of bnWater: brush_water_blend(render)
   of bnMarker: brush_flat_blend(render)
   of bnBlur: brush_blur_blend(render)
+  of bnSmudge: brush_smudge_blend(render)
   # Doesn't Need Stage1
   else: discard
 
