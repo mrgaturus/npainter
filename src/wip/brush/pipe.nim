@@ -279,30 +279,27 @@ proc average*(pipe: var NBrushPipeline; blending, dilution, persistence: cint) =
     opacity = cint(aa div count)
     # Calculate Averaged Color
     if opacity > 255:
-      weak = opacity
-      # Calculate Quadratic Opacity
-      weak = mul_65535(weak, weak)
-      weak = mul_65535(weak, weak)
-      # Ajust for Marker
-      if pipe.blend == bnMarker:
-        weak = cint(weak / pipe.alpha * 65535.0)
-        weak = min(weak, 65535)
-      # Calculate Weighted Amount
-      weak = max(weak, 64)
-      weak = fast_log2(weak).cint
-      dull = cint(1 shl weak)
       # Calculate Weigthed Average
-      let w = float(dull) / float(aa)
+      let w = 65536.0 / float(aa)
       # Apply Weigthed Average
       r = cint(rr.float * w)
       g = cint(gg.float * w)
       b = cint(bb.float * w)
-      # Calculate Shift
-      weak = 16 - weak
-      # Convert to Fix16
-      r = min(r shl weak, 65535)
-      g = min(g shl weak, 65535)
-      b = min(b shl weak, 65535)
+      # Calculate Opacity
+      weak = opacity
+      # Ajust Opacity for Marker
+      if pipe.blend == bnMarker:
+        weak = cint(weak / pipe.alpha * 65535.0)
+        weak = min(weak, 65535)
+      # Calculate Color Quantization
+      weak = (65535 - weak) shr 8
+      # Calculate Mask Quantization
+      weak = fast_log2(weak).cint
+      dull = cint(1 shl weak) - 1
+      # Apply Mask Quantization
+      r = min(r and not dull, 65535)
+      g = min(g and not dull, 65535)
+      b = min(b and not dull, 65535)
       # Full Opacity
       a = 65535
     else:
