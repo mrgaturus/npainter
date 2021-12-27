@@ -117,20 +117,15 @@ proc prepare(self: GUICanvas) =
   case panel.blend
   of bnAverage, bnWater:
     let avg = addr path.data.avg
-    avg.blending = 
-      cint(distance(panel.blending) * 65535.0)
-    avg.dilution = 
-      cint(distance(panel.dilution) * 65535.0)
-    avg.persistence = 
-      cint(distance(panel.persistence) * 65535.0)
+    avg.blending = distance(panel.blending)
+    avg.dilution = distance(panel.dilution)
+    avg.persistence = distance(panel.persistence)
     # Press Not Yet
     avg.p_blending = false
   of bnMarker:
     let marker = addr path.data.marker
-    marker.blending = 
-      cint(distance(panel.blending) * 65535.0)
-    marker.persistence = 
-      cint(distance(panel.persistence) * 65535.0)
+    marker.blending = distance(panel.blending)
+    marker.persistence = distance(panel.persistence)
     # Press Not Yet
     marker.p_blending = false
   of bnBlur:

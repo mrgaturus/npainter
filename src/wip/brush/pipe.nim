@@ -210,7 +210,7 @@ proc clip(pipe: var NBrushPipeline) =
 # BRUSH PIPELINE COLOR FIX16 PROCS
 # --------------------------------
 
-proc sqrt_65535*(x: cint): cint =
+proc sqrt_65535(x: cint): cint =
   var
     a = cuint(x shl 16)
     # Aproximation
@@ -227,7 +227,7 @@ proc sqrt_65535*(x: cint): cint =
   # Return Estimated
   result = cast[cint](root shr 1)
 
-proc mul_65535*(a, b: cint): cint =
+proc mul_65535(a, b: cint): cint =
   var calc: cuint
   # Calculate Interpolation
   calc = cuint(a) * cuint(b)
