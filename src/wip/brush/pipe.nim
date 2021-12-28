@@ -392,14 +392,15 @@ proc convolve(buffer: ptr UncheckedArray[cint], x, y, w, h: cint): array[4, cint
       cursor += 4
     # Next Pixel Stride
     cursor_row += w shl 2
-  # Divide Pixel
+  # Divide Pixel Average
   cursor = result[3]
-  if count > 1 and cursor > 0:
-    let w = cursor / (cursor * count)
+  if count > 0 and cursor > 0:
+    let w = 65535.0 / float(cursor)
     result[0] = cint(result[0].float * w)
     result[1] = cint(result[1].float * w)
     result[2] = cint(result[2].float * w)
-    result[3] = cint(result[3].float * w)
+    # Calculate Alpha Average
+    result[3] = cursor div count
 
 proc blur(pipe: var NBrushPipeline, buffer: ptr UncheckedArray[cint]) =
   let 
@@ -412,8 +413,10 @@ proc blur(pipe: var NBrushPipeline, buffer: ptr UncheckedArray[cint]) =
   var 
     pixel: array[4, cint]
     cursor, opacity: cint
+  let
     # Current Color
-    color = pipe.color
+    color = pipe.color1
+    dilution = pipe.color[3]
   # Blur Each Pixel
   for y in 0 ..< h:
     for x in 0 ..< w:
@@ -421,11 +424,21 @@ proc blur(pipe: var NBrushPipeline, buffer: ptr UncheckedArray[cint]) =
       pixel = convolve(buffer, x, y, w, h)
       # Current Opacity
       opacity = pixel[3]
-      # Blend With Current Color
-      pixel[0] += color[0] - mul_65535(color[0], opacity)
-      pixel[1] += color[1] - mul_65535(color[1], opacity)
-      pixel[2] += color[2] - mul_65535(color[2], opacity)
-      pixel[3] += color[3] - mul_65535(color[3], opacity)
+      # Ajust Opacity
+      if dilution < 65535:
+        opacity = cint(opacity / dilution * 65535.0)
+        # Clamp Ajusted Opacity
+        opacity = min(opacity, 65535)
+      # Interpolate Current Opacity
+      pixel[0] = mix_65535(color[0], pixel[0], opacity)
+      pixel[1] = mix_65535(color[1], pixel[1], opacity)
+      pixel[2] = mix_65535(color[2], pixel[2], opacity)
+      # Apply Current Dilution
+      if dilution < 65535:
+        pixel[0] = mul_65535(pixel[0], dilution)
+        pixel[1] = mul_65535(pixel[1], dilution)
+        pixel[2] = mul_65535(pixel[2], dilution)
+      pixel[3] = dilution
       # Store Current Pixel
       dst[cursor + 0] = cast[cushort](pixel[0])
       dst[cursor + 1] = cast[cushort](pixel[1])
