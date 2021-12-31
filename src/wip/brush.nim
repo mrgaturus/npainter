@@ -348,6 +348,9 @@ proc evaluate(dyn: ptr NStrokeGeneric, basic: ptr NStrokeBasic, p, step: cfloat)
   # Pressure Amplify
   size = pow(p, s_amp)
   alpha = pow(p, a_amp)
+  # Apply Smoothstep to Pressure
+  if dyn.kind == fwAuto:
+    alpha = alpha * alpha * (3.0 - 2.0 * alpha)
   # Pressure Interpolation
   size = (s_st + s_dist * size) * basic.size
   alpha = (a_st + a_dist * alpha) * basic.alpha
