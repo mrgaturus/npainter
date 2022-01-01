@@ -42,9 +42,13 @@ type
     blending*: cfloat
     dilution*: cfloat
     persistence*: cfloat
+    # Watercolor
+    watering*: cfloat
+    coloring*: bool
     # Pressure Flags
     p_blending*: bool
     p_dilution*: bool
+    p_watering*: bool
     # Pressure Minimun
     p_minimun*: cfloat
   NStrokeMarker = object
@@ -259,25 +263,24 @@ proc prepare_stage1(path: var NBrushStroke, press: cfloat): bool =
   case path.blend
   of bnAverage, bnWater:
     let 
-      avg = # Shortcut
-        addr path.data.avg
-      # Minimun Pressure
-      m_st = avg.p_minimun
-      m_dist = 1.0 - m_st
-      # Current Calculated Pressure Inverted
-      m_press = 1.0 - (m_st + m_dist * press)
+      avg = addr path.data.avg
       # Ajust Interpolators Using Step
       ajust = 1.0 - pow(0.00005, path.step)
-    var b0, d0, p0: cfloat
+    var
+      s = press
+      b0, d0, p0: cfloat
+    # Smootstep Pressure
+    s = s - avg.p_minimun * s
+    s = s * s * (3.0 - 2.0 * s)
     # Calculate Parameters
     b0 = avg.blending
     d0 = avg.dilution
     p0 = avg.persistence
     # Interpolate With Pressure
     if avg.p_blending:
-      b0 *= m_press
+      b0 = 1.0 + s * b0 - s
     if avg.p_dilution:
-      d0 *= m_press
+      d0 = 1.0 + s * d0 - s
     # Apply Ajust
     b0 = pow(b0, ajust)
     d0 = pow(d0, ajust)
@@ -290,19 +293,28 @@ proc prepare_stage1(path: var NBrushStroke, press: cfloat): bool =
     average(path.pipe, b, d, p)
     # Calculate Watercolor
     if path.blend == bnWater:
-      water(path.pipe)
+      b0 = avg.watering
+      # Ajust Amount
+      if avg.p_watering:
+        b0 = 1.0 + s * b0 - s
+      b0 = pow(b0, ajust)
+      if not avg.coloring: b0 = -b0
+      # Convert to Fix15
+      let w = cint(b0 * 65535.0)
+      # Apply Water Interpolation
+      water(path.pipe, w)
   of bnMarker:
-    let 
+    let
       marker = addr path.data.marker
       # Ajust Interpolators Using Step
-      ajust = 1.0 - pow(0.00005, path.step)
+      ajust = 1.0 - pow(0.00005, path.step * 0.5)
     var b0, p0: cfloat
     # Calculate Parameters
     b0 = marker.blending
     p0 = marker.persistence
     # Interpolate With Pressure
     if marker.p_blending:
-      b0 *= press
+      b0 = 1.0 + press * b0 - press
     # Apply Ajust
     if not path.pipe.skip:
       b0 = pow(b0, ajust)

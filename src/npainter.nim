@@ -1,5 +1,5 @@
 import gui/[window, widget, render, event, signal, timer]
-import gui/widgets/[slider, label, color, radio]
+import gui/widgets/[slider, label, color, radio, check]
 # Import OpenGL
 import libs/gl
 # Import Maths
@@ -27,6 +27,14 @@ type
     blending: Value
     dilution: Value
     persistence: Value
+    ##################
+    watering: Value
+    coloring: bool
+    ##################
+    p_blending: bool
+    p_dilution: bool
+    p_watering: bool
+    p_minimun: Value
     # ----------------
     blur: Value
   GUICanvas = ref object of GUIWidget
@@ -120,14 +128,21 @@ proc prepare(self: GUICanvas) =
     avg.blending = distance(panel.blending)
     avg.dilution = distance(panel.dilution)
     avg.persistence = distance(panel.persistence)
-    # Press Not Yet
-    avg.p_blending = false
+    # Pressure Activation
+    avg.p_blending = panel.p_blending
+    avg.p_dilution = panel.p_dilution
+    avg.p_minimun = distance(panel.p_minimun)
+    # Watercolor Parameters
+    if panel.blend == bnWater:
+      avg.watering = distance(panel.watering)
+      avg.p_watering = panel.p_watering
+      avg.coloring = panel.coloring
   of bnMarker:
     let marker = addr path.data.marker
     marker.blending = distance(panel.blending)
     marker.persistence = distance(panel.persistence)
-    # Press Not Yet
-    marker.p_blending = false
+    # Pressure Activation
+    marker.p_blending = panel.p_blending
   of bnBlur:
     let b = addr path.data.blur
     b.radius = distance(panel.blur)
@@ -237,7 +252,7 @@ proc newBrushPanel(): GUICanvasPanel =
   # Set Mouse Attribute
   result.flags = wMouse
   # Set Geometry To Floating
-  result.geometry(20, 20, 250, 680)
+  result.geometry(0, 0, 250, 720)
   # Create Label: |Slider|
   var 
     label: GUILabel
@@ -334,16 +349,22 @@ proc newBrushPanel(): GUICanvasPanel =
   label = newLabel("Blending", hoLeft, veMiddle)
   label.geometry(5, 480, 80, label.hint.h)
   result.add(label)
+  check = newCheckbox("", addr result.p_blending)
+  check.geometry(90, 480, check.hint.h, check.hint.h)
+  result.add(check)
   slider = newSlider(addr result.blending)
-  slider.geometry(90, 480, 150, slider.hint.h)
+  slider.geometry(90 + check.hint.h + 4, 480, 150 - check.hint.h - 4, slider.hint.h)
   result.add(slider)
   # Dilution Slider
   interval(result.dilution, 0, 100)
   label = newLabel("Dilution", hoLeft, veMiddle)
   label.geometry(5, 500, 80, label.hint.h)
   result.add(label)
+  check = newCheckbox("", addr result.p_dilution)
+  check.geometry(90, 500, check.hint.h, check.hint.h)
+  result.add(check)
   slider = newSlider(addr result.dilution)
-  slider.geometry(90, 500, 150, slider.hint.h)
+  slider.geometry(90 + check.hint.h + 4, 500, 150 - check.hint.h - 4, slider.hint.h)
   result.add(slider)
   # Persistence Slider
   interval(result.persistence, 0, 100)
@@ -351,24 +372,47 @@ proc newBrushPanel(): GUICanvasPanel =
   label.geometry(5, 520, 80, label.hint.h)
   result.add(label)
   slider = newSlider(addr result.persistence)
-  slider.geometry(90, 520, 150, slider.hint.h)
+  slider.geometry(90 + check.hint.h + 4, 520, 150 - check.hint.h - 4, slider.hint.h)
+  result.add(slider)
+  # -- Watering Slider
+  interval(result.watering, 0, 100)
+  label = newLabel("Watering", hoLeft, veMiddle)
+  label.geometry(5, 540, 80, label.hint.h)
+  result.add(label)
+  check = newCheckbox("", addr result.p_watering)
+  check.geometry(90, 540, check.hint.h, check.hint.h)
+  result.add(check)
+  slider = newSlider(addr result.watering)
+  slider.geometry(90 + check.hint.h + 4, 540, 150 - check.hint.h - 4, slider.hint.h)
+  result.add(slider)
+  # Transparency Switch
+  check = newCheckbox("Colouring", addr result.coloring)
+  check.geometry(90 + check.hint.h + 4, 560, 150, check.hint.h)
+  result.add(check)
+  # -- Min Pressure Slider
+  interval(result.p_minimun, 0, 100)
+  label = newLabel("Min Pressure", hoLeft, veMiddle)
+  label.geometry(5, 600, 80, label.hint.h)
+  result.add(label)
+  slider = newSlider(addr result.p_minimun)
+  slider.geometry(90 + check.hint.h + 4, 600, 150 - check.hint.h - 4, slider.hint.h)
   result.add(slider)
   # -- Blur Smudge
   check = newRadio("Blur",
     bnBlur.byte, cast[ptr byte](addr result.blend))
-  check.geometry(5, 580, 80, check.hint.h)
+  check.geometry(5, 640, 80, check.hint.h)
   result.add(check)
   check = newRadio("Smudge",
     bnSmudge.byte, cast[ptr byte](addr result.blend))
-  check.geometry(90, 580, 80, check.hint.h)
+  check.geometry(90, 640, 80, check.hint.h)
   result.add(check)
   # Blur Size
   interval(result.blur, 0, 100)
   label = newLabel("Blur Size %", hoLeft, veMiddle)
-  label.geometry(5, 600, 80, label.hint.h)
+  label.geometry(5, 660, 80, label.hint.h)
   result.add(label)
   slider = newSlider(addr result.blur)
-  slider.geometry(90, 600, 150, slider.hint.h)
+  slider.geometry(90, 660, 150, slider.hint.h)
   result.add(slider)
 
 proc newCanvas(): GUICanvas =

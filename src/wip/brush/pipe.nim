@@ -402,7 +402,7 @@ proc convolve(buffer: ptr UncheckedArray[cint], x, y, w, h: cint): array[4, cint
     # Calculate Alpha Average
     result[3] = cursor div count
 
-proc blur(pipe: var NBrushPipeline, buffer: ptr UncheckedArray[cint]) =
+proc blur(pipe: var NBrushPipeline, buffer: ptr UncheckedArray[cint], amount: cint) =
   let 
     dst = cast[ptr UncheckedArray[cushort]](
       pipe.canvas.buffer1)
@@ -415,8 +415,9 @@ proc blur(pipe: var NBrushPipeline, buffer: ptr UncheckedArray[cint]) =
     cursor, opacity: cint
   let
     # Current Color
-    color = pipe.color1
-    dilution = pipe.color[3]
+    color0 = pipe.color
+    color1 = pipe.color1
+    dilution = color0[3]
   # Blur Each Pixel
   for y in 0 ..< h:
     for x in 0 ..< w:
@@ -424,21 +425,38 @@ proc blur(pipe: var NBrushPipeline, buffer: ptr UncheckedArray[cint]) =
       pixel = convolve(buffer, x, y, w, h)
       # Current Opacity
       opacity = pixel[3]
-      # Ajust Opacity
-      if dilution < 65535:
-        opacity = cint(opacity / dilution * 65535.0)
-        # Clamp Ajusted Opacity
-        opacity = min(opacity, 65535)
-      # Interpolate Current Opacity
-      pixel[0] = mix_65535(color[0], pixel[0], opacity)
-      pixel[1] = mix_65535(color[1], pixel[1], opacity)
-      pixel[2] = mix_65535(color[2], pixel[2], opacity)
-      # Apply Current Dilution
-      if dilution < 65535:
-        pixel[0] = mul_65535(pixel[0], dilution)
-        pixel[1] = mul_65535(pixel[1], dilution)
-        pixel[2] = mul_65535(pixel[2], dilution)
-      pixel[3] = dilution
+      # Select Color Blending
+      if amount <= 0:
+        # Premultiply Alpha for Transparency
+        pixel[0] = mul_65535(pixel[0], opacity)
+        pixel[1] = mul_65535(pixel[1], opacity)
+        pixel[2] = mul_65535(pixel[2], opacity)
+        # Get Interpolation
+        opacity = -amount
+        # Interpolate Current Pixel
+        pixel[0] = mix_65535(color0[0], pixel[0], opacity)
+        pixel[1] = mix_65535(color0[1], pixel[1], opacity)
+        pixel[2] = mix_65535(color0[2], pixel[2], opacity)
+        pixel[3] = mix_65535(color0[3], pixel[3], opacity)
+      else:
+        # Ajust Opacity
+        if dilution < 65535:
+          opacity = cint(opacity / dilution * 65535.0)
+          # Clamp Ajusted Opacity
+          opacity = min(opacity, 65535)
+        # Apply Current Amount
+        if amount < 65535:
+          opacity = mul_65535(opacity, amount)
+        # Interpolate Current Opacity
+        pixel[0] = mix_65535(color1[0], pixel[0], opacity)
+        pixel[1] = mix_65535(color1[1], pixel[1], opacity)
+        pixel[2] = mix_65535(color1[2], pixel[2], opacity)
+        # Apply Current Dilution
+        if dilution < 65535:
+          pixel[0] = mul_65535(pixel[0], dilution)
+          pixel[1] = mul_65535(pixel[1], dilution)
+          pixel[2] = mul_65535(pixel[2], dilution)
+        pixel[3] = dilution
       # Store Current Pixel
       dst[cursor + 0] = cast[cushort](pixel[0])
       dst[cursor + 1] = cast[cushort](pixel[1])
@@ -447,7 +465,7 @@ proc blur(pipe: var NBrushPipeline, buffer: ptr UncheckedArray[cint]) =
       # Next Pixel
       cursor += 4
 
-proc water*(pipe: var NBrushPipeline) =
+proc water*(pipe: var NBrushPipeline, amount: cint) =
   let
     w = pipe.w
     h = pipe.h
@@ -496,7 +514,7 @@ proc water*(pipe: var NBrushPipeline) =
     # Next Tile & Pixel
     cursor += 4
   # Apply Blur
-  pipe.blur(buffer)
+  pipe.blur(buffer, amount)
 
 # -------------------------
 # BRUSH PIPELINE BLUR PROCS
