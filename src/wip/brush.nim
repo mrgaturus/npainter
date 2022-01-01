@@ -307,17 +307,22 @@ proc prepare_stage1(path: var NBrushStroke, press: cfloat): bool =
     let
       marker = addr path.data.marker
       # Ajust Interpolators Using Step
-      ajust = 1.0 - pow(0.00005, path.step * 0.5)
-    var b0, p0: cfloat
+      ajust = 1.0 - pow(0.00005, path.step)
+    var b0, p0, c0: cfloat
     # Calculate Parameters
     b0 = marker.blending
     p0 = marker.persistence
     # Interpolate With Pressure
     if marker.p_blending:
-      b0 = 1.0 + press * b0 - press
+      c0 = press * press * (3.0 - 2.0 * press)
+      # Apply Pressure to Blending
+      b0 = 1.0 + c0 * b0 - c0
     # Apply Ajust
     if not path.pipe.skip:
       b0 = pow(b0, ajust)
+    else:
+      c0 = pow(b0, ajust)
+      b0 = b0 + (c0 - b0) * b0
     # Convert to Integer
     let
       b = cint(b0 * 65535.0)
