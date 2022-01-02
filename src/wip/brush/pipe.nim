@@ -361,6 +361,53 @@ proc average*(pipe: var NBrushPipeline; blending, dilution, persistence: cint) =
   pipe.color[2] = b
   pipe.color[3] = a
 
+proc glass*(pipe: var NBrushPipeline, blending, persistence: cint) =
+  var
+    count: cint
+    r, g, b, a: cint
+    # Persistence
+    dull, weak: cint
+  # Sum Each Average Tile
+  block:
+    var rr, gg, bb, aa: int64
+    for tile in mitems(pipe.tiles):
+      let avg = addr tile.data.average
+      # Sum Color Count
+      count += avg.count
+      # Sum Color Channels
+      rr += avg.total[0]
+      gg += avg.total[1]
+      bb += avg.total[2]
+      aa += avg.total[3]
+    # Divide Color Average
+    if count > 0:
+      r = cint(rr div count)
+      g = cint(gg div count)
+      b = cint(bb div count)
+      a = cint(aa div count)
+  # Apply Blending Amount
+  r = mul_65535(r, blending)
+  g = mul_65535(g, blending)
+  b = mul_65535(b, blending)
+  a = mul_65535(a, blending)
+  # Interpolate With Persistence
+  if persistence > 0 and not pipe.skip:
+    # Ajust Persistence Flow
+    dull = sqrt_65535(pipe.flow)
+    # Ajust Persistence With Flow
+    weak = 65535 - sqrt_65535(persistence)
+    weak = 65535 - mul_65535(weak, dull)
+    # Apply Persistence Interpolation
+    r = mix_65535(r, pipe.color[0], weak)
+    g = mix_65535(g, pipe.color[1], weak)
+    b = mix_65535(b, pipe.color[2], weak)
+    a = mix_65535(a, pipe.color[3], weak)
+  # Replace Current Color
+  pipe.color[0] = r
+  pipe.color[1] = g
+  pipe.color[2] = b
+  pipe.color[3] = a
+
 # -------------------------------
 # BRUSH PIPELINE WATERCOLOR PROCS
 # -------------------------------

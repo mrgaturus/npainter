@@ -66,10 +66,12 @@ void brush_water_first(brush_render_t* render) {
         color1 = _mm_cvtepu16_epi32(color1);
         // Check if Pixel is Visible Enough
         xmm0 = _mm_srli_epi32(color1, 8);
-        // Sum Color Average & Sum Color Count
-        if (_mm_testz_si128(xmm0, xmm0) == 0) {
-          color0 = _mm_add_epi32(color0, color1); count0++;
-        }
+
+        // Sum Color Accumulation
+        if (_mm_testz_si128(xmm0, xmm0) == 0)
+          color0 = _mm_add_epi32(color0, color1);
+        // Sum Color Count
+        count0++;
       }
       // Step Shape & Color
       sh_x++; dst_x += 4;

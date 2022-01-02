@@ -29,7 +29,7 @@ $ ./npainter
     - Clipping Group & Alpha Lock
   - Transform Tool (Standard, Mesh, Liquify)
   - Antialiased Fill With Closing Gap
-  - OpenGL 3.3 Acceletared Canvas View
+  - OpenGL 3.3 Accelerated Canvas View
   - Basic but very Useful Filters
   - Infinite Undo using Compressed Files with zstd
   - Intuitive and Very Simple GUI

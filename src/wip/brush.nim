@@ -2,8 +2,8 @@ import brush/pipe
 from math import 
   floor, ceil,
   sqrt, pow, log2
-# Export Brush Kinds
-export NBrushShape, NBrushBlend, color
+# Export Brush Pipeline Kinds
+export NBrushShape, NBrushBlend
 
 # ---------------------------------
 # BRUSH ENGINE STROKE TYPES & PROCS
@@ -42,9 +42,11 @@ type
     blending*: cfloat
     dilution*: cfloat
     persistence*: cfloat
-    # Watercolor
+    # Watercolor Wet
     watering*: cfloat
     coloring*: bool
+    # Transparent
+    glass: bool
     # Pressure Flags
     p_blending*: bool
     p_dilution*: bool
@@ -121,6 +123,26 @@ proc clear*(path: var NBrushStroke) =
   # Reset Dirty Region -TEMPORAL-
   aabb.x1 = high(int32); aabb.x2 = 0
   aabb.y1 = high(int32); aabb.y2 = 0
+
+proc color*(path: var NBrushStroke, r, g, b: cint, glass: bool) =
+  if not glass:
+    color(path.pipe, r, g, b)
+    # Ensure Average Not Transparent
+    if path.blend in {bnAverage, bnWater}:
+      path.data.avg.glass = glass
+  else: # Prepare Transparent
+    transparent(path.pipe)
+    # Override Blending Modes
+    case path.blend
+    of bnPencil, bnFunc:
+      path.blend = bnEraser
+    of bnFlat: color(path.pipe, 0, 0, 0)
+    of bnAverage, bnWater, bnMarker:
+      path.data.avg.glass = glass
+      # Override Marker With Average
+      if path.blend == bnMarker:
+        path.blend = bnAverage
+    else: discard
 
 proc prepare*(path: var NBrushStroke) =
   # Reset Path
@@ -290,7 +312,9 @@ proc prepare_stage1(path: var NBrushStroke, press: cfloat): bool =
       d = cint(d0 * 65535.0)
       p = cint(p0 * 65535.0)
     # Calcutate Averaged
-    average(path.pipe, b, d, p)
+    if not avg.glass:
+      average(path.pipe, b, d, p)
+    else: glass(path.pipe, b, p)
     # Calculate Watercolor
     if path.blend == bnWater:
       b0 = avg.watering
@@ -298,9 +322,9 @@ proc prepare_stage1(path: var NBrushStroke, press: cfloat): bool =
       if avg.p_watering:
         b0 = 1.0 + s * b0 - s
       b0 = pow(b0, ajust)
-      if not avg.coloring: b0 = -b0
       # Convert to Fix15
-      let w = cint(b0 * 65535.0)
+      var w = cint(b0 * 65535.0)
+      if not avg.coloring or avg.glass: w = -w
       # Apply Water Interpolation
       water(path.pipe, w)
   of bnMarker:
