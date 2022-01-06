@@ -293,8 +293,8 @@ proc dirty*(widget: GUIWidget) =
             cursor = cursor.parent
           else: # Found Level
             cursor = cursor.next
-            continue # Prev Level
-        break # Stop Iterating
+            break # Prev Level
+        if cursor == widget: break
       else: cursor = cursor.next
 
 # ------------------------------
@@ -327,8 +327,8 @@ proc render*(widget: GUIWidget, ctx: ptr CTXRender) =
           cursor = cursor.parent
         else: # Found Level
           cursor = cursor.next
-          continue # Prev Level
-      break # Stop Iterating
+          break # Prev Level
+      if cursor == widget: break
     else: cursor = cursor.next
   # Pop Clipping
   ctx.pop()
