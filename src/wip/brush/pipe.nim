@@ -294,12 +294,13 @@ proc average*(pipe: var NBrushPipeline; blending, dilution, persistence: cint) =
       # Calculate Color Quantization
       weak = (65535 - weak) shr 8
       # Calculate Mask Quantization
-      weak = fast_log2(weak).cint
-      dull = cint(1 shl weak) - 1
-      # Apply Mask Quantization
-      r = min(r and not dull, 65535)
-      g = min(g and not dull, 65535)
-      b = min(b and not dull, 65535)
+      if weak > 0:
+        weak = fast_log2(weak).cint
+        dull = cint(1 shl weak) - 1
+        # Apply Mask Quantization
+        r = min(r and not dull, 65535)
+        g = min(g and not dull, 65535)
+        b = min(b and not dull, 65535)
       # Full Opacity
       a = 65535
     else:
