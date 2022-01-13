@@ -1,5 +1,5 @@
 # Optimized Math for this Software
-from math import floor, ceil
+from math import floor, ceil, round
 
 type
   # Range Value
@@ -31,11 +31,10 @@ proc interval*(value: var Value): float32 =
   value.max - value.min
 
 proc lerp*(value: var Value, t: float32, approx = false) =
-  value.pos = (value.max - value.min) * t
-  if approx: # Ceil greather than 0.5 or floor
-    if value.pos - floor(value.pos) > 0.5:
-      value.pos = ceil(value.pos)
-    else: value.pos = floor(value.pos)
+  var pos = (value.max - value.min) * t
+  if approx: pos = round(pos)
+  # Set Current Value
+  value.pos = pos
 
 proc val*(value: var Value, val: float32) =
   value.pos = clamp(val, 

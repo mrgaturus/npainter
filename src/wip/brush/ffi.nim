@@ -18,10 +18,10 @@ from math import
 
 type
   NBrushTexture {.importc: "brush_texture_t" } = object
-    alpha, fract: cshort
+    fract, tone0, tone1: cint
     # Texture Buffer
-    w, h: cint
-    buffer: cstring
+    w, h, fixed: cint
+    buffer: pointer
   # -------------------------------------------------
   NBrushCircle {.importc: "brush_circle_t" } = object
     x, y, size: cfloat
@@ -31,7 +31,7 @@ type
     # Blotmap Circle
     circle: NBrushCircle
     # Blotmap Texture Pointer
-    texture: ptr NBrushTexture
+    tex*: ptr NBrushTexture
   NBrushBitmap {.importc: "brush_bitmap_t" } = object
     x, y: cfloat
     # Inverse Affine
@@ -40,7 +40,7 @@ type
     # Subpixel LOD
     level: cint
     # Bitmap Texture Pointer
-    texture: ptr NBrushTexture
+    tex*: ptr NBrushTexture
 
 type
   NBrushAverage {.importc: "brush_average_t" } = object
@@ -149,31 +149,45 @@ proc style*(circle: var NBrushCircle, hard, sharp: cfloat) =
   # Set Smooth Constant
   circle.smooth = calc
 
+# -----------------------------
+# BRUSH TEXTURE MASK DEFINITION
+# -----------------------------
+
+proc image*(tex: ptr NBrushTexture, w, h: cint, buffer: pointer) =
+  tex.w = w
+  tex.h = h
+  # Set Current Buffer
+  tex.buffer = buffer
+
+proc scale*(tex: ptr NBrushTexture, scale: cfloat, level: cint) =
+  tex.fixed = cint(65536.0 / scale) shr level
+
+proc amount*(tex: ptr NBrushTexture, fract: cfloat, invert: bool) =
+  # Set Texture Pattern Opacity
+  var c = cint(fract * 65535.0)
+  if invert: c = c or 65536
+  # Replace Current Fract
+  tex.fract = c
+
+proc tone*(tex: ptr NBrushTexture, tone, flow, size: cfloat) =
+  var t0, t1: uint32
+  let 
+    a = uint32(flow * 65535.0)
+    s = uint32(65535.0 / size)
+  # Set Minimun Tone
+  t0 = uint32(tone * 65535.0)
+  t0 = max(65535 - t0, s)
+  t0 = (t0 * a + 65535) shr 16
+  # Calculate Tone Scale
+  if t0 > 0: 
+    t1 = a * 65535 div t0
+  # Set Current Tone
+  tex.tone0 = cast[cint](t0)
+  tex.tone1 = cast[cint](t1)
+
 # ----------------------------
 # BRUSH BITMAP MASK DEFINITION
 # ----------------------------
-
-proc derivative(bitmap: var NBrushBitmap) =
-  let
-    dudx = bitmap.a
-    dudy = bitmap.b
-    # --------------
-    dvdx = bitmap.d
-    dvdy = bitmap.e
-    # -----------------------------
-    ddu = dudx * dudx + dudy * dudy
-    ddv = dvdx * dvdx + dvdy * dvdy
-  # Subpixel Level
-  var calc: cfloat
-  # Calculate Longest
-  calc = max(ddu, ddv)
-  if calc > 1.0:
-    calc = log2(calc)
-    # Limit to 16x16
-    calc = min(calc, 4.0)
-  else: calc = 0.0
-  # Return Subpixel Level
-  bitmap.level = cint(calc)
 
 proc basic*(bitmap: var NBrushBitmap; x, y: cfloat) =
   # Change Position
@@ -189,10 +203,10 @@ proc affine*(bitmap: var NBrushBitmap; angle, scale, aspect: cfloat) =
     sa = sin(angle)
     ca = cos(angle)
     # Center Of Texture Rectangle
-    cx = cfloat(bitmap.texture.w) * 0.5
-    cy = cfloat(bitmap.texture.h) * 0.5
+    cx = cfloat(bitmap.tex.w) * 0.5
+    cy = cfloat(bitmap.tex.h) * 0.5
     # Aspect Ratio
-    wh = (0.0 < aspect).cint - (aspect < 0.0).cint
+    wh = cint(0.0 < aspect) - cint(aspect < 0.0)
     fract = 1.0 - (aspect - aspect.floor)
   # Calculate Scaling
   var sx, sy = scale
@@ -207,5 +221,3 @@ proc affine*(bitmap: var NBrushBitmap; angle, scale, aspect: cfloat) =
   # Y Affine Transformation
   bitmap.d = -sa * sy; bitmap.e = ca * sy
   bitmap.f = (sa * x - ca * y - cy * sy) * sy
-  # Calculate Subpixel Level
-  bitmap.derivative()

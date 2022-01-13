@@ -1,4 +1,6 @@
+import texture
 import brush/pipe
+# Import Useful Math
 from math import 
   floor, ceil,
   sqrt, pow, log2
@@ -19,9 +21,13 @@ type
   NStrokeBlotmap = object
     hard*, sharp*: cfloat
     # Interpolation
-    fract*: cint
+    fract*: cfloat
+    scale*: cfloat
+    tone*: cfloat
+    # Texture Invert
+    invert*: bool
     # Texture Buffer
-    buffer*: pointer
+    texture*: ptr NTexture
   NStrokeBitmap = object
     alpha*, step*: cfloat
     # Angle & Aspect Ratio
@@ -31,12 +37,15 @@ type
     s_angle*: cfloat
     s_scale*: cfloat
     # Texture Buffer
-    buffer*: pointer
+    texture*: ptr NTexture
   # ---------------------
   NStrokeTexture = object
-    scratch*, fract*: cint
+    # Texture Configuration
+    fract*, tone*, scale*: cfloat
+    # Texture Invert
+    invert*: bool
     # Texture Buffer
-    buffer*: pointer
+    texture*: ptr NTexture
 type
   NStrokeAverage = object
     blending*: cfloat
@@ -158,15 +167,40 @@ proc prepare*(path: var NBrushStroke) =
   basic.size = 2.5 + (1000.0 - 2.5) * basic.size
   # Decide Which Step Use
   case shape
-  of bsCircle, bsBlotmap:
+  of bsCircle:
+    # Calculate Current Step
     let hard = path.mask.circle.hard
-    path.step = # Automatic Step
-      0.075 + (0.025 - 0.075) * hard
+    path.step = 0.075 - 0.05 * hard
     # Spacing for Special
-    case blend 
-    of bnBlur: path.step *= 2.0
-    of bnSmudge: path.step = 0.025
-    else: discard
+    if blend == bnBlur:
+      path.step *= 2.0
+    elif blend == bnSmudge:
+      path.step = 0.025
+  of bsBlotmap:
+    let 
+      circle = addr path.mask.circle
+      hard = circle.hard * 0.75
+    # Calculate Current Step
+    path.step = 0.075 - 0.05 * hard
+    # Spacing for Special
+    if blend == bnBlur:
+      path.step *= 2.0
+    # Ajust Circle Parameters
+    circle.sharp = 0.0
+    circle.hard = hard
+    let
+      tex0 = addr path.pipe.tex0
+      blot = addr path.mask.blot
+      # Calculate Scale Interpolation
+      scale = 0.1 + (5.0 - 0.1) * blot.scale
+      mip = raw(blot.texture, scale)
+    # Configure Texture Buffer
+    tex0.image(mip.w, mip.h, mip.buffer)
+    # Configure Texture Scale & Interpolation
+    tex0.amount(blot.fract, blot.invert)
+    tex0.scale(scale, mip.level)
+    # Bind Texture to Blotmap
+    path.pipe.mask.blotmap.tex = tex0
   of bsBitmap:
     path.step = # Custom Step
       path.mask.bitmap.step
@@ -182,7 +216,7 @@ proc prepare*(path: var NBrushStroke) =
       of bnFlat: 1.0
       else: basic.alpha
     # Ajust Circle Sharpness to Half
-    if shape in {bsCircle, bsBlotmap}:
+    if shape == bsCircle:
       path.mask.circle.sharp *= 0.5
   else: # Use Automatic
     dyn.kind = fwAuto
@@ -251,7 +285,10 @@ proc prepare_stage0(path: var NBrushStroke, x, y, size, alpha, flow: cfloat) =
     style(mask.circle, hard, sharp)
     # Configure Blotmap
     if path.shape == bsBlotmap:
-      discard
+      let
+        t0 = path.mask.blot.tone
+        tex0 = addr path.pipe.tex0
+      tex0.tone(t0, flow, size)
   of bsBitmap: discard
   # Pipeline Stage Texture
   # ----------------------

@@ -5,7 +5,7 @@ import libs/gl
 # Import Maths
 import omath
 # Import Brush Engine
-import wip/brush
+import wip/[brush, texture]
 import spmc
 
 const
@@ -14,6 +14,25 @@ const
 
 type
   GUICanvasPanel = ref object of GUIWidget
+  GUIShapePanel = ref object of GUICanvasPanel
+    shape: NBrushShape
+    # Blotmap Parameters
+    blot_mess: Value
+    blot_scale: Value
+    blot_tone: Value
+    blot_invert: bool
+    # Bitmap Parameters
+    bitmap_flow: Value
+    bitmap_space: Value
+    bitmap_scale: Value
+    bitmap_angle: Value
+    # Scattering Parameters
+    scatter_space: Value
+    scatter_scale: Value
+    scatter_angle: Value
+    # Texture Images
+    tex0, tex1: NTexture
+  GUIBlendPanel = ref object of GUICanvasPanel
     # RGB Color
     color: RGBColor
     # Basic Attributes
@@ -41,7 +60,8 @@ type
     blur: Value
   GUICanvas = ref object of GUIWidget
     # Canvas Brush Panel
-    panel: GUICanvasPanel
+    panel: GUIBlendPanel
+    shape: GUIShapePanel
     # Mask & Color Buffer
     buffer0: array[bw*bh, int16]
     buffer1: array[bw*bh*4, int16]
@@ -98,6 +118,7 @@ proc copy(self: GUICanvas, x, y, w, h: int) =
 proc prepare(self: GUICanvas) =
   let
     panel = self.panel
+    banel = self.shape
     color = panel.color
     # Shortcut
     path = addr self.path
@@ -116,11 +137,23 @@ proc prepare(self: GUICanvas) =
   # Calculate Dynamics Amplification
   basic.amp_size = 1.0
   basic.amp_alpha = 1.0
-  # Calculate Circle Style
-  circle.hard = distance(panel.hard)
-  circle.sharp = distance(panel.sharp)
-  # Set Shape As Circle
-  self.path.shape = bsCircle
+  # Configure Shape Mode
+  case banel.shape
+  of bsCircle, bsBlotmap:
+    # Calculate Circle Style
+    circle.hard = distance(panel.hard)
+    circle.sharp = distance(panel.sharp)
+    # Configure Blotmap Style
+    if banel.shape == bsBlotmap:
+      let blot = addr path.mask.blot
+      blot.fract = distance(banel.blot_mess)
+      blot.scale = distance(banel.blot_scale)
+      blot.tone = distance(banel.blot_tone)
+      # Set Texture Inversion
+      blot.invert = banel.blot_invert
+      # Set Texture Buffer Pointer
+      blot.texture = addr banel.tex0
+  of bsBitmap: banel.shape = bsCircle
   # Configure Blending Mode
   case panel.blend
   of bnAverage, bnWater:
@@ -148,6 +181,7 @@ proc prepare(self: GUICanvas) =
     b.radius = distance(panel.blur)
   else: discard
   # Set Current Blendig Mode
+  self.path.shape = banel.shape
   self.path.blend = panel.blend
   # Set Current Brush Color
   self.path.color(r, g, b, panel.glass)
@@ -249,7 +283,7 @@ method draw(self: GUICanvasPanel, ctx: ptr CTXRender) =
   ctx.color(uint32 0xfb3b3b3b)
   ctx.fill(rect self.rect)
 
-proc newBrushPanel(): GUICanvasPanel =
+proc newBrushPanel(): GUIBlendPanel =
   new result
   # Set Mouse Attribute
   result.flags = wMouse
@@ -421,12 +455,125 @@ proc newBrushPanel(): GUICanvasPanel =
   slider.geometry(90, 680, 150, slider.hint.h)
   result.add(slider)
 
+proc newShapePanel(): GUIShapePanel =
+  new result
+  # Set Mouse Attribute
+  result.flags = wMouse
+  # Set Geometry To Floating
+  result.geometry(1280 - 250 - 5, 5, 250, 350)
+  # Create Label: |Slider|
+  var 
+    label: GUILabel
+    slider: GUISlider
+    check: GUIWidget
+  check = newRadio("Circle",
+    bsCircle.byte, cast[ptr byte](addr result.shape))
+  check.geometry(5, 5, 80, check.hint.h)
+  result.add(check)
+  check = newRadio("Blotmap",
+    bsBlotmap.byte, cast[ptr byte](addr result.shape))
+  check.geometry(85, 5, 80, check.hint.h)
+  result.add(check)
+  check = newRadio("Bitmap",
+    bsBitmap.byte, cast[ptr byte](addr result.shape))
+  check.geometry(175, 5, 80, check.hint.h)
+  result.add(check)
+  # Blotmap Sliders
+  interval(result.blot_mess, 0, 100)
+  label = newLabel("Mess", hoLeft, veMiddle)
+  label.geometry(5, 45, 80, label.hint.h)
+  result.add(label)
+  slider = newSlider(addr result.blot_mess)
+  slider.geometry(90, 45, 150, slider.hint.h)
+  result.add(slider)
+  # Blotmap Scale
+  interval(result.blot_scale, 10, 500)
+  label = newLabel("Scale", hoLeft, veMiddle)
+  label.geometry(5, 65, 80, label.hint.h)
+  result.add(label)
+  slider = newSlider(addr result.blot_scale)
+  slider.geometry(90, 65, 150, slider.hint.h)
+  result.add(slider)
+  # Blotmap Tone
+  interval(result.blot_tone, 0, 100)
+  label = newLabel("Tone", hoLeft, veMiddle)
+  label.geometry(5, 85, 80, label.hint.h)
+  result.add(label)
+  slider = newSlider(addr result.blot_tone)
+  slider.geometry(90, 85, 150, slider.hint.h)
+  result.add(slider)
+  check = newCheckbox("Invert Texture", addr result.blot_invert)
+  check.geometry(90, 105, 150, check.hint.h)
+  result.add(check)
+  # Spacing Slider
+  interval(result.bitmap_flow, 0, 100)
+  label = newLabel("Flow", hoLeft, veMiddle)
+  label.geometry(5, 145, 80, label.hint.h)
+  result.add(label)
+  slider = newSlider(addr result.bitmap_flow)
+  slider.geometry(90, 145, 150, slider.hint.h)
+  result.add(slider)
+  # Spacing Slider
+  interval(result.bitmap_space, 2.5, 50)
+  label = newLabel("Spacing", hoLeft, veMiddle)
+  label.geometry(5, 165, 80, label.hint.h)
+  result.add(label)
+  slider = newSlider(addr result.bitmap_space, 1)
+  slider.geometry(90, 165, 150, slider.hint.h)
+  result.add(slider)
+  # -- Min Size Slider
+  interval(result.scatter_space, 0, 100)
+  label = newLabel("Mess Spacing", hoLeft, veMiddle)
+  label.geometry(5, 185, 80, label.hint.h)
+  result.add(label)
+  slider = newSlider(addr result.scatter_space)
+  slider.geometry(90, 185, 100, slider.hint.h)
+  result.add(slider)
+  # Angle Slider
+  interval(result.bitmap_angle, 0, 360)
+  label = newLabel("Angle", hoLeft, veMiddle)
+  label.geometry(5, 225, 80, label.hint.h)
+  result.add(label)
+  slider = newSlider(addr result.bitmap_angle)
+  slider.geometry(90, 225, 150, slider.hint.h)
+  result.add(slider)
+  # -- Min Size Slider
+  interval(result.scatter_angle, 0, 100)
+  label = newLabel("Mess Angle", hoLeft, veMiddle)
+  label.geometry(5, 245, 80, label.hint.h)
+  result.add(label)
+  slider = newSlider(addr result.scatter_angle)
+  slider.geometry(90, 245, 100, slider.hint.h)
+  result.add(slider)
+  # Angle Slider
+  interval(result.bitmap_scale, 0, 100)
+  label = newLabel("Scale", hoLeft, veMiddle)
+  label.geometry(5, 285, 80, label.hint.h)
+  result.add(label)
+  slider = newSlider(addr result.bitmap_scale)
+  slider.geometry(90, 285, 150, slider.hint.h)
+  result.add(slider)
+  # -- Min Size Slider
+  interval(result.scatter_scale, 0, 100)
+  label = newLabel("Mess Scale", hoLeft, veMiddle)
+  label.geometry(5, 305, 80, label.hint.h)
+  result.add(label)
+  slider = newSlider(addr result.scatter_scale)
+  slider.geometry(90, 305, 100, slider.hint.h)
+  result.add(slider)
+  # Load Demo Textures
+  result.tex0 = newPNGTexture("tex0.png")
+  result.tex1 = newPNGTexture("tex1.png")
+
 proc newCanvas(): GUICanvas =
   new result
   # Create Canvas Brush Panel
   let panel = newBrushPanel()
   result.panel = panel
   result.add(panel)
+  let shape = newShapePanel()
+  result.shape = shape
+  result.add(shape)
   # Set Mouse Enabled
   result.flags = wMouse
   # Create OpenGL Texture

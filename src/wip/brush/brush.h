@@ -5,10 +5,10 @@
 // -------------------
 
 typedef struct {
-  // Interpolation
-  short alpha, fract;
+  // Interpolation & Level
+  int fract, tone0, tone1;
   // Texture Size
-  int w, h;
+  int w, h, fixed;
   // Texture Buffer
   unsigned char* buffer;
 } brush_texture_t;
@@ -28,7 +28,7 @@ typedef struct {
   // Blotmap Circle
   brush_circle_t circle;
   // Blotmap Texture Difference
-  brush_texture_t* texture;
+  brush_texture_t* tex;
   // ---------------------
 } brush_blotmap_t;
 
@@ -40,7 +40,7 @@ typedef struct {
   // Subpixel LOD
   int level;
   // Brush Bitmap Buffer
-  brush_texture_t* texture;
+  brush_texture_t* tex;
   // ------------------
 } brush_bitmap_t;
 

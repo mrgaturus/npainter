@@ -1,41 +1,65 @@
 #include <math.h>
 #include "brush.h"
 
-static inline short div_32767(int a) {
-  return ( a + ( (a + 32769) >> 15 ) ) >> 15;
-}
+// --------------------------
+// BRUSH TEXTURE LOOKUP PIXEL
+// --------------------------
 
-static short brush_texture_warp(brush_texture_t* tex, int x, int y) {
-  int w, h;
-
-  w = tex->w;
-  h = tex->h;
+static int brush_texture_warp(brush_texture_t* tex, int x, int y) {
+  const int w = tex->w;
+  const int h = tex->h;
   // Warp Pixel
-  x %= w; y %= h;
+  if (x >= w) x -= w;
+  if (y >= h) y -= h;
 
-  short pixel;
   // Lookup Pixel From Buffer
-  pixel = tex->buffer[y * w + x];
-  pixel = (pixel << 7) | pixel;
+  int pixel = tex->buffer[y * w + x];
 
   // Return Pixel
   return pixel;
 }
 
-static short brush_texture_zero(brush_texture_t* tex, int x, int y) {
-  int w, h;
+static int brush_texture_zero(brush_texture_t* tex, int x, int y) {
   // Dimensions
-  w = tex->w;
-  h = tex->h;
+  const int w = tex->w;
+  const int h = tex->h;
 
-  short pixel;
+  int pixel;
   // Lookup Pixel From Buffer
-  if (x >= 0 && x < w && y >= 0 && y < h) {
+  if (x >= 0 && y >= 0 && x < w && y < h) {
     pixel = tex->buffer[y * w + x];
-    pixel = (pixel << 7) | pixel;
   } else { pixel = 0; }
 
   return pixel;
+}
+
+// ----------------------------
+// BRUSH TEXTURE BILINEAR PIXEL
+// ----------------------------
+
+static short brush_bilinear_warp(brush_texture_t* tex, int x, int y) {
+  // Pixel Fractional
+  const int fx = x & 65535;
+  const int fy = y & 65535;
+  // Pixel Position
+  const int x0 = x >> 16;
+  const int y0 = y >> 16;
+  const int x1 = x0 + 1;
+  const int y1 = y0 + 1;
+
+  int m00, m10, m01, m11;
+  // Load Four Pixels
+  m00 = brush_texture_warp(tex, x0, y0);
+  m10 = brush_texture_warp(tex, x1, y0);
+  m01 = brush_texture_warp(tex, x0, y1);
+  m11 = brush_texture_warp(tex, x1, y1);
+
+  // Bilinear Interpolate
+  m00 += (m10 - m00) * fx + 65535 >> 16;
+  m01 += (m11 - m01) * fx + 65535 >> 16;
+  m00 += (m01 - m00) * fy + 65535 >> 16;
+  // Return Interpolated
+  return m00;
 }
 
 // ---------------------------
@@ -196,11 +220,13 @@ void brush_blotmap_mask(brush_render_t* render, brush_blotmap_t* blot) {
   x2 = x1 + render->w;
   y2 = y1 + render->h;
 
-  int stride;
+  int stride, flow;
   // Canvas Buffer Stride
   stride = render->canvas->stride;
+  // Shape Current Flow
+  flow = render->flow;
 
-  short *dst_y, *dst_x;
+  unsigned short *dst_y, *dst_x;
   // Load Mask Buffer Pointer
   dst_y = render->canvas->buffer0;
   // Locate Buffer Pointer to Render Position
@@ -208,39 +234,65 @@ void brush_blotmap_mask(brush_render_t* render, brush_blotmap_t* blot) {
 
   brush_texture_t* tex;
   // Load Texture Pointer
-  tex = blot->texture;
+  tex = blot->tex;
+  // Load Texture Interpolation
+  unsigned int fract = tex->fract;
+  unsigned int invert = fract & 65536;
+  fract = (fract & 65535) * flow + 65535 >> 16;
+  // Load Texture Tone
+  const int tone0 = tex->tone0;
+  const int tone1 = tex->tone1;
 
-  short fract;
-  // Load Interpolation
-  fract = tex->fract;
+  int row_xx, xx, yy;
+  // Calculate Sized Scaled
+  const int fixed = tex->fixed;
+  const int fw = tex->w << 16;
+  const int fh = tex->h << 16;
+  // Calculate Fixed Interpolation
+  xx = (x1 * fixed) % fw;
+  yy = (y1 * fixed) % fh;
 
-  int pixel, mask, calc;
+  unsigned int pixel, mask;
   // Apply Blotmap Difference
   for (int y = y1; y < y2; y++) {
+    row_xx = xx;
     dst_x = dst_y;
 
     for (int x = x1; x < x2; x++) {
       // Check if is not zero
       if (pixel = *dst_x) {
-        mask = brush_texture_warp(tex, x, y);
-        // Calculate Pixel Difference
-        mask = mask - pixel;
-        if (mask < 0)
-          mask = 0;
+        mask = brush_bilinear_warp(tex, row_xx, yy);
+        if (invert) mask = 255 - mask;
+        // Ajust Current Blotmap Pixel
+        mask = mask * fract + fract >> 8;
 
-        // Interpolate Both Pixels
-        calc = (mask - pixel) * fract;
-        calc = pixel + div_32767(calc);
+        // Calculate Pixel Difference
+        if (pixel > mask)
+          mask = pixel - mask;
+        else mask = 0;
+        // Ajust Pixel Thresholding
+        if (mask > tone0)
+          mask = tone0;
+        mask = mask * tone1 >> 16;
+
         // Replace Pixel
-        *dst_x = calc;
+        *dst_x = mask;
       }
 
       // Step Pixel
       dst_x++;
+      // Step Scaler
+      row_xx += fixed;
+      if (row_xx >= fw)
+        row_xx -= fw;
     }
 
     // Step Stride
     dst_y += stride;
+    // Step Scaler
+    yy += fixed;
+    if (yy >= fh)
+      yy -= fh;
   }
 }
 
@@ -260,7 +312,7 @@ static short brush_bitmap_one(brush_bitmap_t* bitmap, int x, int y) {
   y = (int) floor(calc_y + 0.5);
 
   // Lookup Pixel From Texture
-  result = brush_texture_zero(bitmap->texture, x, y);
+  result = brush_texture_zero(bitmap->tex, x, y);
   // Return Bitmap Pixel
   return result;
 }
@@ -319,7 +371,7 @@ static short brush_bitmap_area(brush_bitmap_t* bitmap, int x, int y, int level) 
   // Load Texture Pointer
   brush_texture_t* tex;
   // Bitmap Texture Pointer
-  tex = bitmap->texture;
+  tex = bitmap->tex;
 
   // Calculate Subpixel Sumation
   for (int sub_y = 0; sub_y < size; sub_y += 2) {
@@ -435,11 +487,11 @@ void brush_texture_mask(brush_render_t* render, brush_texture_t* tex) {
       if (pixel = *dst_x) {
         mask = brush_texture_warp(tex, x, y);
         // Calculate Pixel Multiply
-        mask = div_32767(mask * pixel);
+        //mask = div_32767(mask * pixel);
 
         // Interpolate Both Pixels
         calc = (mask - pixel) * fract;
-        calc = pixel + div_32767(calc);
+        //calc = pixel + div_32767(calc);
         // Replace Pixel
         *(dst_x) = calc;
       }
