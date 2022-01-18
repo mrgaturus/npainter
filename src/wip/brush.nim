@@ -3,7 +3,10 @@ import brush/pipe
 # Import Useful Math
 from math import 
   floor, ceil,
-  sqrt, pow, log2
+  sqrt, pow, log2,
+  sin, cos, PI
+from random import 
+  Rand, gauss, initRand
 # Export Brush Pipeline Kinds
 export NBrushShape, NBrushBlend
 
@@ -29,9 +32,9 @@ type
     # Texture Buffer
     texture*: ptr NTexture
   NStrokeBitmap = object
-    alpha*, step*: cfloat
+    flow*, step*: cfloat
     # Angle & Aspect Ratio
-    angle*, aspect*: cfloat
+    scale*, angle*, aspect*: cfloat
     # Scatter Intensity
     s_space*: cfloat
     s_angle*: cfloat
@@ -78,12 +81,17 @@ type
   NStrokeFlow = enum
     fwAuto, fwFlat, fwCustom
   NStrokeGeneric = object
+    # Staged Position
+    x, y: cfloat
+    # Staged Shape
     size, angle: cfloat
     # Staged Opacity
     alpha, flow: cfloat
     # Constant Flow Kind
     kind: NStrokeFlow
     magic: cfloat
+    # Randomizer
+    rng: Rand
   # --------------------
   NStrokeRegion = object
     shift: cint
@@ -199,16 +207,19 @@ proc prepare*(path: var NBrushStroke) =
     # Configure Texture Scale & Interpolation
     tex0.amount(blot.fract, blot.invert)
     tex0.scale(scale, mip.level)
-    # Bind Texture to Blotmap
+    # Bind Pipeline Texture to Blotmap
     path.pipe.mask.blotmap.tex = tex0
   of bsBitmap:
-    path.step = # Custom Step
-      path.mask.bitmap.step
+    let
+      tex0 = addr path.pipe.tex0
+      step = path.mask.bitmap.step
+    path.step = 0.025 + 0.975 * step
+    # Bind Pipeline Texture to Blotmap
+    path.pipe.mask.bitmap.tex = tex0
   # Define Which Flow Use
   if shape == bsBitmap:
     dyn.kind = fwCustom
-    dyn.magic = # Custom Alpha
-      path.mask.bitmap.alpha
+    dyn.magic = path.mask.bitmap.flow
   elif blend in {bnFlat, bnMarker, bnSmudge}:
     dyn.kind = fwFlat
     # Decide Which Flow Use
@@ -249,8 +260,25 @@ proc region(x, y, size: cfloat): NStrokeRegion =
   result.x2 = x2
   result.y2 = y2
 
-proc region(x, y, size: cfloat; bitmap: NStrokeBitmap): NStrokeRegion {.used.} =
-  discard
+proc region(x, y, size, angle: cfloat): NStrokeRegion =
+  let
+    ca = cos(angle).abs()
+    sa = sin(angle).abs()
+    # Calculate Orient
+    ow = ca + sa
+    oh = sa + ca
+  var
+    w = size * ow
+    h = size * oh
+  # Block Size Shifting
+  result.shift = max(w, h).log2().cint
+  # Interval Half Size
+  w *= 0.5; h *= 0.5
+  # Interval Region
+  result.x1 = floor(x - w).cint
+  result.y1 = floor(y - h).cint
+  result.x2 = ceil(x + w).cint
+  result.y2 = ceil(y + h).cint
 
 proc dirty(path: var NBrushStroke, region: NStrokeRegion) =
   let aabb = addr path.aabb
@@ -264,9 +292,16 @@ proc dirty(path: var NBrushStroke, region: NStrokeRegion) =
 # BRUSH STROKE PER SHAPE RENDERING PROCS
 # --------------------------------------
 
-proc prepare_stage0(path: var NBrushStroke, x, y, size, alpha, flow: cfloat) =
-  let 
-    r = region(x, y, size)
+proc prepare_stage0(path: var NBrushStroke, dyn: ptr NStrokeGeneric) =
+  let
+    x = dyn.x
+    y = dyn.y
+    # Basic Dynamics
+    size = dyn.size
+    angle = dyn.angle
+    alpha = dyn.alpha
+    flow = dyn.flow
+    # Path Shortcut
     mask = addr path.pipe.mask
   # Pipeline Stage Alpha
   if path.blend in {bnFlat, bnMarker, bnSmudge}:
@@ -274,6 +309,8 @@ proc prepare_stage0(path: var NBrushStroke, x, y, size, alpha, flow: cfloat) =
   # Pipeline Stage Flow
   path.pipe.flow =
     cint(flow * 65535.0)
+  # Pipeline Stage Region
+  var r: NStrokeRegion
   # Pipeline Stage Shape
   case path.shape
   of bsCircle, bsBlotmap:
@@ -289,7 +326,50 @@ proc prepare_stage0(path: var NBrushStroke, x, y, size, alpha, flow: cfloat) =
         t0 = path.mask.blot.tone
         tex0 = addr path.pipe.tex0
       tex0.tone(t0, flow, size)
-  of bsBitmap: discard
+    # Brush Circle Region
+    r = region(x, y, size)
+  of bsBitmap:
+    const
+      # Shorcut of 2 * PI
+      pi2 = 6.283185307179586
+    let 
+      # Scatter Shortcut
+      b = addr path.mask.bitmap
+      tex0 = mask.bitmap.tex
+      # Random Generator Gaussian
+      r0 = gauss(dyn.rng, 0.0, 1.0)
+      r1 = gauss(dyn.rng, 0.0, 1.0)
+      # Random Generator Normalized
+      r2 = r0 - floor(r0)
+      # Random Interpolator
+      s_space = size * b.s_space
+      s_angle = r2 * b.s_angle
+      s_scale = 1.0 + (r2 - 1.0) * b.s_scale
+      # Scatter Position
+      x1 = x + r0 * s_space
+      y1 = y + r1 * s_space
+      # Scatter Angle / Scale
+      a1 = pi2 * (b.angle + angle + s_angle)
+      s1 = max(size * b.scale * s_scale, 1.0)
+      # Bitmap Aspect Ratio
+      wh = 2.0 * b.aspect - 1.0
+    # Configure Bitmap Buffer
+    var
+      offset: cfloat
+      mip = raw(b.texture)
+    image(tex0, mip.w, mip.h, mip.buffer)
+    # Configure Bitmap Scaling
+    offset = scaling(mask.bitmap, s1, wh)
+    if offset < 1.0:
+      mip = raw(b.texture, offset)
+      image(tex0, mip.w, mip.h, mip.buffer)
+      # Configure Mipmaped Scaling
+      offset = scaling(mask.bitmap, s1, wh)
+    offset *= 2.0
+    # Configure Bitmap Affine
+    affine(mask.bitmap, x1, y1, a1)
+    # Calculare Brush Bitmap Region
+    r = region(x1, y1, s1 + offset, a1)
   # Pipeline Stage Texture
   # ----------------------
   # Pipeline Stage Blocks
@@ -393,10 +473,9 @@ proc prepare_stage1(path: var NBrushStroke, press: cfloat): bool =
   of bnBlur, bnSmudge: discard
   else: result = false
 
-proc stage(path: var NBrushStroke; dyn: ptr NStrokeGeneric; x, y, press: cfloat) =
+proc stage(path: var NBrushStroke; dyn: ptr NStrokeGeneric; press: cfloat) =
   # Pipeline Stage 0
-  prepare_stage0(path, x, y, 
-    dyn.size, dyn.alpha, dyn.flow)
+  prepare_stage0(path, dyn)
   dispatch_stage0(path.pipe)
   # Pipeline Stage 1
   if prepare_stage1(path, press):
@@ -433,7 +512,9 @@ proc evaluate(dyn: ptr NStrokeGeneric, basic: ptr NStrokeBasic, p, step: cfloat)
   size = (s_st + s_dist * size) * basic.size
   alpha = (a_st + a_dist * alpha) * basic.alpha
   # Simulate Smallest
-  if size < 2.5:
+  if dyn.kind == fwCustom:
+    size = max(size, 1.0)
+  elif size < 2.5:
     alpha *= size * 0.4
     # Clamp Size
     size = 2.5
@@ -448,8 +529,10 @@ proc evaluate(dyn: ptr NStrokeGeneric, basic: ptr NStrokeBasic, p, step: cfloat)
     flow = 1.0 - alpha
     flow = pow(flow, result)
     flow = 1.0 - flow
-  of fwFlat, fwCustom:
+  of fwFlat:
     flow = dyn.magic
+  of fwCustom:
+    flow = dyn.magic * alpha
   # Return Values
   dyn.size = size
   dyn.alpha = alpha
@@ -476,7 +559,7 @@ proc line(path: var NBrushStroke, a, b: NStrokePoint, start: cfloat): cfloat =
       b.press - a.press
   var
     t = start / length
-    press, x, y, s: cfloat
+    press, s: cfloat
   # Draw Each Stroke Point
   while t < 1.0:
     # Pressure Interpolation
@@ -484,10 +567,10 @@ proc line(path: var NBrushStroke, a, b: NStrokePoint, start: cfloat): cfloat =
     # Basic Brush Parameters
     s = dyn.evaluate(basic, press, step)
     # Current Position
-    x = a.x + dx * t
-    y = a.y + dy * t
+    dyn.x = a.x + dx * t
+    dyn.y = a.y + dy * t
     # Render Current Shape
-    path.stage(dyn, x, y, press)
+    path.stage(dyn, press)
     # Step to Next Point
     t += dyn.size * (s / length)
   # Return Remainder
@@ -511,7 +594,14 @@ proc dispatch*(path: var NBrushStroke) =
   # Draw Point Line
   if count > 1:
     var a, b: NStrokePoint
-    for i in 1..<count:
+    # Initialize Scatter Random
+    if path.shape == bsBitmap:
+      let
+        peek = addr path.points[0]
+        seed = cast[int64](peek.x + peek.y)
+      path.generic.rng = initRand(seed)
+    # Draw Each Line
+    for i in 1 ..< count:
       a = path.points[i - 1]
       b = path.points[i]
       # Draw Brush Line

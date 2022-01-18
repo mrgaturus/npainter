@@ -62,6 +62,31 @@ static short brush_bilinear_warp(brush_texture_t* tex, int x, int y) {
   return m00;
 }
 
+static short brush_bilinear_zero(brush_texture_t* tex, int x, int y) {
+  // Pixel Fractional
+  const int fx = x & 32767;
+  const int fy = y & 32767;
+  // Pixel Position
+  const int x0 = x >> 15;
+  const int y0 = y >> 15;
+  const int x1 = x0 + 1;
+  const int y1 = y0 + 1;
+
+  int m00, m10, m01, m11;
+  // Load Four Pixels
+  m00 = brush_texture_zero(tex, x0, y0);
+  m10 = brush_texture_zero(tex, x1, y0);
+  m01 = brush_texture_zero(tex, x0, y1);
+  m11 = brush_texture_zero(tex, x1, y1);
+
+  // Bilinear Interpolate
+  m00 += (m10 - m00) * fx + 255 >> 15;
+  m01 += (m11 - m01) * fx + 255 >> 15;
+  m00 += (m01 - m00) * fy + 255 >> 15;
+  // Return Interpolated
+  return m00;
+}
+
 // ---------------------------
 // BRUSH CIRCLE MASK RENDERING
 // ---------------------------
@@ -300,118 +325,6 @@ void brush_blotmap_mask(brush_render_t* render, brush_blotmap_t* blot) {
 // BRUSH BITMAP MASK RENDERING
 // ---------------------------
 
-static short brush_bitmap_one(brush_bitmap_t* bitmap, int x, int y) {
-  short result;
-  // Affine Calculation
-  float calc_x, calc_y;
-
-  calc_x = bitmap->a * x + bitmap->b * y + bitmap->c;
-  calc_y = bitmap->d * x + bitmap->e * y + bitmap->f;
-
-  x = (int) floor(calc_x + 0.5);
-  y = (int) floor(calc_y + 0.5);
-
-  // Lookup Pixel From Texture
-  result = brush_texture_zero(bitmap->tex, x, y);
-  // Return Bitmap Pixel
-  return result;
-}
-
-static short brush_bitmap_area(brush_bitmap_t* bitmap, int x, int y, int level) {
-  int size, area;
-  // Calculate Area
-  size = 1 << level;
-  area = size << level;
-
-  float calc, du, dv;
-  // Reciprocal Subpixel Size
-  const float rcp = 1.0 / (float) size;
-  // 2x2 Inverse Affine with Partial Derivatives
-  __m128 row_xxxx, xxxx, dudx, dvdx;
-  __m128 row_yyyy, yyyy, dudy, dvdy;
-  // Nearest Interpolation
-  __m128 near_xxxx, near_yyyy;
-  // Convert Position To Integer
-  __m128i cvt_xxxx, cvt_yyyy;
-
-  // -- Initialize X Derivatives
-  du = bitmap->a; dv = bitmap->b;
-  // Initialize X Position with Nearest Offset
-  calc = du * x + dv * y + bitmap->c + 0.5;
-
-  du *= rcp; dv *= rcp;
-  // Initialize 2x2 X Position
-  row_xxxx = _mm_set_ps(
-    calc + du + dv,
-    calc + dv,
-    calc + du,
-    calc);
-  // Initialize X Derivative Steps
-  dudx = _mm_set1_ps(du * 2.0);
-  dvdx = _mm_set1_ps(dv * 2.0);
-
-  // -- Initialize Y Derivatives
-  du = bitmap->d; dv = bitmap->e;
-  // Initialize Y Position with Nearest Offset
-  calc = du * x + dv * y + bitmap->f + 0.5;
-
-  du *= rcp; dv *= rcp;
-  // Initialize 2x2 Y Position
-  row_yyyy = _mm_set_ps(
-    calc + du + dv,
-    calc + dv,
-    calc + du,
-    calc);
-  // Initialize Y Derivative Steps
-  dudy = _mm_set1_ps(du * 2.0);
-  dvdy = _mm_set1_ps(dv * 2.0);
-
-  // Subpixel Sum
-  int result = 0;
-  // Load Texture Pointer
-  brush_texture_t* tex;
-  // Bitmap Texture Pointer
-  tex = bitmap->tex;
-
-  // Calculate Subpixel Sumation
-  for (int sub_y = 0; sub_y < size; sub_y += 2) {
-    xxxx = row_xxxx; yyyy = row_yyyy;
-
-    for (int sub_x = 0; sub_x < size; sub_x += 2) {
-      near_xxxx = _mm_round_ps(xxxx, 9);
-      near_yyyy = _mm_round_ps(yyyy, 9);
-      // Convert To Positions to Integer
-      cvt_xxxx = _mm_cvtps_epi32(near_xxxx);
-      cvt_yyyy = _mm_cvtps_epi32(near_yyyy);
-
-      // Sum Each Pixel of 2x2
-      for (int i = 0; i < 4; i++) {
-        x = _mm_cvtsi128_si32(cvt_xxxx);
-        y = _mm_cvtsi128_si32(cvt_xxxx);
-
-        // Add Pixel to Subpixel Sumation
-        result += brush_texture_zero(tex, x, y);
-        // Shift One Pixel Position
-        cvt_xxxx = _mm_srli_si128(cvt_xxxx, 4);
-        cvt_yyyy = _mm_srli_si128(cvt_yyyy, 4);
-      }
-
-      // Step X Position
-      xxxx = _mm_add_ps(xxxx, dudx);
-      yyyy = _mm_add_ps(yyyy, dudy);
-    }
-
-    // Step Y Position
-    row_xxxx = _mm_add_ps(row_xxxx, dvdx);
-    row_yyyy = _mm_add_ps(row_yyyy, dvdy);
-  }
-
-  // Divide by area
-  result >>= area;
-  // Return Pixel
-  return result;
-}
-
 void brush_bitmap_mask(brush_render_t* render, brush_bitmap_t* bitmap) {
   int x1, x2, y1, y2;
   // Render Region
@@ -420,32 +333,60 @@ void brush_bitmap_mask(brush_render_t* render, brush_bitmap_t* bitmap) {
   x2 = x1 + render->w;
   y2 = y1 + render->h;
 
-  int level, stride;
-  // Subpixel Level
-  level = bitmap->level;
+  int stride, flow;
   // Canvas Buffer Stride
   stride = render->canvas->stride;
+  // Shape Current Flow
+  flow = render->flow;
 
-  short *dst_y, *dst_x, pixel;
+  unsigned int pixel;
+  unsigned short *dst_y, *dst_x;
   // Load Mask Buffer Pointer
   dst_y = render->canvas->buffer0;
   // Locate Buffer Pointer to Render Position
   dst_y += (render->y * stride) + render->x;
 
+  brush_texture_t* tex;
+  // Load Texture Pointer
+  tex = bitmap->tex;
+
+  // Load X Affine Transform
+  const int a = bitmap->a;
+  const int b = bitmap->b;
+  const int c = bitmap->c;
+  // Load Y Affine Transform
+  const int d = bitmap->d;
+  const int e = bitmap->e;
+  const int f = bitmap->f;
+
+  int xx, yy, row_xx, row_yy;
+  // Locate Affine Transform
+  xx = a * x1 + b * y1 + c - 16384;
+  yy = d * x1 + e * y1 + f - 16384;
+
   for (int y = y1; y < y2; y++) {
     dst_x = dst_y;
+    row_xx = xx;
+    row_yy = yy;
 
     for (int x = x1; x < x2; x++) {
-      if (level > 0) { // Check if needs Subpixel or not
-        pixel = brush_bitmap_area(bitmap, x, y, level);
-      } else { pixel = brush_texture_zero(bitmap, x, y); }
-
-      // Replace Pixel
+      // Lookup Current Pixel
+      pixel = brush_bilinear_zero(tex, row_xx, row_yy);
+      pixel = (pixel << 8) | pixel;
+      pixel = pixel * flow + flow >> 16;
+      // Replace Current Pixel
       *(dst_x) = pixel;
+
+      // Step X Affine
+      row_xx += a;
+      row_yy += d;
       // Step Pixel
       dst_x++;
     }
 
+    // Step Y Affine
+    xx += b;
+    yy += e;
     // Step Stride
     dst_y += stride;
   }

@@ -33,12 +33,10 @@ typedef struct {
 } brush_blotmap_t;
 
 typedef struct {
-  float x, y;
+  float sx, sy;
   // Inverse Affine
-  float a, b, c;
-  float d, e, f;
-  // Subpixel LOD
-  int level;
+  int a, b, c;
+  int d, e, f;
   // Brush Bitmap Buffer
   brush_texture_t* tex;
   // ------------------

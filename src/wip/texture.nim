@@ -98,6 +98,14 @@ proc mipmaps(tex: var NTexture) =
 # TEXTURE ACCESSOR MANIPULATION PROCS
 # -----------------------------------
 
+proc raw*(tex: ptr NTexture): NTextureRaw =
+  # Set Current Accesor
+  result.w = tex.w
+  result.h = tex.h
+  result.buffer = addr tex.buffer[0]
+  # Set Current Level
+  result.level = 0
+
 proc raw*(tex: ptr NTexture, scale: cfloat): NTextureRaw =
   let 
     level = max(0, -log2(scale).cint)

@@ -33,12 +33,10 @@ type
     # Blotmap Texture Pointer
     tex*: ptr NBrushTexture
   NBrushBitmap {.importc: "brush_bitmap_t" } = object
-    x, y: cfloat
+    sx, sy: cfloat
     # Inverse Affine
-    a, b, c: cfloat
-    d, e, f: cfloat
-    # Subpixel LOD
-    level: cint
+    a, b, c: cint
+    d, e, f: cint
     # Bitmap Texture Pointer
     tex*: ptr NBrushTexture
 
@@ -189,35 +187,53 @@ proc tone*(tex: ptr NBrushTexture, tone, flow, size: cfloat) =
 # BRUSH BITMAP MASK DEFINITION
 # ----------------------------
 
-proc basic*(bitmap: var NBrushBitmap; x, y: cfloat) =
-  # Change Position
-  bitmap.x = x
-  bitmap.y = y
-
-proc affine*(bitmap: var NBrushBitmap; angle, scale, aspect: cfloat) =
-  # -- Calculate Affine Transformation
+proc scaling*(bitmap: var NBrushBitmap; size, aspect: cfloat): cfloat =
   let
-    x = bitmap.x
-    y = bitmap.y
-    # Orientation
+    w = cfloat(bitmap.tex.w)
+    h = cfloat(bitmap.tex.h)
+    # Fit Scale to Square
+    scale = min(size / w, size / h)
+  # Ajust Aspect Ratio
+  var sx, sy = scale
+  if aspect > 0.0:
+    sx *= aspect
+  elif aspect < 0.0:
+    sy *= -aspect
+  # Replace Scaling
+  bitmap.sx = sx
+  bitmap.sy = sy
+  # Return Minimun Scaling
+  result = min(sx, sy)
+
+proc affine*(bitmap: var NBrushBitmap; x, y, angle: cfloat) =
+  let
+    # Texture Orientation
     sa = sin(angle)
     ca = cos(angle)
-    # Center Of Texture Rectangle
+    # Texture Rectangle Center
     cx = cfloat(bitmap.tex.w) * 0.5
     cy = cfloat(bitmap.tex.h) * 0.5
-    # Aspect Ratio
-    wh = cint(0.0 < aspect) - cint(aspect < 0.0)
-    fract = 1.0 - (aspect - aspect.floor)
-  # Calculate Scaling
-  var sx, sy = scale
-  # Apply Aspect Ratio
-  if wh < 0: sx *= fract
-  elif wh > 0: sy *= fract
-  # Convert To Reciprocal
-  sx = 1.0 / sx; sy = 1.0 / sy
+    # Calculate Scaling
+    sx = bitmap.sx
+    sy = bitmap.sy
+    # Convert To Reciprocal
+    rx = 1.0 / sx
+    ry = 1.0 / sy
+  # Affine Constants
+  var a, b, c, d, e, f: cfloat
   # X Affine Transformation
-  bitmap.a = ca * sx; bitmap.b = sa * sx
-  bitmap.c = -(ca * x + sa * y + cx * sx) * sx
+  a = ca * rx
+  b = sa * rx
+  c = -(ca * x + sa * y - cx * sx) * rx
   # Y Affine Transformation
-  bitmap.d = -sa * sy; bitmap.e = ca * sy
-  bitmap.f = (sa * x - ca * y - cy * sy) * sy
+  d = -sa * ry
+  e = ca * ry
+  f = (sa * x - ca * y + cy * sy) * ry
+  # Convert X Affine to Fix15
+  bitmap.a = cint(a * 32768.0)
+  bitmap.b = cint(b * 32768.0)
+  bitmap.c = cint(c * 32768.0)
+  # Convert Y Affine to Fix15
+  bitmap.d = cint(d * 32768.0)
+  bitmap.e = cint(e * 32768.0)
+  bitmap.f = cint(f * 32768.0)

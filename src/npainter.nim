@@ -24,14 +24,15 @@ type
     # Bitmap Parameters
     bitmap_flow: Value
     bitmap_space: Value
-    bitmap_scale: Value
     bitmap_angle: Value
+    bitmap_aspect: Value
+    bitmap_scale: Value
     # Scattering Parameters
     scatter_space: Value
     scatter_scale: Value
     scatter_angle: Value
     # Texture Images
-    tex0, tex1: NTexture
+    tex0, tex1, tex2: NTexture
   GUIBlendPanel = ref object of GUICanvasPanel
     # RGB Color
     color: RGBColor
@@ -153,7 +154,20 @@ proc prepare(self: GUICanvas) =
       blot.invert = banel.blot_invert
       # Set Texture Buffer Pointer
       blot.texture = addr banel.tex0
-  of bsBitmap: banel.shape = bsCircle
+  of bsBitmap:
+      let bitmap = addr path.mask.bitmap
+      # Configure Bitmap Affine
+      bitmap.flow = distance(banel.bitmap_flow)
+      bitmap.step = distance(banel.bitmap_space)
+      bitmap.angle = distance(banel.bitmap_angle)
+      bitmap.aspect = distance(banel.bitmap_aspect)
+      bitmap.scale = distance(banel.bitmap_scale)
+      # Configure Bitmap Scattering
+      bitmap.s_space = distance(banel.scatter_space)
+      bitmap.s_angle = distance(banel.scatter_angle)
+      bitmap.s_scale = distance(banel.scatter_scale)
+      # Set Texture Buffer Pointer
+      bitmap.texture = addr banel.tex1
   # Configure Blending Mode
   case panel.blend
   of bnAverage, bnWater:
@@ -545,25 +559,34 @@ proc newShapePanel(): GUIShapePanel =
   slider = newSlider(addr result.scatter_angle)
   slider.geometry(90, 245, 100, slider.hint.h)
   result.add(slider)
-  # Angle Slider
-  interval(result.bitmap_scale, 0, 100)
-  label = newLabel("Scale", hoLeft, veMiddle)
+  # Aspect Ratio Slider
+  interval(result.bitmap_aspect, -100, 100)
+  label = newLabel("Aspect", hoLeft, veMiddle)
   label.geometry(5, 285, 80, label.hint.h)
   result.add(label)
-  slider = newSlider(addr result.bitmap_scale)
+  slider = newSlider(addr result.bitmap_aspect)
   slider.geometry(90, 285, 150, slider.hint.h)
+  result.add(slider)
+  # Scale Slider
+  interval(result.bitmap_scale, 0, 100)
+  label = newLabel("Scale", hoLeft, veMiddle)
+  label.geometry(5, 305, 80, label.hint.h)
+  result.add(label)
+  slider = newSlider(addr result.bitmap_scale)
+  slider.geometry(90, 305, 150, slider.hint.h)
   result.add(slider)
   # -- Min Size Slider
   interval(result.scatter_scale, 0, 100)
   label = newLabel("Mess Scale", hoLeft, veMiddle)
-  label.geometry(5, 305, 80, label.hint.h)
+  label.geometry(5, 325, 80, label.hint.h)
   result.add(label)
   slider = newSlider(addr result.scatter_scale)
-  slider.geometry(90, 305, 100, slider.hint.h)
+  slider.geometry(90, 325, 100, slider.hint.h)
   result.add(slider)
   # Load Demo Textures
   result.tex0 = newPNGTexture("tex0.png")
   result.tex1 = newPNGTexture("tex1.png")
+  result.tex2 = newPNGTexture("tex2.png")
 
 proc newCanvas(): GUICanvas =
   new result
