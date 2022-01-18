@@ -343,7 +343,7 @@ proc prepare_stage0(path: var NBrushStroke, dyn: ptr NStrokeGeneric) =
       r2 = r0 - floor(r0)
       # Random Interpolator
       s_space = size * b.s_space
-      s_angle = r2 * b.s_angle
+      s_angle = r1 * b.s_angle
       s_scale = 1.0 + (r2 - 1.0) * b.s_scale
       # Scatter Position
       x1 = x + r0 * s_space
