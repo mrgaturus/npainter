@@ -332,7 +332,11 @@ proc prepare_stage0(path: var NBrushStroke, dyn: ptr NStrokeGeneric) =
     const
       # Shorcut of 2 * PI
       pi2 = 6.283185307179586
-    let 
+    # Generate New Random
+    if path.pipe.skip:
+      let seed = cast[int64](x + y)
+      path.generic.rng = initRand(seed)
+    let
       # Scatter Shortcut
       b = addr path.mask.bitmap
       tex0 = mask.bitmap.tex
@@ -594,12 +598,6 @@ proc dispatch*(path: var NBrushStroke) =
   # Draw Point Line
   if count > 1:
     var a, b: NStrokePoint
-    # Initialize Scatter Random
-    if path.shape == bsBitmap:
-      let
-        peek = addr path.points[0]
-        seed = cast[int64](peek.x + peek.y)
-      path.generic.rng = initRand(seed)
     # Draw Each Line
     for i in 1 ..< count:
       a = path.points[i - 1]
