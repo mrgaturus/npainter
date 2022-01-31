@@ -27,6 +27,9 @@ type
     bitmap_angle: Value
     bitmap_aspect: Value
     bitmap_scale: Value
+    # Bitmap Automatic
+    auto_flow: bool
+    auto_angle: bool
     # Scattering Parameters
     scatter_space: Value
     scatter_scale: Value
@@ -166,6 +169,12 @@ proc prepare(self: GUICanvas) =
       bitmap.s_space = distance(banel.scatter_space)
       bitmap.s_angle = distance(banel.scatter_angle)
       bitmap.s_scale = distance(banel.scatter_scale)
+      # Configure Automatic Flow
+      bitmap.auto_flow = banel.auto_flow
+      # Configure Automatic Angle
+      if banel.auto_angle:
+        bitmap.auto_angle = 255
+      else: bitmap.auto_angle = 0
       # Set Texture Buffer Pointer
       bitmap.texture = addr banel.tex1
   # Configure Blending Mode
@@ -267,7 +276,7 @@ method event(self: GUICanvas, state: ptr GUIState) =
   elif self.test(wGrab) and 
   state.kind == evCursorMove and 
   self.handle == LeftButton:
-    point(self.path, state.px, state.py, state.pressure)
+    point(self.path, state.px, state.py, state.pressure, 0.0)
     # Call Dispatch
     if not self.busy:
       # Push Dispatch Callback
@@ -474,7 +483,7 @@ proc newShapePanel(): GUIShapePanel =
   # Set Mouse Attribute
   result.flags = wMouse
   # Set Geometry To Floating
-  result.geometry(1280 - 250 - 5, 5, 250, 350)
+  result.geometry(1280 - 250 - 5, 5, 250, 400)
   # Create Label: |Slider|
   var 
     label: GUILabel
@@ -519,69 +528,77 @@ proc newShapePanel(): GUIShapePanel =
   check = newCheckbox("Invert Texture", addr result.blot_invert)
   check.geometry(90, 105, 150, check.hint.h)
   result.add(check)
+  # Automatic Flow
+  check = newCheckbox("Automatic Flow", addr result.auto_flow)
+  check.geometry(90, 145, 150, check.hint.h)
+  result.add(check)
   # Spacing Slider
   interval(result.bitmap_flow, 0, 100)
   label = newLabel("Flow", hoLeft, veMiddle)
-  label.geometry(5, 145, 80, label.hint.h)
+  label.geometry(5, 165, 80, label.hint.h)
   result.add(label)
   slider = newSlider(addr result.bitmap_flow)
-  slider.geometry(90, 145, 150, slider.hint.h)
+  slider.geometry(90, 165, 150, slider.hint.h)
   result.add(slider)
   # Spacing Slider
   interval(result.bitmap_space, 2.5, 50)
   label = newLabel("Spacing", hoLeft, veMiddle)
-  label.geometry(5, 165, 80, label.hint.h)
+  label.geometry(5, 185, 80, label.hint.h)
   result.add(label)
   slider = newSlider(addr result.bitmap_space, 1)
-  slider.geometry(90, 165, 150, slider.hint.h)
+  slider.geometry(90, 185, 150, slider.hint.h)
   result.add(slider)
   # -- Min Size Slider
   interval(result.scatter_space, 0, 100)
   label = newLabel("Mess Spacing", hoLeft, veMiddle)
-  label.geometry(5, 185, 80, label.hint.h)
+  label.geometry(5, 205, 80, label.hint.h)
   result.add(label)
   slider = newSlider(addr result.scatter_space)
-  slider.geometry(90, 185, 100, slider.hint.h)
+  slider.geometry(90, 205, 100, slider.hint.h)
   result.add(slider)
+  # Automatic Flow
+  check = newCheckbox("Automatic Angle", addr result.auto_angle)
+  check.geometry(90, 245, 150, check.hint.h)
+  result.add(check)
   # Angle Slider
   interval(result.bitmap_angle, 0, 360)
   label = newLabel("Angle", hoLeft, veMiddle)
-  label.geometry(5, 225, 80, label.hint.h)
+  label.geometry(5, 265, 80, label.hint.h)
   result.add(label)
   slider = newSlider(addr result.bitmap_angle)
-  slider.geometry(90, 225, 150, slider.hint.h)
+  slider.geometry(90, 265, 150, slider.hint.h)
   result.add(slider)
   # -- Min Size Slider
   interval(result.scatter_angle, 0, 100)
   label = newLabel("Mess Angle", hoLeft, veMiddle)
-  label.geometry(5, 245, 80, label.hint.h)
+  label.geometry(5, 285, 80, label.hint.h)
   result.add(label)
   slider = newSlider(addr result.scatter_angle)
-  slider.geometry(90, 245, 100, slider.hint.h)
+  slider.geometry(90, 285, 100, slider.hint.h)
   result.add(slider)
   # Aspect Ratio Slider
   interval(result.bitmap_aspect, -100, 100)
   label = newLabel("Aspect", hoLeft, veMiddle)
-  label.geometry(5, 285, 80, label.hint.h)
+  label.geometry(5, 325, 80, label.hint.h)
   result.add(label)
   slider = newSlider(addr result.bitmap_aspect)
-  slider.geometry(90, 285, 150, slider.hint.h)
+  slider.geometry(90, 325, 150, slider.hint.h)
   result.add(slider)
   # Scale Slider
   interval(result.bitmap_scale, 0, 100)
   label = newLabel("Scale", hoLeft, veMiddle)
-  label.geometry(5, 305, 80, label.hint.h)
+  label.geometry(5, 345, 80, label.hint.h)
   result.add(label)
   slider = newSlider(addr result.bitmap_scale)
-  slider.geometry(90, 305, 150, slider.hint.h)
+  slider.geometry(90, 345, 150, slider.hint.h)
   result.add(slider)
   # -- Min Size Slider
   interval(result.scatter_scale, 0, 100)
   label = newLabel("Mess Scale", hoLeft, veMiddle)
-  label.geometry(5, 325, 80, label.hint.h)
+  label.geometry(5, 365, 80, label.hint.h)
   result.add(label)
   slider = newSlider(addr result.scatter_scale)
-  slider.geometry(90, 325, 100, slider.hint.h)
+  slider.geometry(90, 365, 100, slider.hint.h)
   result.add(slider)
   # Load Demo Textures
   result.tex0 = newPNGTexture("tex0.png")

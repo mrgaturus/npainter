@@ -1,10 +1,14 @@
 import texture
 import brush/pipe
-# Import Useful Math
+# Import Math
 from math import 
   floor, ceil,
   sqrt, pow, log2,
-  sin, cos, PI
+  # Angle Calculation
+  sin, cos, arctan2
+# Import 2PI Constant
+const pi2 = 6.283185307179586
+# Import Scattering
 from random import 
   Rand, gauss, initRand
 # Export Brush Pipeline Kinds
@@ -35,6 +39,9 @@ type
     flow*, step*: cfloat
     # Angle & Aspect Ratio
     scale*, angle*, aspect*: cfloat
+    # Automatic Calculation
+    auto_flow*: bool
+    auto_angle*: byte
     # Scatter Intensity
     s_space*: cfloat
     s_angle*: cfloat
@@ -76,8 +83,10 @@ type
 
 type
   NStrokePoint = object
-    x, y, press: float32
+    x, y, press, angle: float32
   # ----------------
+  NStrokeAngle = enum
+    faAuto, faStylus, faNone
   NStrokeFlow = enum
     fwAuto, fwFlat, fwCustom
   NStrokeGeneric = object
@@ -85,12 +94,14 @@ type
     x, y: cfloat
     # Staged Shape
     size, angle: cfloat
+    turn: NStrokeAngle
     # Staged Opacity
     alpha, flow: cfloat
-    # Constant Flow Kind
     kind: NStrokeFlow
+    # Constant Flow Kind
     magic: cfloat
-    # Randomizer
+    # Bitmap Randomizer
+    affine: bool
     rng: Rand
   # --------------------
   NStrokeRegion = object
@@ -216,11 +227,8 @@ proc prepare*(path: var NBrushStroke) =
     path.step = 0.025 + 0.975 * step
     # Bind Pipeline Texture to Blotmap
     path.pipe.mask.bitmap.tex = tex0
-  # Define Which Flow Use
-  if shape == bsBitmap:
-    dyn.kind = fwCustom
-    dyn.magic = path.mask.bitmap.flow
-  elif blend in {bnFlat, bnMarker, bnSmudge}:
+  # Define Flow Calculation
+  if blend in {bnFlat, bnMarker, bnSmudge}:
     dyn.kind = fwFlat
     # Decide Which Flow Use
     dyn.magic = case blend
@@ -232,6 +240,23 @@ proc prepare*(path: var NBrushStroke) =
   else: # Use Automatic
     dyn.kind = fwAuto
     dyn.magic = path.step
+  # Define Bitmap Calculation
+  if shape == bsBitmap:
+    let b = addr path.mask.bitmap
+    # Configure Affine Mode
+    dyn.affine = true
+    # Configure Flow Mode
+    if not b.auto_flow:
+      dyn.kind = fwCustom
+      dyn.magic = b.flow
+    # Configure Angle Mode
+    case b.auto_angle
+    of 0: dyn.turn = faNone
+    of 255: dyn.turn = faAuto
+    else: dyn.turn = faStylus
+  else:
+    dyn.affine = false
+    dyn.turn = faNone
   # Prepare Pipeline Kind
   path.pipe.shape = shape
   path.pipe.blend = blend
@@ -329,9 +354,6 @@ proc prepare_stage0(path: var NBrushStroke, dyn: ptr NStrokeGeneric) =
     # Brush Circle Region
     r = region(x, y, size)
   of bsBitmap:
-    const
-      # Shorcut of 2 * PI
-      pi2 = 6.283185307179586
     # Generate New Random
     if path.pipe.skip:
       let seed = cast[int64](x + y)
@@ -353,7 +375,7 @@ proc prepare_stage0(path: var NBrushStroke, dyn: ptr NStrokeGeneric) =
       x1 = x + r0 * s_space
       y1 = y + r1 * s_space
       # Scatter Angle / Scale
-      a1 = pi2 * (b.angle + angle + s_angle)
+      a1 = pi2 * (b.angle + s_angle + angle)
       s1 = max(size * b.scale * s_scale, 1.0)
       # Bitmap Aspect Ratio
       wh = 2.0 * b.aspect - 1.0
@@ -515,15 +537,21 @@ proc evaluate(dyn: ptr NStrokeGeneric, basic: ptr NStrokeBasic, p, step: cfloat)
   # Pressure Interpolation
   size = (s_st + s_dist * size) * basic.size
   alpha = (a_st + a_dist * alpha) * basic.alpha
-  # Simulate Smallest
-  if dyn.kind == fwCustom:
-    size = max(size, 1.0)
-  elif size < 2.5:
-    alpha *= size * 0.4
-    # Clamp Size
-    size = 2.5
-  # Ajust Distance Step With Size
-  result = step + (1.0 / size)
+  # Ajust Size and Distance
+  if not dyn.affine:
+    if size < 2.5:
+      alpha *= size * 0.4
+      # Clamp Size
+      size = 2.5
+    # Ajust Step With Size
+    result = step + (1.0 / size)
+  else:
+    if size < 1.0:
+      alpha *= size
+      # Clamp Size
+      size = 1.0
+    # Ajust Step With Size
+    result = max(step, 1.0 / size)
   # Calculate Flow Opacity
   case dyn.kind
   of fwAuto:
@@ -563,7 +591,11 @@ proc line(path: var NBrushStroke, a, b: NStrokePoint, start: cfloat): cfloat =
       b.press - a.press
   var
     t = start / length
-    press, s: cfloat
+    da, press, s: cfloat
+  # Calculate Angle Distance
+  da = (b.angle - a.angle + 0.5)
+  da = da - floor(da) - 0.5
+  if da < -0.5: da += 1.0
   # Draw Each Stroke Point
   while t < 1.0:
     # Pressure Interpolation
@@ -573,6 +605,10 @@ proc line(path: var NBrushStroke, a, b: NStrokePoint, start: cfloat): cfloat =
     # Current Position
     dyn.x = a.x + dx * t
     dyn.y = a.y + dy * t
+    # Current Angle
+    dyn.angle = a.angle + da * t
+    if dyn.angle < 0.0:
+      dyn.angle += 1.0
     # Render Current Shape
     path.stage(dyn, press)
     # Step to Next Point
@@ -584,10 +620,44 @@ proc line(path: var NBrushStroke, a, b: NStrokePoint, start: cfloat): cfloat =
 # BRUSH POINT MANIPULATION
 # ------------------------
 
-proc point*(path: var NBrushStroke; x, y, press: cfloat) =
+proc point*(path: var NBrushStroke; x, y, press, angle: cfloat) =
   var p: NStrokePoint
   # Point Position
   p.x = x; p.y = y
+  # Point Angle
+  case path.generic.turn
+  of faNone: p.angle = 0.0
+  of faStylus: p.angle = angle
+  of faAuto:
+    var omega: cfloat
+    # Calculate Angle for Two Points
+    if len(path.points) > 0:
+      let
+        basic = addr path.basic
+        prev = addr path.points[^1]
+        # Calculate Delta Position
+        dx = p.x - prev.x
+        dy = p.y - prev.y
+        # Calculate Distance
+        dist = sqrt(dx * dx + dy * dy)
+        # Calculate Minimun Size
+        p_size = basic.p_size
+        # Calculate Minimun Distance
+        t = p_size + press - press * p_size
+        limit = path.step * basic.size * t
+      # Skip Not Enough Distance
+      if dist < limit * 0.5: return
+      # Calculate Angle
+      omega = arctan2(dy, dx)
+      if omega < 0.0: omega += pi2
+      omega = omega / pi2
+      # Replace First Angle
+      if prev.angle > 1.0:
+        prev.angle = omega
+        prev.press = press
+      # Set Current Angle
+      p.angle = omega
+    else: p.angle = 2.0
   # Avoid 0.0 Infinite Loop
   p.press = max(press, 0.0001)
   # Add New Point
