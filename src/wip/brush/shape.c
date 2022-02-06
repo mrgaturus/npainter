@@ -404,44 +404,76 @@ void brush_texture_mask(brush_render_t* render, brush_texture_t* tex) {
   x2 = x1 + render->w;
   y2 = y1 + render->h;
 
-  int stride;
+  int stride, flow;
   // Canvas Buffer Stride
   stride = render->canvas->stride;
 
-  short *dst_y, *dst_x;
+  unsigned short *dst_y, *dst_x;
   // Load Mask Buffer Pointer
   dst_y = render->canvas->buffer0;
   // Locate Buffer Pointer to Render Position
   dst_y += (render->y * stride) + render->x;
 
-  short fract;
-  // Load Interpolation
+  unsigned int fract, froct, invert;
+  // Load Texture Interpolation
   fract = tex->fract;
+  invert = fract & 65536;
+  fract &= 65535;
+  // Load Inverse Interpolation
+  froct = 65535 - fract;
+  froct = 65535 * froct + froct >> 16;
+  // Load Texture Tone
+  const int tone0 = 65535 - tex->tone0;
+  const int tone1 = tex->tone1;
 
-  int pixel, mask, calc;
+  int row_xx, xx, yy;
+  // Calculate Sized Scaled
+  const int fixed = tex->fixed;
+  const int fw = tex->w << 16;
+  const int fh = tex->h << 16;
+  // Calculate Fixed Interpolation
+  xx = (x1 * fixed) % fw;
+  yy = (y1 * fixed) % fh;
+
+  unsigned int pixel, mask;
   // Apply Blotmap Difference
   for (int y = y1; y < y2; y++) {
+    row_xx = xx;
     dst_x = dst_y;
 
     for (int x = x1; x < x2; x++) {
       // Check if is not zero
       if (pixel = *dst_x) {
-        mask = brush_texture_warp(tex, x, y);
-        // Calculate Pixel Multiply
-        //mask = div_32767(mask * pixel);
+        mask = brush_bilinear_warp(tex, row_xx, yy);
+        if (invert) mask = 255 - mask;
+        // Ajust Current Texture Pixel
+        mask = mask * fract + fract >> 8;
+        // Ajust Interpolation
+        mask += froct;
 
-        // Interpolate Both Pixels
-        calc = (mask - pixel) * fract;
-        //calc = pixel + div_32767(calc);
+        // Calculate Texture Scratch
+        if (mask < tone0) mask = tone0;
+        mask = (mask - tone0) * tone1 >> 16;
+
+        // Apply Texture Multiply
+        mask = pixel * mask + 65535 >> 16;
         // Replace Pixel
-        *(dst_x) = calc;
+        *dst_x = mask;
       }
 
       // Step Pixel
       dst_x++;
+      // Step Scaler
+      row_xx += fixed;
+      if (row_xx >= fw)
+        row_xx -= fw;
     }
 
     // Step Stride
     dst_y += stride;
+    // Step Scaler
+    yy += fixed;
+    if (yy >= fh)
+      yy -= fh;
   }
 }

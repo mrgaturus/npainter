@@ -34,6 +34,12 @@ type
     scatter_space: Value
     scatter_scale: Value
     scatter_angle: Value
+    # Texture Configuration
+    tex_amount: Value
+    tex_scale: Value
+    tex_scratch0: Value
+    tex_scratch1: Value
+    tex_invert: bool
     # Texture Images
     tex0, tex1, tex2: NTexture
   GUIBlendPanel = ref object of GUICanvasPanel
@@ -177,6 +183,18 @@ proc prepare(self: GUICanvas) =
       else: bitmap.auto_angle = 0
       # Set Texture Buffer Pointer
       bitmap.texture = addr banel.tex1
+  # Configure Texture
+  block:
+    let texture = addr path.texture
+    texture.fract = distance(banel.tex_amount)
+    texture.scale = distance(banel.tex_scale)
+    texture.invert = banel.tex_invert
+    # Texture Scratch
+    texture.scratch = distance(banel.tex_scratch0)
+    texture.p_scratch = distance(banel.tex_scratch1)
+    # Temporal Enabled Check
+    texture.texture = addr banel.tex2
+    texture.enabled = texture.fract > 0.0
   # Configure Blending Mode
   case panel.blend
   of bnAverage, bnWater:
@@ -483,7 +501,7 @@ proc newShapePanel(): GUIShapePanel =
   # Set Mouse Attribute
   result.flags = wMouse
   # Set Geometry To Floating
-  result.geometry(1280 - 250 - 5, 5, 250, 400)
+  result.geometry(1280 - 250 - 5, 5, 250, 550)
   # Create Label: |Slider|
   var 
     label: GUILabel
@@ -600,6 +618,44 @@ proc newShapePanel(): GUIShapePanel =
   slider = newSlider(addr result.scatter_scale)
   slider.geometry(90, 365, 100, slider.hint.h)
   result.add(slider)
+  # Texture Intensity
+  interval(result.tex_amount, 0, 100)
+  label = newLabel("Intensity", hoLeft, veMiddle)
+  label.geometry(5, 425, 80, label.hint.h)
+  result.add(label)
+  slider = newSlider(addr result.tex_amount)
+  slider.geometry(90, 425, 150, slider.hint.h)
+  result.add(slider)
+  # Texture Scale
+  interval(result.tex_scale, 10, 500)
+  label = newLabel("Scale", hoLeft, veMiddle)
+  label.geometry(5, 445, 80, label.hint.h)
+  result.add(label)
+  slider = newSlider(addr result.tex_scale)
+  slider.geometry(90, 445, 150, slider.hint.h)
+  result.add(slider)
+  check = newCheckbox("Invert Texture", addr result.tex_invert)
+  check.geometry(90, 465, 150, check.hint.h)
+  result.add(check)
+  # Texture Scratch
+  interval(result.tex_scratch0, 0, 100)
+  label = newLabel("Scratch", hoLeft, veMiddle)
+  label.geometry(5, 505, 80, label.hint.h)
+  result.add(label)
+  slider = newSlider(addr result.tex_scratch0)
+  slider.geometry(90, 505, 150, slider.hint.h)
+  result.add(slider)
+  # -- Min Scratch
+  interval(result.tex_scratch1, 0, 100)
+  label = newLabel("Min Scratch", hoLeft, veMiddle)
+  label.geometry(5, 525, 80, label.hint.h)
+  result.add(label)
+  slider = newSlider(addr result.tex_scratch1)
+  slider.geometry(90, 525, 100, slider.hint.h)
+  result.add(slider)
+  # -- Default Values --
+  val(result.bitmap_flow, 100)
+  val(result.bitmap_scale, 100)
   # Load Demo Textures
   result.tex0 = newPNGTexture("tex0.png")
   result.tex1 = newPNGTexture("tex1.png")

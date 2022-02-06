@@ -50,12 +50,18 @@ type
     texture*: ptr NTexture
   # ---------------------
   NStrokeTexture = object
-    # Texture Configuration
-    fract*, tone*, scale*: cfloat
-    # Texture Invert
+    # Interpolation
+    fract*: cfloat
+    scale*: cfloat
+    # Scratch
+    scratch*: cfloat
+    p_scratch*: cfloat
+    # Texture Flags
+    enabled*: bool
     invert*: bool
     # Texture Buffer
     texture*: ptr NTexture
+
 type
   NStrokeAverage = object
     blending*: cfloat
@@ -257,6 +263,21 @@ proc prepare*(path: var NBrushStroke) =
   else:
     dyn.affine = false
     dyn.turn = faNone
+  # Define Texture Calculation
+  if path.texture.enabled:
+    let
+      tex0 = addr path.texture
+      tex1 = addr path.pipe.tex1
+      # Calculate Scale Interpolation
+      scale = 0.1 + (5.0 - 0.1) * tex0.scale
+      mip = raw(tex0.texture, scale)
+    # Configure Texture Buffer
+    tex1.image(mip.w, mip.h, mip.buffer)
+    # Configure Texture Scale & Interpolation
+    tex1.amount(tex0.fract, tex0.invert)
+    tex1.scale(scale, mip.level)
+  else: # Configure Texture None
+    image(addr path.pipe.tex1, 0, 0, nil)
   # Prepare Pipeline Kind
   path.pipe.shape = shape
   path.pipe.blend = blend
@@ -397,7 +418,18 @@ proc prepare_stage0(path: var NBrushStroke, dyn: ptr NStrokeGeneric) =
     # Calculare Brush Bitmap Region
     r = region(x1, y1, s1 + offset, a1)
   # Pipeline Stage Texture
-  # ----------------------
+  if path.texture.enabled:
+    let
+      tex0 = addr path.texture
+      tex1 = addr path.pipe.tex1
+      # Scratch Interval
+      st = 1.0 - alpha
+      s0 = tex0.p_scratch
+      s1 = s0 + st - s0 * st
+      # Scratch Interpolation
+      tone = tex0.scratch * s1
+    # Apply Scratch Amount
+    tex1.tone(tone, size)
   # Pipeline Stage Blocks
   reserve(path.pipe,
     r.x1, r.y1,
@@ -556,9 +588,9 @@ proc evaluate(dyn: ptr NStrokeGeneric, basic: ptr NStrokeBasic, p, step: cfloat)
   case dyn.kind
   of fwAuto:
     # Ajust Opacity With Size
-    alpha = min(alpha, 0.99995)
+    flow = min(alpha, 0.99995)
     # Calculate Flow
-    flow = 1.0 - alpha
+    flow = 1.0 - flow
     flow = pow(flow, result)
     flow = 1.0 - flow
   of fwFlat:

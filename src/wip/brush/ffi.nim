@@ -183,6 +183,20 @@ proc tone*(tex: ptr NBrushTexture, tone, flow, size: cfloat) =
   tex.tone0 = cast[cint](t0)
   tex.tone1 = cast[cint](t1)
 
+proc tone*(tex: ptr NBrushTexture, tone, size: cfloat) =
+  var t0, t1: uint32
+  # Calculate Reciprocal Size
+  let s = uint32(65535.0 / size)
+  # Clamp to Reciprocal Size
+  t0 = uint32(tone * 65535.0)
+  t0 = max(65535 - t0, s)
+  # Calculate Tone Scale
+  if t0 > 0:
+    t1 = uint32(4294836225) div t0
+  # Set Current Tone
+  tex.tone0 = cast[cint](t0)
+  tex.tone1 = cast[cint](t1)
+
 # ----------------------------
 # BRUSH BITMAP MASK DEFINITION
 # ----------------------------
