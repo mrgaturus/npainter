@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+// Copyright (c) 2021 Cristian Camilo Ruiz <mrgaturus>
 #include "brush.h"
 
 void brush_normal_blend(brush_render_t* render) {

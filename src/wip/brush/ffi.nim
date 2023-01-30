@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+# Copyright (c) 2021 Cristian Camilo Ruiz <mrgaturus>
 from math import 
   floor, ceil,
   log2, sin, cos

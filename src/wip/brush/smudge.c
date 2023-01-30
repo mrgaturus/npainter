@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+// Copyright (c) 2021 Cristian Camilo Ruiz <mrgaturus>
 #include "brush.h"
 
 static __m128i _mm_mix_65535(__m128i xmm0, __m128i xmm1, __m128i fract) {

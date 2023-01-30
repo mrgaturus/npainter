@@ -1,12 +1,9 @@
-# -------------------------
-# Import C Code of Triangle
-# -------------------------
-
+# SPDX-License-Identifier: GPL-2.0-or-later
+# Copyright (c) 2021 Cristian Camilo Ruiz <mrgaturus>
 {.compile: "distort/sample.c".}
 {.compile: "distort/triangle.c".}
 {.compile: "distort/rasterize.c".}
 {.compile: "distort/surface.c".}
-
 {.push header: "distort/distort.h", used.}
 
 type
