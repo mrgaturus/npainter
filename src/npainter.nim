@@ -1,11 +1,11 @@
 import gui/[window, widget, render, event, signal, timer]
-import gui/widgets/[slider, label, color, radio, check]
+import gui/widgets/[slider, label, color, radio, check, button]
 # Import OpenGL
 import libs/gl
 # Import Maths
 import omath
 # Import Brush Engine
-import wip/[brush, texture]
+import wip/[brush, texture, binary]
 import spmc
 
 const
@@ -68,10 +68,18 @@ type
     p_minimun: Value
     # ----------------
     blur: Value
+  GUIBucketPanel = ref object of GUICanvasPanel
+    check: NBucketCheck
+    # Threshold Sliders
+    threshold: Value
+    gap: Value
+    # Antialiasing Check
+    antialiasing: bool
   GUICanvas = ref object of GUIWidget
     # Canvas Brush Panel
     panel: GUIBlendPanel
     shape: GUIShapePanel
+    bucket: GUIBucketPanel
     # Mask & Color Buffer
     buffer0: array[bw*bh, int16]
     buffer1: array[bw*bh*4, int16]
@@ -87,6 +95,8 @@ type
     handle: uint
     # Thread Pool
     pool: NThreadPool
+  GUICanvasState = object
+    canvas: GUICanvas
 
 # -------------------------
 # GUI CANVAS PIXEL TRANSFER
@@ -231,6 +241,22 @@ proc prepare(self: GUICanvas) =
   # Prepare Path Rendering
   self.path.prepare()
 
+# -------------
+# GUI Callbacks
+# -------------
+proc cb_panel_bucket(global: ptr GUICanvasState, dummy: pointer) =
+  global[].canvas.shape.set(wHidden)
+  global[].canvas.bucket.clear(wHidden)
+  pushSignal(global[].canvas.target, msgDirty)
+
+proc cb_panel_brush(global: ptr GUICanvasState, dummy: pointer) =
+  global[].canvas.shape.clear(wHidden)
+  global[].canvas.bucket.set(wHidden)
+  pushSignal(global[].canvas.target, msgDirty)
+
+proc cb_bucket(g: pointer, w: ptr GUITarget) =
+  discard
+
 proc cb_dispatch(g: pointer, w: ptr GUITarget) =
   let self = cast[GUICanvas](w[])
   # Draw Point Line
@@ -272,6 +298,10 @@ proc cb_clear(g: pointer, w: ptr GUITarget) =
   glBindTexture(GL_TEXTURE_2D, 0)
   # Recover Status
   self.busy = false
+
+# ------------------------
+# GUICanvas Widget Methods
+# ------------------------
 
 method event(self: GUICanvas, state: ptr GUIState) =
   #state.px *= 4.0
@@ -661,6 +691,50 @@ proc newShapePanel(): GUIShapePanel =
   result.tex1 = newPNGTexture("tex1.png")
   result.tex2 = newPNGTexture("tex2.png")
 
+proc newBucketPanel(): GUIBucketPanel =
+  new result
+  # Set Mouse Attribute
+  result.flags = wMouse
+  # Set Geometry To Floating
+  result.geometry(1280 - 250 - 5, 5, 250, 125)
+  # Create Label: |Slider|
+  var 
+    label: GUILabel
+    slider: GUISlider
+    check: GUIWidget
+  block: # Bucket Threshold Check
+    check = newRadio("Transparent Difference",
+      bnPencil.byte, cast[ptr byte](addr result.check))
+    check.geometry(5, 5, 80, check.hint.h)
+    result.add(check)
+    check = newRadio("Color Difference",
+      bnFlat.byte, cast[ptr byte](addr result.check))
+    check.geometry(5, 25, 80, check.hint.h)
+    result.add(check)
+  block: # Bucket Thresholds
+    interval(result.threshold, 0, 255)
+    label = newLabel("Threshold", hoLeft, veMiddle)
+    label.geometry(5, 55, 80, label.hint.h)
+    result.add(label)
+    slider = newSlider(addr result.threshold)
+    slider.geometry(90, 55, 150, slider.hint.h)
+    result.add(slider)
+    interval(result.gap, 0, 100)
+    label = newLabel("Gap Closing", hoLeft, veMiddle)
+    label.geometry(5, 75, 80, label.hint.h)
+    result.add(label)
+    slider = newSlider(addr result.gap)
+    slider.geometry(90, 75, 150, slider.hint.h)
+    result.add(slider)
+  block: # Bucket Antialiasing
+    check = newCheckbox("Anti-Aliasing", addr result.antialiasing)
+    check.geometry(90, 95, 150, check.hint.h)
+    result.add(check)
+
+# -------------------
+# GUI Canvas Creation
+# -------------------
+
 proc newCanvas(): GUICanvas =
   new result
   # Create Canvas Brush Panel
@@ -670,6 +744,19 @@ proc newCanvas(): GUICanvas =
   let shape = newShapePanel()
   result.shape = shape
   result.add(shape)
+  let bucket = newBucketPanel()
+  result.bucket = bucket
+  bucket.set(wHidden)
+  result.add(bucket)
+  # Create Two Buttons
+  block:
+    let
+      btn0 = newButton("Brush Demo", cast[GUICallback](cb_panel_brush))
+      btn1 = newButton("Bucket Demo", cast[GUICallback](cb_panel_bucket))
+    btn0.geometry(300, 5, 100, btn0.hint.h)
+    btn1.geometry(410, 5, 100, btn0.hint.h)
+    result.add btn0
+    result.add btn1
   # Set Mouse Enabled
   result.flags = wMouse
   # Create OpenGL Texture
@@ -701,10 +788,12 @@ proc newCanvas(): GUICanvas =
 
 when isMainModule:
   var # Create Basic Widgets
-    win = newGUIWindow(1280, 720, nil)
+    c: GUICanvasState
+    win = newGUIWindow(1280, 720, addr c)
     root = newCanvas()
     pool = newThreadPool(6)
   root.pool = pool
+  c.canvas = root
   # Open Window
   if win.open(root):
     loop(16):

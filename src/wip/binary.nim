@@ -218,13 +218,12 @@ proc dispatch*(bucket: var NBucketProof, x, y: cint) =
     bucket.smooth.dispatch()
   else: bucket.bin.toColor(rgba, test)
 
-proc blend(bucket: var NBucketProof) =
+proc blend*(bucket: var NBucketProof) =
   let # TODO: change when NLayer is done
     src = cast[ptr UncheckedArray[cushort]](addr bucket.aux[0])
     dst = cast[ptr UncheckedArray[cushort]](bucket.s0)
     l = cint(bucket.stride * bucket.rows * 8)
-  var cursor: cint
-  while cursor < l:
+  var cursor: cint; while cursor < l:
     let
       # Source Colors
       rsrc: cuint = src[cursor + 0]
