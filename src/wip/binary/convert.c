@@ -209,8 +209,6 @@ void binary_convert_smooth(binary_smooth_t* smooth) {
   const int gray_s = smooth->stride;
   const int color_s = gray_s << 2;
   color_row += y1 * color_s + (x1 << 2);
-  // Current Pixel Gray
-  unsigned short grayscale;
 
   __m128i xmm0, xmm1, xmm2;
   // Color Conversion
@@ -224,17 +222,15 @@ void binary_convert_smooth(binary_smooth_t* smooth) {
     gray = gray_row;
 
     for (int x = x1; x < x2; x++) {
-      if (grayscale = *gray) {
-        xmm1 = _mm_cvtsi32_si128(grayscale);
-        xmm1 = _mm_shuffle_epi32(xmm1, 0);
-        // Apply Magic Value
-        xmm2 = _mm_mullo_epi32(xmm0, xmm1);
-        xmm2 = _mm_add_epi32(xmm2, xmm1);
-        xmm2 = _mm_srli_epi32(xmm2, 15);
-        xmm2 = _mm_packus_epi32(xmm2, xmm2);
-        // Store Current Color
-        _mm_storel_epi64((__m128i*) color, xmm2);
-      }
+      xmm1 = _mm_cvtsi32_si128(*gray);
+      xmm1 = _mm_shuffle_epi32(xmm1, 0);
+      // Apply Magic Value
+      xmm2 = _mm_mullo_epi32(xmm0, xmm1);
+      xmm2 = _mm_add_epi32(xmm2, xmm1);
+      xmm2 = _mm_srli_epi32(xmm2, 15);
+      xmm2 = _mm_packus_epi32(xmm2, xmm2);
+      // Store Current Color
+      _mm_storel_epi64((__m128i*) color, xmm2);
       // Step Pixel
       color += 4;
       gray++;

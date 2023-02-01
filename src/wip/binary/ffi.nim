@@ -134,16 +134,17 @@ proc dispatch_full*(chamfer: var NDistance) =
 # Flood Fill Scanline
 # -------------------
 
+proc bounds*(flood: var NFloodFill; w, h: cint) =
+  flood.w = w
+  flood.h = h
+
 proc stack*(flood: var NFloodFill, buffer: ptr cshort) =
   flood.stack = buffer
 
-proc target*(flood: var NFloodFill; buffer0, buffer1: pointer; w, h: cint) =
+proc target*(flood: var NFloodFill; buffer0, buffer1: pointer) =
   # Buffer Pointers
   flood.buffer0 = buffer0
   flood.buffer1 = buffer1
-  # Buffer Dimensions
-  flood.w = w
-  flood.h = h
 
 proc dispatch*(flood: var NFloodFill; x, y: cint; dual: bool) =
   flood.x = x

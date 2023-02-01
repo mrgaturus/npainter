@@ -110,7 +110,138 @@ let dummy {.nodecl.} = 0
 {.emit: ["/*", magic_numbers[dummy], "*/"].}
 {.pop.}
 
-# ------------------------
-# Flood Fill DEMO Dispatch
-# ------------------------
+# ---------------------------------------------------------
+# This is for proof of concept until NCanvas/NLayer is done
+# ---------------------------------------------------------
+import binary/ffi
 
+type
+  NBucketCheck* = enum
+    bkColor, bkAlpha
+  NBucketProof* = object
+    bin: NBinary
+    smooth: NBinarySmooth
+    clear: NBinaryClear
+    flood: NFloodFill
+    chamfer: NDistance
+    # Stride, Rows
+    stride, rows: cint
+    # NCanvas/NLayer can avoid this
+    aux: ref UncheckedArray[cushort]
+    # Buffer Pointers
+    s0, s1, b0, b1, b2: pointer
+    # Bucket Parameters
+    tolerance*, gap*: cint
+    check*: NBucketCheck
+    antialiasing: bool
+
+func index(buffer: pointer; w, h, idx: cint): pointer =
+  let i = cast[cuint](w * h * idx)
+  cast[pointer](cast[uint](buffer) + i)
+
+func pixel(bucket: NBucketProof; x, y: cint): cuint =
+  let 
+    i = (bucket.stride * y + x) shl 2
+    p = cast[ptr UncheckedArray[cushort]](bucket.s0)
+    # Get Colors
+    r = p[i + 0] shr 8
+    g = p[i + 1] shr 8
+    b = p[i + 2] shr 8
+    a = p[i + 3] shr 8
+  # Merge To 32 Bits
+  result = r or (g shl 8) or (b shl 16) or (a shl 24)
+
+proc configure*(buffer0, buffer1: pointer; w, h: cint): NBucketProof =
+  let
+    b0 = index(buffer1, w, h, 2)
+    b1 = index(buffer1, w, h, 3)
+    b2 = index(buffer1, w, h, 4)
+  result.s0 = buffer0
+  result.s1 = buffer1
+  # Configure Pointers
+  result.b0 = b0
+  result.b1 = b1
+  result.b2 = b2
+  # Create Auxiliar Buffer
+  result.stride = w
+  result.rows = h
+  result.aux.unsafeNew(w * h * 8)
+  # Configure Bounds
+  result.bin.bounds(w, h)
+  result.flood.bounds(w, h)
+  result.chamfer.bounds(w, h)
+  # Configure Regions
+  result.bin.region(0, 0, w, h)
+  result.clear.region(0, 0, w, h)
+  result.chamfer.region(0, 0, w, h)
+
+proc dispatch*(bucket: var NBucketProof, x, y: cint) =
+  let 
+    rgba = pixel(bucket, x, y)
+    bytes = bucket.stride * bucket.rows
+    chunk = bytes shl 3
+  var test: cuint = 0xFF
+  # Clear All Buffers
+  zeroMem(addr bucket.aux[0], chunk)
+  zeroMem(bucket.s1, chunk)
+  # Convert to Binary
+  bucket.bin.target(bucket.s0, bucket.b0)
+  bucket.bin.toBinary(rgba, cuint bucket.tolerance, bucket.check == bkColor)
+  # First Flood Fill
+  bucket.flood.target(bucket.b0, bucket.b1)
+  bucket.flood.stack cast[ptr cshort](bucket.b2)
+  bucket.flood.dispatch(x, y, false)
+  # Close Gaps
+  if bucket.gap > 0:
+    let 
+      positions = cast[ptr cuint](bucket.aux[0])
+      distances = cast[ptr cuint](bucket.aux[bytes * 4])
+    bucket.chamfer.auxiliars(positions, distances)
+    bucket.chamfer.checks(255, bucket.gap)
+    # Fast Erode Dilate Using Chamfer
+    bucket.chamfer.buffers(bucket.b1, bucket.b0)
+    bucket.chamfer.dispatch_almost()
+    bucket.chamfer.buffers(bucket.b0, bucket.b0)
+    bucket.chamfer.dispatch_almost()
+    # TODO: after NCanvas/NLayer and some gui i will refactor
+    let d = cast[ptr UncheckedArray[uint8]](bucket.b0)
+    for i in 0 ..< bytes: d[i] = not d[i]
+    # Perform Gap Closing
+    bucket.flood.target(bucket.b1, bucket.b0)
+    # Convert Gaps
+    test = 0x7F
+  # Convert and Apply Color
+  bucket.bin.target(addr bucket.aux[0], bucket.b1)
+  if bucket.antialiasing:
+    bucket.smooth.toSmooth(bucket.bin, rgba, test)
+    bucket.smooth.auxiliar(cast[ptr cushort](bucket.b2))
+    bucket.smooth.dispatch()
+  else: bucket.bin.toColor(rgba, test)
+
+proc blend(bucket: var NBucketProof) =
+  let # TODO: change when NLayer is done
+    src = cast[ptr UncheckedArray[cushort]](addr bucket.aux[0])
+    dst = cast[ptr UncheckedArray[cushort]](bucket.s0)
+    l = cint(bucket.stride * bucket.rows * 8)
+  var cursor: cint
+  while cursor < l:
+    let
+      # Source Colors
+      rsrc: cuint = src[cursor + 0]
+      gsrc: cuint = src[cursor + 1]
+      bsrc: cuint = src[cursor + 2]
+      asrc: cuint = src[cursor + 3]
+      # Destination Colors
+      rdst: cuint = dst[cursor + 0]
+      gdst: cuint = dst[cursor + 1]
+      bdst: cuint = dst[cursor + 2]
+      adst: cuint = dst[cursor + 3]
+      # Interpolator
+      a: cuint = 65535 - asrc
+    # Blend Two Colors
+    dst[cursor + 0] = cast[cushort](rsrc + ((rdst * a + a) shr 16))
+    dst[cursor + 1] = cast[cushort](gsrc + ((gdst * a + a) shr 16))
+    dst[cursor + 2] = cast[cushort](bsrc + ((bdst * a + a) shr 16))
+    dst[cursor + 3] = cast[cushort](asrc + ((adst * a + a) shr 16))
+    # Next Pixel
+    cursor += 4
