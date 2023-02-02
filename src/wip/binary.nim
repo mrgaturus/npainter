@@ -126,14 +126,15 @@ type
     chamfer: NDistance
     # Stride, Rows
     stride, rows: cint
-    # NCanvas/NLayer can avoid this
-    aux: ref UncheckedArray[cushort]
     # Buffer Pointers
-    s0, s1, b0, b1, b2: pointer
+    s0, s1, s2: pointer
+    a0, b0, b1, b2: pointer
     # Bucket Parameters
     tolerance*, gap*: cint
     check*: NBucketCheck
-    antialiasing: bool
+    antialiasing*: bool
+    # Bucket Color
+    rgba*: cuint
 
 func index(buffer: pointer; w, h, idx: cint): pointer =
   let i = cast[cuint](w * h * idx)
@@ -151,21 +152,25 @@ func pixel(bucket: NBucketProof; x, y: cint): cuint =
   # Merge To 32 Bits
   result = r or (g shl 8) or (b shl 16) or (a shl 24)
 
-proc configure*(buffer0, buffer1: pointer; w, h: cint): NBucketProof =
+proc configure*(buffer0, buffer1, buffer2: pointer; w, h: cint): NBucketProof =
   let
     b0 = index(buffer1, w, h, 2)
     b1 = index(buffer1, w, h, 3)
     b2 = index(buffer1, w, h, 4)
+    # Auxiliar Buffers
+    a0 = index(buffer2, w, h, 4)
   result.s0 = buffer0
   result.s1 = buffer1
+  result.s2 = buffer2
   # Configure Pointers
   result.b0 = b0
   result.b1 = b1
   result.b2 = b2
+  # Configure Auxiliar
+  result.a0 = a0
   # Create Auxiliar Buffer
   result.stride = w
   result.rows = h
-  result.aux.unsafeNew(w * h * 8)
   # Configure Bounds
   result.bin.bounds(w, h)
   result.flood.bounds(w, h)
@@ -177,16 +182,16 @@ proc configure*(buffer0, buffer1: pointer; w, h: cint): NBucketProof =
 
 proc dispatch*(bucket: var NBucketProof, x, y: cint) =
   let 
-    rgba = pixel(bucket, x, y)
+    pix = pixel(bucket, x, y)
     bytes = bucket.stride * bucket.rows
     chunk = bytes shl 3
   var test: cuint = 0xFF
   # Clear All Buffers
-  zeroMem(addr bucket.aux[0], chunk)
+  zeroMem(bucket.s2, chunk)
   zeroMem(bucket.s1, chunk)
   # Convert to Binary
   bucket.bin.target(bucket.s0, bucket.b0)
-  bucket.bin.toBinary(rgba, cuint bucket.tolerance, bucket.check == bkColor)
+  bucket.bin.toBinary(pix, cuint bucket.tolerance, bucket.check == bkColor)
   # First Flood Fill
   bucket.flood.target(bucket.b0, bucket.b1)
   bucket.flood.stack cast[ptr cshort](bucket.b2)
@@ -194,8 +199,8 @@ proc dispatch*(bucket: var NBucketProof, x, y: cint) =
   # Close Gaps
   if bucket.gap > 0:
     let 
-      positions = cast[ptr cuint](bucket.aux[0])
-      distances = cast[ptr cuint](bucket.aux[bytes * 4])
+      positions = cast[ptr cuint](bucket.s2)
+      distances = cast[ptr cuint](bucket.a0)
     bucket.chamfer.auxiliars(positions, distances)
     bucket.chamfer.checks(255, bucket.gap)
     # Fast Erode Dilate Using Chamfer
@@ -208,21 +213,22 @@ proc dispatch*(bucket: var NBucketProof, x, y: cint) =
     for i in 0 ..< bytes: d[i] = not d[i]
     # Perform Gap Closing
     bucket.flood.target(bucket.b1, bucket.b0)
+    bucket.flood.dispatch(x, y, true)
     # Convert Gaps
     test = 0x7F
   # Convert and Apply Color
-  bucket.bin.target(addr bucket.aux[0], bucket.b1)
+  bucket.bin.target(bucket.s2, bucket.b1)
   if bucket.antialiasing:
-    bucket.smooth.toSmooth(bucket.bin, rgba, test)
+    bucket.smooth.toSmooth(bucket.bin, bucket.rgba, test)
     bucket.smooth.auxiliar(cast[ptr cushort](bucket.b2))
     bucket.smooth.dispatch()
-  else: bucket.bin.toColor(rgba, test)
+  else: bucket.bin.toColor(bucket.rgba, test)
 
 proc blend*(bucket: var NBucketProof) =
   let # TODO: change when NLayer is done
-    src = cast[ptr UncheckedArray[cushort]](addr bucket.aux[0])
+    src = cast[ptr UncheckedArray[cushort]](bucket.s2)
     dst = cast[ptr UncheckedArray[cushort]](bucket.s0)
-    l = cint(bucket.stride * bucket.rows * 8)
+    l = cint(bucket.stride * bucket.rows * 4)
   var cursor: cint; while cursor < l:
     let
       # Source Colors

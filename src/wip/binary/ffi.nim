@@ -9,7 +9,7 @@
 {.compile: "distance1.c".}
 {.compile: "smooth.c".}
 # ----------------------
-{.push header: "binary/binary.h".}
+{.push header: "wip/binary/binary.h".}
 
 type
   NDistance* {.importc: "distance_t".} = object

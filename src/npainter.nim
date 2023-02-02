@@ -85,11 +85,12 @@ type
     buffer1: array[bw*bh*4, int16]
     # Destination Color Buffer
     dst: array[bw*bh*4, int16]
-    dst_copy: array[bw*bh*4, uint8]
+    dst_copy: array[bw*bh*8, uint8]
     # OpenGL Texture
     tex: GLuint
     # Brush Engine
     path: NBrushStroke
+    fill: NBucketProof
     # Busy Indicator
     busy, eraser: bool
     handle: uint
@@ -245,17 +246,31 @@ proc prepare(self: GUICanvas) =
 # GUI Callbacks
 # -------------
 proc cb_panel_bucket(global: ptr GUICanvasState, dummy: pointer) =
-  global[].canvas.shape.set(wHidden)
-  global[].canvas.bucket.clear(wHidden)
-  pushSignal(global[].canvas.target, msgDirty)
+  global.canvas.shape.set(wHidden)
+  global.canvas.bucket.clear(wHidden)
+  pushSignal(global.canvas.target, msgDirty)
 
 proc cb_panel_brush(global: ptr GUICanvasState, dummy: pointer) =
-  global[].canvas.shape.clear(wHidden)
-  global[].canvas.bucket.set(wHidden)
-  pushSignal(global[].canvas.target, msgDirty)
+  global.canvas.shape.clear(wHidden)
+  global.canvas.bucket.set(wHidden)
+  pushSignal(global.canvas.target, msgDirty)
 
-proc cb_bucket(g: pointer, w: ptr GUITarget) =
-  discard
+proc cb_bucket(global: ptr GUICanvasState, p: ptr tuple[x, y: cint]) =
+  let 
+    canvas = global.canvas
+    fill = addr global.canvas.fill
+  # Configure Bucket
+  fill.tolerance = cint(canvas.bucket.threshold.distance() * 255)
+  fill.gap = cint(canvas.bucket.gap.distance() * 100)
+  fill.check = canvas.bucket.check
+  fill.antialiasing = canvas.bucket.antialiasing
+  fill.rgba = canvas.panel.color.rgb8
+  # Dispatch Position
+  fill[].dispatch(p.x, p.y)
+  fill[].blend()
+  # Update Render Region
+  canvas.copy(0, 0, bw, bh)
+  canvas.busy = false
 
 proc cb_dispatch(g: pointer, w: ptr GUITarget) =
   let self = cast[GUICanvas](w[])
@@ -303,10 +318,7 @@ proc cb_clear(g: pointer, w: ptr GUITarget) =
 # GUICanvas Widget Methods
 # ------------------------
 
-method event(self: GUICanvas, state: ptr GUIState) =
-  #state.px *= 4.0
-  #state.py *= 4.0
-  # If clicked, reset points
+proc eventBrush(self: GUICanvas, state: ptr GUIState) =
   if state.kind == evCursorClick:
     self.prepare()
     # Prototype Clearing
@@ -332,6 +344,18 @@ method event(self: GUICanvas, state: ptr GUIState) =
       pushCallback(cb_dispatch, target)
       # Stop Repeating Callback
       self.busy = true
+
+proc eventBucket(self: GUICanvas, state: ptr GUIState) =
+  if state.kind == evCursorClick and state.key == LeftButton:
+    var p: tuple[x, y: cint] = (cint state.px, cint state.py)
+    pushCallback(cb_bucket, p)
+
+method event(self: GUICanvas, state: ptr GUIState) =
+  # Dirty But Works for a Proof of Concept
+  if self.shape.test(wVisible):
+    eventBrush(self, state)
+  elif self.bucket.test(wVisible):
+    eventBucket(self, state)
 
 method draw(self: GUICanvas, ctx: ptr CTXRender) =
   ctx.color(uint32 0xFFFFFFFF)
@@ -771,8 +795,7 @@ proc newCanvas(): GUICanvas =
     GL_TEXTURE_MAG_FILTER, cast[GLint](GL_NEAREST))
   glBindTexture(GL_TEXTURE_2D, 0)
   # Bind Brush Engine to Canvas
-  let canvas = 
-    addr result.path.pipe.canvas
+  let canvas = addr result.path.pipe.canvas
   canvas.w = bw
   canvas.h = bh
   # Set Canvas Stride
@@ -781,6 +804,13 @@ proc newCanvas(): GUICanvas =
   canvas.dst = addr result.dst[0]
   canvas.buffer0 = addr result.buffer0[0]
   canvas.buffer1 = addr result.buffer1[0]
+  # Bind Bucket to Canvas
+  result.fill = configure(
+    addr result.dst[0], 
+    addr result.buffer1[0], 
+    addr result.dst_copy[0], 
+    bw, bh
+  )
 
 # --------------------
 # GUI CANVAS MAIN LOOP
