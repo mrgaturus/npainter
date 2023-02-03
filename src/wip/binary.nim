@@ -145,10 +145,10 @@ func pixel(bucket: NBucketProof; x, y: cint): cuint =
     i = (bucket.stride * y + x) shl 2
     p = cast[ptr UncheckedArray[cushort]](bucket.s0)
     # Get Colors
-    r = p[i + 0] shr 8
-    g = p[i + 1] shr 8
-    b = p[i + 2] shr 8
-    a = p[i + 3] shr 8
+    r = cast[cuint](p[i + 0] shr 8)
+    g = cast[cuint](p[i + 1] shr 8)
+    b = cast[cuint](p[i + 2] shr 8)
+    a = cast[cuint](p[i + 3] shr 8)
   # Merge To 32 Bits
   result = r or (g shl 8) or (b shl 16) or (a shl 24)
 

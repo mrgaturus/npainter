@@ -728,11 +728,11 @@ proc newBucketPanel(): GUIBucketPanel =
     check: GUIWidget
   block: # Bucket Threshold Check
     check = newRadio("Transparent Difference",
-      bnPencil.byte, cast[ptr byte](addr result.check))
+      bkAlpha.byte, cast[ptr byte](addr result.check))
     check.geometry(5, 5, 80, check.hint.h)
     result.add(check)
     check = newRadio("Color Difference",
-      bnFlat.byte, cast[ptr byte](addr result.check))
+      bkColor.byte, cast[ptr byte](addr result.check))
     check.geometry(5, 25, 80, check.hint.h)
     result.add(check)
   block: # Bucket Thresholds

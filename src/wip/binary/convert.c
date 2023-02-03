@@ -53,7 +53,7 @@ void binary_threshold_color(binary_t* binary) {
       xmm0 = _mm_sub_epi16(xmm0, value);
       xmm0 = _mm_abs_epi16(xmm0);
       // Comprare With Threshold
-      xmm0 = _mm_cmplt_epi32(xmm0, threshold);
+      xmm0 = _mm_cmplt_epi16(xmm0, threshold);
       xmm0 = _mm_cmpeq_epi64(xmm0, ones);
       xmm0 = _mm_andnot_si128(xmm0, ones);
       // Extract Mask Check
@@ -99,26 +99,24 @@ void binary_threshold_alpha(binary_t* binary) {
   // Locate to Alpha Channel
   color_row += 3;
 
-  int value, threshold, mask;
+  short value, threshold, mask;
   // Alpha Source & Threshold
-  value = binary->value;
+  value = binary->value >> 24;
   threshold = binary->threshold;
-  // Extend Value to Fix16
-  value = (value << 8) | value;
 
   for (int y = y1; y < y2; y++) {
     color = color_row;
     buffer = buffer_row;
 
     for (int x = x1; x < x2; x++) {
-      mask = *(color);
+      mask = *(color) >> 8;
       // Compute Difference
       mask -= value;
-      if (mask < 0) 
+      if (mask < 0)
         mask = -mask;
       // Test Difference
-      mask = mask < threshold;
-      if (mask) mask = 255;
+      mask = mask > threshold;
+      if (mask) mask = 0xFF;
       // Store Computed Mask
       *(buffer) = mask;
 
