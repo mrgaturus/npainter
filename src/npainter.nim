@@ -348,9 +348,16 @@ proc eventBrush(self: GUICanvas, state: ptr GUIState) =
       self.busy = true
 
 proc eventBucket(self: GUICanvas, state: ptr GUIState) =
-  if state.kind == evCursorClick and state.key == LeftButton:
-    var p: tuple[x, y: cint] = (cint state.px, cint state.py)
-    pushCallback(cb_bucket, p)
+  if state.kind == evCursorClick:
+    if state.key == LeftButton:
+      var p: tuple[x, y: cint] = (cint state.px, cint state.py)
+      pushCallback(cb_bucket, p)
+    elif state.key == RightButton:
+      if not self.busy:
+        var target = self.target
+        pushCallback(cb_clear, target)
+        # Avoid Repeat
+        self.busy = true
 
 method event(self: GUICanvas, state: ptr GUIState) =
   # Dirty But Works for a Proof of Concept
@@ -802,8 +809,8 @@ proc newCanvas(): GUICanvas =
     let
       btn0 = newButton("Brush Demo", cast[GUICallback](cb_panel_brush))
       btn1 = newButton("Bucket Demo", cast[GUICallback](cb_panel_bucket))
-    btn0.geometry(300, 5, 100, btn0.hint.h)
-    btn1.geometry(410, 5, 100, btn0.hint.h)
+    btn0.geometry(280, 5, 150, btn0.hint.h + 8)
+    btn1.geometry(450, 5, 150, btn0.hint.h + 8)
     result.add btn0
     result.add btn1
   # Set Mouse Enabled
