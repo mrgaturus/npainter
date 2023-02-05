@@ -1,38 +1,41 @@
 # NPainter
-fast and simple digital painting software (Work in Progress)
+fast and simple digital painting software (work in progress, still planning)
 
 ![Proof of Concept](https://raw.githubusercontent.com/mrgaturus/npainter/master/proof.png)
 
 ## Building
-For now, only works on Linux/X11/XWayland. Arch/Manjaro is Recommended
+- For now, Only works on Linux/X11/XWayland.
+- Arch Linux or Manjaro is Recommended.
+- Requires [Nim Programming Language](https://nim-lang.org/) for Compiling.
 ```sh
-# Building Fast Binary
-$ nimble build -d:danger
 # Building Debug Binary
 $ nimble build
+# Building Fast Binary
+$ nimble build -d:danger
 
 # Running Program
 $ ./npainter
 ```
 
 ## Current Features
-  - Graphics Tablet Pressure via XInput2
-  - Antialiased and Almost Consistent Brushes
+  - Graphics Tablet Pressure using XInput2
   - Fast Enough Rendering using SSE4.1
+  - Anti-Aliased and Amazing Brush Engine
+  - Anti-Aliased Bucket Fill + Gap Closing
 
-## Future Features
+## Work in Progress Features
   * Tiled Layering
     - Raster Layers
     - Mask/Stencil Layers
     - Folder Layers
     - Fundamental Blending Modes
     - Clipping Group & Alpha Lock
+  - OpenGL 3.3 Accelerated Canvas
   - Transform Tool (Standard, Mesh, Liquify)
-  - Antialiased Fill With Closing Gap
-  - OpenGL 3.3 Accelerated Canvas View
-  - Basic but very Useful Filters
-  - Infinite Undo using Compressed Files with zstd
-  - Intuitive and Very Simple GUI
+  - Infinite Undo using Compressed Files
+  - Intuitive and Traditional UI/UX
+  - Basic and Useful Filters
+  - Windows and Mac Versions
 
 ## Very Future Features
   * Semi-Vector Layer
@@ -40,9 +43,9 @@ $ ./npainter
     - Bezier
   - Frame by Frame Animation
 
-## Out of Scope Features
-  - Maximun Pixel Precision
+## Avoided Features
+  - Maximum Color Accuracy
   - Very Realistic Brushes
   - 1:1 Features with Similar Software
-  - Machine Learning Filters
-  - Animated GUI
+  - AI Filters and Cryptocurrency
+  - Animated and Fancy GUI
