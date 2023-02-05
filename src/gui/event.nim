@@ -159,7 +159,7 @@ proc enableXI2(display: PDisplay, win: Window) =
   em.deviceid = master_pointer
   # Select XI2 Event Masks
   em.mask_len = 1
-  em.mask = cast[ptr cuchar](p_mask)
+  em.mask = cast[ptr char](p_mask)
   # Set XInput2 Masks
   XISetMask(p_mask, XI_ButtonPress)
   XISetMask(p_mask, XI_ButtonRelease)

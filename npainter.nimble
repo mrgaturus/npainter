@@ -8,6 +8,6 @@ srcDir        = "src"
 bin           = @["npainter"]
 
 # Dependencies
-requires "nim >= 1.0.6"
+requires "nim >= 1.6.10"
 requires "x11"
 requires "nimPNG"

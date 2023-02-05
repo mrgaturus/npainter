@@ -95,17 +95,17 @@ proc newShader*(vert, frag: string): GLuint =
   var # Prepare Vars
     vertShader = glCreateShader(GL_VERTEX_SHADER)
     fragShader = glCreateShader(GL_FRAGMENT_SHADER)
-    buffer: TaintedString
+    buffer: string
     bAddr: cstring
     success: GLint
   try: # -- LOAD VERTEX SHADER
     buffer = readFile(shaderPath & vert)
-    bAddr = addr buffer[0]
+    bAddr = cast[cstring](addr buffer[0])
   except: log(lvError, "failed loading shader: ", vert)
   glShaderSource(vertShader, 1, cast[cstringArray](addr bAddr), nil)
   try: # -- LOAD FRAGMENT SHADER
     buffer = readFile(shaderPath & frag)
-    bAddr = addr buffer[0]
+    bAddr = cast[cstring](addr buffer[0])
   except: log(lvError, "failed loading shader: ", frag)
   glShaderSource(fragShader, 1, cast[cstringArray](addr bAddr), nil)
   # -- COMPILE SHADERS

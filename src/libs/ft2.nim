@@ -22,8 +22,8 @@ type # Trimmed Types for basic usage
     pitch*: cint
     buffer*: cstring
     num_grays*: cushort
-    pixel_mode*: cuchar
-    palette_mode*: cuchar
+    pixel_mode*: uint8
+    palette_mode*: uint8
     palette*: pointer
   # FT2 Bounding Box
   FT2BBox* {.bycopy.} = object
