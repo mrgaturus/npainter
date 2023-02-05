@@ -551,6 +551,13 @@ proc newBrushPanel(): GUIBlendPanel =
   slider = newSlider(addr result.blur)
   slider.geometry(90, 680, 150, slider.hint.h)
   result.add(slider)
+  # -- Default Values --
+  val(result.blending, 50)
+  val(result.persistence, 40)
+  val(result.watering, 30)
+  val(result.blur, 20)
+  result.p_blending = true
+  result.p_watering = true
 
 proc newShapePanel(): GUIShapePanel =
   new result
@@ -710,8 +717,14 @@ proc newShapePanel(): GUIShapePanel =
   slider.geometry(90, 525, 100, slider.hint.h)
   result.add(slider)
   # -- Default Values --
+  val(result.blot_mess, 80)
+  val(result.blot_tone, 50)
+  val(result.blot_scale, 100)
   val(result.bitmap_flow, 100)
   val(result.bitmap_scale, 100)
+  val(result.tex_scale, 50)
+  result.auto_flow = true
+  result.auto_angle = true
   # Load Demo Textures
   result.tex0 = newPNGTexture("tex0.png")
   result.tex1 = newPNGTexture("tex1.png")
@@ -721,6 +734,8 @@ proc newBucketPanel(): GUIBucketPanel =
   new result
   # Set Mouse Attribute
   result.flags = wMouse
+  result.check = bkMinimun
+  result.antialiasing = true
   # Set Geometry To Floating
   result.geometry(1280 - 250 - 5, 5, 250, 180)
   # Create Label: |Slider|
@@ -731,19 +746,19 @@ proc newBucketPanel(): GUIBucketPanel =
   block: # Bucket Threshold Check
     check = newRadio("Transparent Minimun",
       bkMinimun.byte, cast[ptr byte](addr result.check))
-    check.geometry(5, 5, 80, check.hint.h)
+    check.geometry(5, 5, 180, check.hint.h)
     result.add(check)
     check = newRadio("Transparent Difference",
       bkAlpha.byte, cast[ptr byte](addr result.check))
-    check.geometry(5, 25, 80, check.hint.h)
+    check.geometry(5, 25, 180, check.hint.h)
     result.add(check)
     check = newRadio("Color Difference",
       bkColor.byte, cast[ptr byte](addr result.check))
-    check.geometry(5, 45, 80, check.hint.h)
+    check.geometry(5, 45, 180, check.hint.h)
     result.add(check)
     check = newRadio("Color Similar",
       bkSimilar.byte, cast[ptr byte](addr result.check))
-    check.geometry(5, 65, 80, check.hint.h)
+    check.geometry(5, 65, 180, check.hint.h)
     result.add(check)
   block: # Bucket Thresholds
     interval(result.threshold, 0, 255)
@@ -762,7 +777,7 @@ proc newBucketPanel(): GUIBucketPanel =
     result.add(slider)
   block: # Bucket Antialiasing
     check = newCheckbox("Anti-Aliasing", addr result.antialiasing)
-    check.geometry(90, 145, 150, check.hint.h)
+    check.geometry(90, 145, 180, check.hint.h)
     result.add(check)
 
 # -------------------
