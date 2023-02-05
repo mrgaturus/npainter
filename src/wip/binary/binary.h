@@ -74,6 +74,7 @@ typedef struct {
 // Color to Binary Convert
 void binary_threshold_color(binary_t* binary);
 void binary_threshold_alpha(binary_t* binary);
+void binary_threshold_minimun(binary_t* binary);
 // Binary to Color Convert
 void binary_convert_simple(binary_t* binary);
 

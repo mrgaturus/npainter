@@ -118,6 +118,7 @@ import binary/ffi
 type
   NBucketCheck* = enum
     bkColor, bkAlpha
+    bkMinimun, bkSimilar
   NBucketProof* = object
     bin: NBinary
     smooth: NBinarySmooth
@@ -180,7 +181,7 @@ proc configure*(buffer0, buffer1, buffer2: pointer; w, h: cint): NBucketProof =
   result.clear.region(0, 0, w, h)
   result.chamfer.region(0, 0, w, h)
 
-proc dispatch*(bucket: var NBucketProof, x, y: cint) =
+proc flood*(bucket: var NBucketProof, x, y: cint) =
   let 
     pix = pixel(bucket, x, y)
     bytes = bucket.stride * bucket.rows
@@ -191,7 +192,10 @@ proc dispatch*(bucket: var NBucketProof, x, y: cint) =
   zeroMem(bucket.s1, chunk)
   # Convert to Binary
   bucket.bin.target(bucket.s0, bucket.b0)
-  bucket.bin.toBinary(pix, cuint bucket.tolerance, bucket.check == bkColor)
+  case bucket.check
+  of bkColor, bkSimilar: bucket.bin.toBinary(pix, cuint bucket.tolerance, true)
+  of bkAlpha: bucket.bin.toBinary(pix, cuint bucket.tolerance, false)
+  of bkMinimun: bucket.bin.toBinary(cuint bucket.tolerance)
   # First Flood Fill
   bucket.flood.target(bucket.b0, bucket.b1)
   bucket.flood.stack cast[ptr cshort](bucket.b2)
@@ -223,6 +227,24 @@ proc dispatch*(bucket: var NBucketProof, x, y: cint) =
     bucket.smooth.auxiliar(cast[ptr cushort](bucket.b2))
     bucket.smooth.dispatch()
   else: bucket.bin.toColor(bucket.rgba, test)
+
+proc similar*(bucket: var NBucketProof, x, y: cint) =
+  let 
+    pix = pixel(bucket, x, y)
+    bytes = (bucket.stride * bucket.rows) shl 3
+  # Clear All Buffers
+  zeroMem(bucket.s2, bytes)
+  zeroMem(bucket.s1, bytes)
+  # Convert to Binary
+  bucket.bin.target(bucket.s0, bucket.b0)
+  bucket.bin.toBinary(pix, cuint bucket.tolerance, true)
+  # Apply Color
+  bucket.bin.target(bucket.s2, bucket.b0)
+  if bucket.antialiasing:
+    bucket.smooth.toSmooth(bucket.bin, bucket.rgba, 0)
+    bucket.smooth.auxiliar(cast[ptr cushort](bucket.b2))
+    bucket.smooth.dispatch()
+  else: bucket.bin.toColor(bucket.rgba, 0)
 
 proc blend*(bucket: var NBucketProof) =
   let # TODO: change when NLayer is done

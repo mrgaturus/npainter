@@ -132,6 +132,56 @@ void binary_threshold_alpha(binary_t* binary) {
   }
 }
 
+void binary_threshold_minimun(binary_t* binary) {
+  int x1, y1, x2, y2;
+  // Conversion Region
+  x1 = binary->x;
+  y1 = binary->y;
+  x2 = x1 + binary->w;
+  y2 = y1 + binary->h;
+
+  unsigned char *buffer_row, *buffer;
+  unsigned short *color_row, *color;
+  // Binary Buffer Pointers
+  buffer_row = binary->buffer;
+  color_row = binary->color;
+  // Binary Buffer Strides
+  const int buffer_s = binary->stride;
+  const int color_s = buffer_s << 2;
+  // Locate Buffer Pointer
+  buffer_row += y1 * buffer_s + x1;
+  color_row += y1 * color_s + (x1 << 2);
+  // Locate to Alpha Channel
+  color_row += 3;
+
+  short threshold, mask;
+  // Binary Threshold Check
+  threshold = binary->threshold;
+
+  for (int y = y1; y < y2; y++) {
+    color = color_row;
+    buffer = buffer_row;
+
+    for (int x = x1; x < x2; x++) {
+      mask = *(color) >> 8;
+      // Test Difference
+      mask = mask >= threshold;
+      if (mask) mask = 0xFF;
+      // Store Computed Mask
+      *(buffer) = mask;
+
+      // Step Buffer
+      buffer++;
+      // Step Color
+      color += 4;
+    }
+
+    // Next Row
+    color_row += color_s;
+    buffer_row += buffer_s;
+  }
+}
+
 // ------------------------------
 // Binary to Color Convert Simple
 // ------------------------------

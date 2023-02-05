@@ -78,6 +78,7 @@ proc floodfill_dual(flood: ptr NFloodFill)
 # Color to Binary Convert
 proc binary_threshold_color(binary: ptr NBinary)
 proc binary_threshold_alpha(binary: ptr NBinary)
+proc binary_threshold_minimun(binary: ptr NBinary)
 # Binary to Color Convert
 proc binary_convert_simple(binary: ptr NBinary)
 proc binary_smooth_dilate(smooth: ptr NBinarySmooth)
@@ -180,6 +181,12 @@ proc toBinary*(binary: var NBinary; value, threshold: cuint; color: bool) =
   let p = addr binary
   if color: binary_threshold_color(p)
   else: binary_threshold_alpha(p)
+
+proc toBinary*(binary: var NBinary; threshold: cuint) =
+  # Ajust Threshold
+  binary.threshold = 255 - threshold
+  # Convert to Binary
+  binary_threshold_minimun(addr binary)
 
 proc toColor*(binary: var NBinary; rgba, check: cuint) =
   binary.rgba = rgba

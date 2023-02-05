@@ -266,7 +266,9 @@ proc cb_bucket(global: ptr GUICanvasState, p: ptr tuple[x, y: cint]) =
   fill.antialiasing = canvas.bucket.antialiasing
   fill.rgba = canvas.panel.color.rgb8
   # Dispatch Position
-  fill[].dispatch(p.x, p.y)
+  if fill.check != bkSimilar:
+    fill[].flood(p.x, p.y)
+  else: fill[].similar(p.x, p.y)
   fill[].blend()
   # Update Render Region
   canvas.copy(0, 0, bw, bh)
@@ -720,39 +722,47 @@ proc newBucketPanel(): GUIBucketPanel =
   # Set Mouse Attribute
   result.flags = wMouse
   # Set Geometry To Floating
-  result.geometry(1280 - 250 - 5, 5, 250, 125)
+  result.geometry(1280 - 250 - 5, 5, 250, 180)
   # Create Label: |Slider|
   var 
     label: GUILabel
     slider: GUISlider
     check: GUIWidget
   block: # Bucket Threshold Check
+    check = newRadio("Transparent Minimun",
+      bkMinimun.byte, cast[ptr byte](addr result.check))
+    check.geometry(5, 5, 80, check.hint.h)
+    result.add(check)
     check = newRadio("Transparent Difference",
       bkAlpha.byte, cast[ptr byte](addr result.check))
-    check.geometry(5, 5, 80, check.hint.h)
+    check.geometry(5, 25, 80, check.hint.h)
     result.add(check)
     check = newRadio("Color Difference",
       bkColor.byte, cast[ptr byte](addr result.check))
-    check.geometry(5, 25, 80, check.hint.h)
+    check.geometry(5, 45, 80, check.hint.h)
+    result.add(check)
+    check = newRadio("Color Similar",
+      bkSimilar.byte, cast[ptr byte](addr result.check))
+    check.geometry(5, 65, 80, check.hint.h)
     result.add(check)
   block: # Bucket Thresholds
     interval(result.threshold, 0, 255)
     label = newLabel("Threshold", hoLeft, veMiddle)
-    label.geometry(5, 55, 80, label.hint.h)
+    label.geometry(5, 105, 80, label.hint.h)
     result.add(label)
     slider = newSlider(addr result.threshold)
-    slider.geometry(90, 55, 150, slider.hint.h)
+    slider.geometry(90, 105, 150, slider.hint.h)
     result.add(slider)
     interval(result.gap, 0, 100)
     label = newLabel("Gap Closing", hoLeft, veMiddle)
-    label.geometry(5, 75, 80, label.hint.h)
+    label.geometry(5, 125, 80, label.hint.h)
     result.add(label)
     slider = newSlider(addr result.gap)
-    slider.geometry(90, 75, 150, slider.hint.h)
+    slider.geometry(90, 125, 150, slider.hint.h)
     result.add(slider)
   block: # Bucket Antialiasing
     check = newCheckbox("Anti-Aliasing", addr result.antialiasing)
-    check.geometry(90, 95, 150, check.hint.h)
+    check.geometry(90, 145, 150, check.hint.h)
     result.add(check)
 
 # -------------------
