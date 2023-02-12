@@ -1,4 +1,5 @@
-# TODO: Create Layer Block Allocator
+# SPDX-License-Identifier: GPL-2.0-or-later
+# Copyright (c) 2023 Cristian Camilo Ruiz <mrgaturus>
 
 type
   NLayerColor = ptr array[32768, cushort]
@@ -7,20 +8,21 @@ type
     x, y: cint
     uniform: bool
     buffer: T
-  # Layer Content
-  NLayerImage[T] = distinct 
-    seq[NLayerTile[T]]
-  NLayerList* = distinct 
-    seq[NLayer]
+
+type
+  NLayerTiles[T] = distinct seq[NLayerTile[T]]
+  NLayerList* = distinct seq[NLayer]
+  # Layer Kind
   NLayerKind = enum
     lkColor, lkMask, lkFolder
-  # Layer General
-  NLayerFlag = enum
-    lgVisible, lgClip, lgAlpha, lgLock
   NLayerBlend = enum
     laNormal, laMultiply
+  # Layer Flags
+  NLayerFlag = enum
+    lgVisible, lgClip, lgAlpha, lgLock
   NLayerFlags = set[NLayerFlag]
-  NLayer* = ref object
+  # Layer General
+  NLayerObject = object
     x, y: cint
     opacity: cushort
     # Layer Configuration
@@ -28,6 +30,7 @@ type
     blend: NLayerBlend
     # Layer Content
     case kind: NLayerKind
-    of lkColor: color: NLayerImage[NLayerColor]
-    of lkMask: mask: NLayerImage[NLayerMask]
+    of lkColor: color: NLayerTiles[NLayerColor]
+    of lkMask: mask: NLayerTiles[NLayerMask]
     of lkFolder: folder: NLayerList
+  NLayer* = ref NLayerObject
