@@ -71,13 +71,18 @@ proc createCanvasRenderer*(): NCanvasRenderer =
 proc createViewport*(ctx: var NCanvasRenderer; w, h: cint): NCanvasViewport =
   result.w = w
   result.h = h
-  let l = w * h
+  let 
+    l = w * h
+    chunk = l * 2 * sizeof(cint)
   # Allocate Viewport Locations
-  unsafeNew(result.buffer, l * 2)
-  zeroMem(addr result.buffer[0], l * 2)
+  unsafeNew(result.buffer, chunk)
+  zeroMem(addr result.buffer[0], chunk)
   # Configure Grid Pointers
   result.tiles = cast[ptr NCanvasGrid](addr result.buffer[0])
   result.grid = cast[ptr NCanvasGrid](addr result.buffer[l])
+  # Canvas Affine Center
+  result.affine.cw = w
+  result.affine.ch = h
   # Canvas Renderer
   result.renderer = addr ctx
 
@@ -144,9 +149,29 @@ proc removeTile(view: var NCanvasViewport, x, y: cint) =
     ctx.uses[index][] = index
     view.grid.clear(x, y)
 
+proc swapTiles*(view: var NCanvasViewport) =
+  let l = view.w * view.h
+  swap(view.grid, view.tiles)
+  zeroMem(view.grid, l * cint.sizeof)
+  # Reset Cache Counter
+  view.count = 0
+
+proc resolveTiles*(view: var NCanvasViewport) =
+  # XXX: Remove Not Used Tiles
+  let l = view.w * view.h
+  var count: cint
+  for i in 0 ..< l:
+    let tile = view.grid[i]
+    if tile > 0:
+      view.tiles[count] = tile
+      # Next Tile
+      inc(count)
+
 # --------------------------
 # Canvas Render Tile Mapping
 # --------------------------
+
+
 
 # ----------------------
 # Canvas Render Commands
