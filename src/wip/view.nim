@@ -1,10 +1,9 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 # Copyright (c) 2023 Cristian Camilo Ruiz <mrgaturus>
 from math import cos, sin
-import canvas
+import canvas, canvas/render
 
 type
-  NCanvasMatrix = array[9, cfloat]
   NCanvasTransform = object
     mirror*: bool
     x*, y*: cfloat
@@ -12,10 +11,8 @@ type
   NCanvasView* = object
     canvas*: ptr NCanvas
     transform*: NCanvasTransform
-    # OpenGL 3.3 Canvas
-    program, pbo: cuint
-    textures, unused: seq[cuint]
-    # Affine Matrix Cache
+    # Canvas OpenGL Renderer
+    renderer: NCanvasRenderer
     matrix0, matrix1: NCanvasMatrix
 
 # --------------------
@@ -23,7 +20,7 @@ type
 # --------------------
 
 proc createCanvasView*(): NCanvasView =
-  discard
+  result.renderer = createCanvasRenderer()
 
 # ----------------------------
 # Canvas View Affine Transform
@@ -59,7 +56,7 @@ proc affine(view: var NCanvasView) =
 proc inverse(view: var NCanvasView) =
   let
     a = addr view.transform
-    m = addr view.matrix0
+    m = addr view.matrix1
     # Position
     x = a.x
     y = a.y

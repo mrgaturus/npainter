@@ -24,7 +24,6 @@ type
     # OpenGL Objects
     vao, vbo, pbo: GLuint
     # Viewport Uniforms
-    width, height: int32
     mPro: array[16, float32]
     # Canvas Target Addr
     canvas: ptr NCanvas
@@ -132,8 +131,6 @@ proc viewport*(view: var NCanvasView, w, h: int32) =
     cast[ptr float32](addr view.mPro))
   # Unuse Canvas Program
   glUseProgram(0)
-  # Save New Viewport Size
-  view.width = w; view.height = h
   # Invalidate View Tiles
   view.dirty = drComplete
 
