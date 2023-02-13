@@ -2,14 +2,11 @@
 # Copyright (c) 2023 Cristian Camilo Ruiz <mrgaturus>
 import ../../libs/gl
 import ../../assets
-import ../../omath
+import matrix
 
 type
-  NCanvasMatrix* = array[9, cfloat]
-  NCanvasProjection = array[16, cfloat]
   NCanvasVertex {.pure.} = object
     x, y, u, v: cushort
-  # Canvas Renderer
   NCanvasTile = object
     x, y: cushort
     texture: GLuint
@@ -25,9 +22,7 @@ type
   NCanvasGrid = UncheckedArray[cint]
   NCanvasViewport* = object
     renderer: ptr NCanvasRenderer
-    # Canvas Projection & Transform
-    projection: NCanvasProjection
-    model*: NCanvasMatrix
+    affine*: NCanvasAffine
     # Grid Parameters
     w, h, lod, count: cint
     # Grid Buffers
@@ -85,11 +80,6 @@ proc createViewport*(ctx: var NCanvasRenderer; w, h: cint): NCanvasViewport =
   result.grid = cast[ptr NCanvasGrid](addr result.buffer[l])
   # Canvas Renderer
   result.renderer = addr ctx
-
-proc projection*(view: var NCanvasViewport, w, h: cint) =
-  # Change View Projection Matrix
-  guiProjection(addr view.projection, 
-    cfloat w, cfloat h)
 
 # -------------------------
 # Canvas Render Grid Lookup
@@ -167,14 +157,15 @@ proc render*(view: var NCanvasViewport) =
   glUseProgram(ctx.program)
   # Upload View Projection Matrix
   glUniformMatrix4fv(ctx.uPro, 1, false,
-    cast[ptr cfloat](addr view.projection))
+    cast[ptr cfloat](addr view.affine.projection))
   # Upload View Transform Matrix
   glUniformMatrix3fv(ctx.uModel, 1, true,
-    cast[ptr cfloat](addr view.model))
+    cast[ptr cfloat](addr view.affine.model0))
   # Render Each View Texture
   glBindVertexArray(ctx.vao)
   # Draw Each Tile
-  var cursor: cint; while cursor < view.count:
+  var cursor: cint 
+  while cursor < view.count:
     # Bind Texture and Draw Tile Quad
     glBindTexture(GL_TEXTURE_2D, ctx.tiles[cursor].texture)
     glDrawArrays(GL_TRIANGLE_STRIP, cursor shl 2, 4)
