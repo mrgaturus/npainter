@@ -8,27 +8,30 @@ type
   NCanvasVertex {.pure.} = object
     x, y, u, v: cushort
   NCanvasTile = object
-    x, y: cushort
+    dPos0, dPos1: cushort
     texture: GLuint
   NCanvasRenderer* = object
     # OpenGL Objects
     program: GLuint
     uPro, uModel: GLint
-    vao, vbo, pbo: GLuint
     # Canvas Tiles
-    tiles: seq[NCanvasTile]
-    uses: seq[ptr cint]
+    pbo: GLuint
+    usables: seq[GLuint]
+  # Canvas Viewport Objects
+  NCanvasBuffer = ref UncheckedArray[byte]
+  NCanvasGrid = ptr UncheckedArray[NCanvasTile]
   # Canvas Viewport
-  NCanvasGrid = UncheckedArray[cint]
   NCanvasViewport* = object
     renderer: ptr NCanvasRenderer
     affine*: NCanvasAffine
     # Grid Parameters
-    w, h, lod, count: cint
+    w, h, lod: cint
+    # Tile Geometry
+    count: cint
+    vao, vbo: GLuint
     # Grid Buffers
-    buffer: ref NCanvasGrid
-    tiles: ptr NCanvasGrid
-    grid: ptr NCanvasGrid
+    buffer: NCanvasBuffer
+    grid, cache: NCanvasGrid
 
 # ------------------------
 # Canvas Renderer Creation
@@ -45,8 +48,24 @@ proc createCanvasRenderer*(): NCanvasRenderer =
     glUniform1i glGetUniformLocation(result.program, "uTile"), 0
     # Unuse Program
     glUseProgram(0)
-  block: # -- Generate Vertex Buffers
+    # Generate Pixel Buffer Object
     glGenBuffers(1, addr result.pbo)
+
+proc createViewport*(ctx: var NCanvasRenderer; w, h: cint): NCanvasViewport =
+  result.w = w
+  result.h = h
+  block: # Configure Grid
+    let chunk = w * h * sizeof(NCanvasTile)
+    # Allocate Viewport Locations
+    unsafeNew(result.buffer, chunk shl 1)
+    zeroMem(addr result.buffer[0], chunk shl 1)
+    # Configure Grid Pointers
+    result.grid = cast[NCanvasGrid](addr result.buffer[0])
+    result.cache = cast[NCanvasGrid](addr result.buffer[chunk])
+    # Canvas Affine Center
+    result.affine.cw = w
+    result.affine.ch = h
+  block: # Configure OpenGL Objects
     glGenVertexArrays(1, addr result.vao)
     glGenBuffers(1, addr result.vbo)
     # Bind VAO and VBO
@@ -63,51 +82,18 @@ proc createCanvasRenderer*(): NCanvasRenderer =
     # Unbind VBO and VAO
     glBindBuffer(GL_ARRAY_BUFFER, 0)
     glBindVertexArray(0)
-
-# -------------------------------
-# Canvas Render Viewport Creation
-# -------------------------------
-
-proc createViewport*(ctx: var NCanvasRenderer; w, h: cint): NCanvasViewport =
-  result.w = w
-  result.h = h
-  let 
-    l = w * h
-    chunk = l * 2 * sizeof(cint)
-  # Allocate Viewport Locations
-  unsafeNew(result.buffer, chunk)
-  zeroMem(addr result.buffer[0], chunk)
-  # Configure Grid Pointers
-  result.tiles = cast[ptr NCanvasGrid](addr result.buffer[0])
-  result.grid = cast[ptr NCanvasGrid](addr result.buffer[l])
-  # Canvas Affine Center
-  result.affine.cw = w
-  result.affine.ch = h
   # Canvas Renderer
   result.renderer = addr ctx
-
-# -------------------------
-# Canvas Render Grid Lookup
-# -------------------------
-
-template `[]`(grid: ptr NCanvasGrid, x, y: cint): cint =
-  grid[view.w * y + x] - 1
-
-template `[]=`(grid: ptr NCanvasGrid, x, y, value: cint) =
-  grid[view.w * y + x] = value + 1
-
-template clear(grid: ptr NCanvasGrid, x, y: cint) =
-  grid[view.w * y + x] = 0
 
 # --------------------------
 # Canvas Render Tile Manager
 # --------------------------
 
 proc createTile(ctx: ptr NCanvasRenderer): cint =
-  var tile: NCanvasTile
-  glGenTextures(1, addr tile.texture)
+  var texture: GLuint
+  glGenTextures(1, addr texture)
   # Redundant Bind But Safer
-  glBindTexture(GL_TEXTURE_2D, tile.texture)
+  glBindTexture(GL_TEXTURE_2D, texture)
   glTexImage2D(GL_TEXTURE_2D, 0, cast[GLint](GL_RGBA8), 
     256, 256, 0, GL_RGBA, GL_UNSIGNED_BYTE, nil)
   # Set Mig/Mag Filter
@@ -123,49 +109,19 @@ proc createTile(ctx: ptr NCanvasRenderer): cint =
   # Unbind Texture
   glBindTexture(GL_TEXTURE_2D, 0)
   # Add New Texture
-  ctx.tiles.add(tile)
-  result = cint high(ctx.tiles)
-
-proc createTile(view: var NCanvasViewport, x, y: cint) =
-  let ctx = view.renderer
-  var index: cint
-  # Check if New Tile is Needed
-  if ctx.uses.len == ctx.tiles.len:
-    index = ctx.createTile()
-  else: index = len(ctx.uses).cint
-  # Locate Current Tile
-  view.grid[x, y] = index
-
-proc removeTile(view: var NCanvasViewport, x, y: cint) =
-  let ctx = view.renderer
-  var index = view.grid[x, y]
-  # Check if There is Tile
-  if index > 0:
-    swap(ctx.tiles[^1], ctx.tiles[index])
-    swap(ctx.uses[^1], ctx.uses[index])
-    ctx.tiles.setLen(ctx.tiles.len - 1)
-    ctx.uses.setLen(ctx.uses.len - 1)
-    # Change Use Index Pointer
-    ctx.uses[index][] = index
-    view.grid.clear(x, y)
+  ctx.usables.add(texture)
+  result = cint high(ctx.usables)
 
 proc swapTiles*(view: var NCanvasViewport) =
   let l = view.w * view.h
-  swap(view.grid, view.tiles)
-  zeroMem(view.grid, l * cint.sizeof)
+  swap(view.cache, view.grid)
+  zeroMem(view.grid, l * NCanvasTile.sizeof)
   # Reset Cache Counter
   view.count = 0
 
-proc resolveTiles*(view: var NCanvasViewport) =
+proc cacheTiles*(view: var NCanvasViewport) =
   # XXX: Remove Not Used Tiles
-  let l = view.w * view.h
-  var count: cint
-  for i in 0 ..< l:
-    let tile = view.grid[i]
-    if tile > 0:
-      view.tiles[count] = tile
-      # Next Tile
-      inc(count)
+  discard
 
 # --------------------------
 # Canvas Render Tile Mapping
@@ -187,12 +143,12 @@ proc render*(view: var NCanvasViewport) =
   glUniformMatrix3fv(ctx.uModel, 1, true,
     cast[ptr cfloat](addr view.affine.model0))
   # Render Each View Texture
-  glBindVertexArray(ctx.vao)
+  glBindVertexArray(view.vao)
   # Draw Each Tile
   var cursor: cint 
   while cursor < view.count:
     # Bind Texture and Draw Tile Quad
-    glBindTexture(GL_TEXTURE_2D, ctx.tiles[cursor].texture)
+    glBindTexture(GL_TEXTURE_2D, view.cache[cursor].texture)
     glDrawArrays(GL_TRIANGLE_STRIP, cursor shl 2, 4)
     # Next Tile
     inc(cursor)
