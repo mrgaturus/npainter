@@ -8,8 +8,7 @@ type
   NCanvasVertex {.pure.} = object
     x, y, u, v: cushort
   NCanvasTile = object
-    dPos0, dPos1: cushort
-    texture: GLuint
+    texture, dirty: GLuint
   NCanvasRenderer* = object
     # OpenGL Objects
     program: GLuint
@@ -20,6 +19,7 @@ type
   # Canvas Viewport Objects
   NCanvasBuffer = ref UncheckedArray[byte]
   NCanvasGrid = ptr UncheckedArray[NCanvasTile]
+  NCanvasCache = ptr UncheckedArray[GLuint]
   # Canvas Viewport
   NCanvasViewport* = object
     renderer: ptr NCanvasRenderer
@@ -31,7 +31,8 @@ type
     vao, vbo: GLuint
     # Grid Buffers
     buffer: NCanvasBuffer
-    grid, cache: NCanvasGrid
+    grid: NCanvasGrid
+    cache: NCanvasCache
 
 # ------------------------
 # Canvas Renderer Creation
@@ -61,7 +62,7 @@ proc createViewport*(ctx: var NCanvasRenderer; w, h: cint): NCanvasViewport =
     zeroMem(addr result.buffer[0], chunk shl 1)
     # Configure Grid Pointers
     result.grid = cast[NCanvasGrid](addr result.buffer[0])
-    result.cache = cast[NCanvasGrid](addr result.buffer[chunk])
+    result.cache = cast[NCanvasCache](addr result.buffer[chunk])
     # Canvas Affine Center
     result.affine.cw = w
     result.affine.ch = h
@@ -86,42 +87,133 @@ proc createViewport*(ctx: var NCanvasRenderer; w, h: cint): NCanvasViewport =
   result.renderer = addr ctx
 
 # --------------------------
-# Canvas Render Tile Manager
+# Canvas Render Tile Usables
 # --------------------------
 
-proc createTile(ctx: ptr NCanvasRenderer): cint =
-  var texture: GLuint
-  glGenTextures(1, addr texture)
-  # Redundant Bind But Safer
-  glBindTexture(GL_TEXTURE_2D, texture)
-  glTexImage2D(GL_TEXTURE_2D, 0, cast[GLint](GL_RGBA8), 
-    256, 256, 0, GL_RGBA, GL_UNSIGNED_BYTE, nil)
-  # Set Mig/Mag Filter
-  glTexParameteri(GL_TEXTURE_2D, 
-    GL_TEXTURE_MIN_FILTER, cast[GLint](GL_LINEAR))
-  glTexParameteri(GL_TEXTURE_2D, 
-    GL_TEXTURE_MAG_FILTER, cast[GLint](GL_LINEAR))
-  # Set UV Mapping Clamping
-  glTexParameteri(GL_TEXTURE_2D, 
-    GL_TEXTURE_WRAP_S, cast[GLint](GL_CLAMP_TO_EDGE))
-  glTexParameteri(GL_TEXTURE_2D, 
-    GL_TEXTURE_WRAP_T, cast[GLint](GL_CLAMP_TO_EDGE))
-  # Unbind Texture
-  glBindTexture(GL_TEXTURE_2D, 0)
-  # Add New Texture
-  ctx.usables.add(texture)
-  result = cint high(ctx.usables)
+proc useTile(ctx: ptr NCanvasRenderer): GLuint =
+  if ctx.usables.len > 0:
+    return ctx.usables.pop()
+  else: # Create New Tile Texture
+    glGenTextures(1, addr result)
+    # Redundant Bind But Safer
+    glBindTexture(GL_TEXTURE_2D, result)
+    glTexImage2D(GL_TEXTURE_2D, 0, cast[GLint](GL_RGBA8), 
+      256, 256, 0, GL_RGBA, GL_UNSIGNED_BYTE, nil)
+    # Set Mig/Mag Filter
+    glTexParameteri(GL_TEXTURE_2D, 
+      GL_TEXTURE_MIN_FILTER, cast[GLint](GL_LINEAR))
+    glTexParameteri(GL_TEXTURE_2D, 
+      GL_TEXTURE_MAG_FILTER, cast[GLint](GL_LINEAR))
+    # Set UV Mapping Clamping
+    glTexParameteri(GL_TEXTURE_2D, 
+      GL_TEXTURE_WRAP_S, cast[GLint](GL_CLAMP_TO_EDGE))
+    glTexParameteri(GL_TEXTURE_2D, 
+      GL_TEXTURE_WRAP_T, cast[GLint](GL_CLAMP_TO_EDGE))
+    # Unbind Texture
+    glBindTexture(GL_TEXTURE_2D, 0)
+    # Add New Texture
+    ctx.usables.add(result)
+
+proc recycleTile(ctx: ptr NCanvasRenderer, tile: GLuint) {.inline.} =
+  # Add New Tile to Usables
+  ctx.usables.add(tile)
+
+# ------------------------
+# Canvas Render Dirty Tile
+# ------------------------
+
+func unpack(dirty: GLuint): tuple[x, y: cint] {.inline.} =
+  result.x = cast[cint](dirty and 0xFF)
+  result.y = cast[cint](dirty shr 8 and 0xFF)
+
+func pack(x, y: cint): GLuint {.inline.} =
+  let 
+    xx = cast[GLuint](x and 0xFF)
+    yy = cast[GLuint](y and 0xFF) shl 8
+  result = xx or yy
+
+func invalid(tile: ptr NCanvasTile): bool {.inline.} =
+  tile.dirty == high(GLuint)
+
+# Dirty0 Positions
+func dirty0(tile: ptr NCanvasTile): tuple[x, y: cint] =
+  result = unpack(tile.dirty)
+
+func dirty0(tile: ptr NCanvasTile, x, y: cint) =
+  let 
+    dirty = tile.dirty
+    pos = pack(x, y)
+  tile.dirty = (dirty shl 16) or pos
+
+# Dirty1 Positions
+func dirty1(tile: ptr NCanvasTile): tuple[x, y: cint] =
+  result = unpack(tile.dirty shr 16)
+
+func dirty1(tile: ptr NCanvasTile, x, y: cint) =
+  let 
+    dirty = tile.dirty
+    pos = pack(x, y) shl 16
+  tile.dirty = (dirty shr 16) or pos
+
+# -------------------------
+# Canvas Viewport Tile Uses
+# -------------------------
 
 proc swapTiles*(view: var NCanvasViewport) =
-  let l = view.w * view.h
-  swap(view.cache, view.grid)
-  zeroMem(view.grid, l * NCanvasTile.sizeof)
+  let 
+    l = view.w * view.h
+    cache = cast[NCanvasCache](view.grid)
+    grid = cast[NCanvasGrid](view.cache)
+  # Swap Grid and Cache
+  view.grid = grid
+  view.cache = cache
+  # Clear Grid
+  zeroMem(grid, l * NCanvasTile.sizeof)
   # Reset Cache Counter
   view.count = 0
 
 proc cacheTiles*(view: var NCanvasViewport) =
-  # XXX: Remove Not Used Tiles
-  discard
+  let
+    cache = view.cache
+    grid = view.grid
+    l = view.w * view.h
+    # Previous Tile Grid
+    ctx = view.renderer
+    prev = cast[NCanvasGrid](cache)
+  var 
+    tex: GLuint
+    tile: ptr NCanvasTile
+  # Check if is already cached
+  if view.count > 0: return
+  # Reuse/Unuse Tiles
+  block: 
+    var idx: cint
+    # Iterate Each Tile
+    while idx < l:
+      tile = addr grid[idx]
+      tex = prev[idx].texture
+      if tex > 0:
+        if tile.invalid:
+          tile.texture = tex
+        else: ctx.recycleTile(tex)
+      # Next Tile
+      inc(idx)
+  # Create Cache List
+  block: 
+    var idx, count: cint
+    # Iterate Each Tile
+    while idx < l:
+      tile = addr grid[idx]
+      tex = tile.texture
+      if tex == 0 and tile.invalid:
+        tex = ctx.useTile()
+      if tex > 0:
+        cache[count] = tex
+        inc(count)
+      # Next Tile
+      inc(idx)
+    # Set New Count
+    view.count = count
 
 # --------------------------
 # Canvas Render Tile Mapping
@@ -148,7 +240,7 @@ proc render*(view: var NCanvasViewport) =
   var cursor: cint 
   while cursor < view.count:
     # Bind Texture and Draw Tile Quad
-    glBindTexture(GL_TEXTURE_2D, view.cache[cursor].texture)
+    glBindTexture(GL_TEXTURE_2D, view.cache[cursor])
     glDrawArrays(GL_TRIANGLE_STRIP, cursor shl 2, 4)
     # Next Tile
     inc(cursor)
