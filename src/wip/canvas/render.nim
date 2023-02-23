@@ -9,13 +9,21 @@ type
     x, y, u, v: cushort
   NCanvasTile = object
     texture, dirty: GLuint
+  NCanvasTileMap = ref object
+    tile: ptr NCanvasTile
+    # Chunk Mapping
+    offset, bytes: GLint
+    chunk: pointer
   NCanvasRenderer* = object
     # OpenGL Objects
     program: GLuint
     uPro, uModel: GLint
-    # Canvas Tiles
-    pbo: GLuint
+    # OpenGL Textures
     usables: seq[GLuint]
+    # OpenGL Mappers
+    pbo: GLuint
+    bytes: GLint
+    mappers: seq[NCanvasTileMap]
   # Canvas Viewport Objects
   NCanvasBuffer = ref UncheckedArray[byte]
   NCanvasGrid = ptr UncheckedArray[NCanvasTile]
@@ -135,25 +143,33 @@ func pack(x, y: cint): GLuint {.inline.} =
 func invalid(tile: ptr NCanvasTile): bool {.inline.} =
   tile.dirty == high(GLuint)
 
-# Dirty0 Positions
-func dirty0(tile: ptr NCanvasTile): tuple[x, y: cint] =
-  result = unpack(tile.dirty)
-
+# Define Dirty Positions
 func dirty0(tile: ptr NCanvasTile, x, y: cint) =
   let 
     dirty = tile.dirty
     pos = pack(x, y)
   tile.dirty = (dirty shl 16) or pos
 
-# Dirty1 Positions
-func dirty1(tile: ptr NCanvasTile): tuple[x, y: cint] =
-  result = unpack(tile.dirty shr 16)
-
 func dirty1(tile: ptr NCanvasTile, x, y: cint) =
   let 
     dirty = tile.dirty
     pos = pack(x, y) shl 16
   tile.dirty = (dirty shr 16) or pos
+
+# Define Dirty Boundaries
+func bounds(tile: ptr NCanvasTile): tuple[x, y, w, h: cint] =
+  if tile.invalid:
+    # Type infer is very bad
+    return (0'i32, 0'i32, 256'i32, 256'i32)
+  let
+    d0 = unpack(tile.dirty)
+    d1 = unpack(tile.dirty shr 16)
+    # Calculate Minimun Positions
+    x0 = min(d0.x, d1.x)
+    y0 = min(d0.y, d1.y)
+    x1 = max(d0.x, d1.x)
+    y1 = max(d0.y, d1.y)
+  result = (x0, y0, x1 - x0, y1 - y0)
 
 # -------------------------
 # Canvas Viewport Tile Uses
@@ -171,6 +187,12 @@ proc swapTiles*(view: var NCanvasViewport) =
   zeroMem(grid, l * NCanvasTile.sizeof)
   # Reset Cache Counter
   view.count = 0
+
+proc locateTile(view: var NCanvasViewport; x, y: cint): ptr NCanvasTile =
+  let 
+    grid = view.grid
+    w = view.w
+  addr grid[y * w + x]
 
 proc cacheTiles*(view: var NCanvasViewport) =
   let
@@ -219,7 +241,57 @@ proc cacheTiles*(view: var NCanvasViewport) =
 # Canvas Render Tile Mapping
 # --------------------------
 
+proc map*(view: var NCanvasViewport; x, y: cint): NCanvasTileMap =
+  # Define Tile Map
+  let
+    ctx = view.renderer
+    tile = view.locateTile(x, y)
+    # Tile Regions
+    region = tile.bounds()
+    offset = ctx.bytes
+    # Tile Buffer Copy Size
+    bytes = region.w * region.h * 4
+  # Allocate Tile Map
+  new result
+  # Define Dirty Region
+  result.tile = tile
+  result.offset = offset
+  result.bytes = bytes
+  # Add Dirty Region to Mappers
+  ctx.mappers.add(result)
+  ctx.bytes += bytes
 
+proc map*(ctx: var NCanvasRenderer) =
+  let bytes = ctx.bytes
+  # Create New PBO, And Map Each Segment
+  glBindBuffer(GL_PIXEL_UNPACK_BUFFER, ctx.pbo)
+  glBufferData(GL_PIXEL_UNPACK_BUFFER, bytes, nil, GL_STREAM_COPY)
+  for m in ctx.mappers:
+    m.chunk = glMapBufferRange(
+      GL_PIXEL_UNPACK_BUFFER, m.offset, m.bytes, 
+      GL_MAP_WRITE_BIT or GL_MAP_UNSYNCHRONIZED_BIT)
+
+proc unmap*(ctx: var NCanvasRenderer) =
+  # Close Buffer Map
+  discard glUnmapBuffer(GL_PIXEL_UNPACK_BUFFER)
+  # Upload Each Texture
+  for m in ctx.mappers:
+    let
+      tile = m.tile
+      r = tile.bounds()
+      offset = cast[pointer](m.offset)
+    # Upload Texture
+    glBindTexture(GL_TEXTURE_2D, tile.texture)
+    glTexSubImage2D(GL_TEXTURE_2D, 0, 
+      r.x, r.y, r.w, r.h, GL_RGBA, GL_UNSIGNED_BYTE, offset)
+    # Remove Dirty Region
+    tile.dirty = 0
+  # UnBind Buffers
+  glBindTexture(GL_TEXTURE_2D, 0)
+  glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0)
+  # Clear Mappers
+  newSeq(ctx.mappers, 0)
+  ctx.bytes = 0
 
 # ----------------------
 # Canvas Render Commands
