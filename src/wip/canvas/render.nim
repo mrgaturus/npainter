@@ -9,6 +9,7 @@ type
     x, y, u, v: cushort
   NCanvasTile = object
     texture, dirty: GLuint
+  NCanvasDirty* = tuple[x, y, w, h: cint]
   NCanvasTileMap = ref object
     tile: ptr NCanvasTile
     # Chunk Mapping
@@ -140,36 +141,57 @@ func pack(x, y: cint): GLuint {.inline.} =
     yy = cast[GLuint](y and 0xFF) shl 8
   result = xx or yy
 
-func invalid(tile: ptr NCanvasTile): bool {.inline.} =
-  tile.dirty == high(GLuint)
-
-# Define Dirty Positions
-func dirty0(tile: ptr NCanvasTile, x, y: cint) =
-  let 
+# Calculate Dirty Boundaries
+func bounds*(tile: ptr NCanvasTile): NCanvasDirty =
+  let
     dirty = tile.dirty
-    pos = pack(x, y)
-  tile.dirty = (dirty shl 16) or pos
+    d0 = unpack(dirty)
+    d1 = unpack(dirty shr 16)
+  # Calculate Position
+  result.x = d0.x shl 1
+  result.y = d0.y shl 1
+  # Calculate Dimensions
+  result.w = (d1.x shl 1) - result.x
+  result.h = (d1.y shl 1) - result.y
 
-func dirty1(tile: ptr NCanvasTile, x, y: cint) =
-  let 
+func invalid*(tile: ptr NCanvasTile): bool =
+  let
     dirty = tile.dirty
-    pos = pack(x, y) shl 16
-  tile.dirty = (dirty shr 16) or pos
+    d0 = dirty and 0xFFFF
+    d1 = dirty shr 16
+  # Check Same Positions
+  d0 != d1
 
 # Define Dirty Boundaries
-func bounds(tile: ptr NCanvasTile): tuple[x, y, w, h: cint] =
-  if tile.invalid:
-    # Type infer is very bad
-    return (0'i32, 0'i32, 256'i32, 256'i32)
+func dirty0(tile: ptr NCanvasTile, x, y: cint) =
   let
-    d0 = unpack(tile.dirty)
-    d1 = unpack(tile.dirty shr 16)
-    # Calculate Minimun Positions
-    x0 = min(d0.x, d1.x)
-    y0 = min(d0.y, d1.y)
-    x1 = max(d0.x, d1.x)
-    y1 = max(d0.y, d1.y)
-  result = (x0, y0, x1 - x0, y1 - y0)
+    dirty = tile.dirty
+    prev = unpack(dirty)
+  var 
+    mx = x shr 1
+    my = y shr 1
+  if prev.x < 128 and prev.y < 128:
+    mx = min(mx, prev.x)
+    my = min(my, prev.y)
+  # Change Dirty Positions
+  let pos = pack(mx, my)
+  const mask = 0xFFFF0000'u32
+  tile.dirty = (dirty and mask) or pos
+
+func dirty1(tile: ptr NCanvasTile, x, y: cint) =
+  let
+    dirty = tile.dirty
+    prev = unpack(dirty shr 16)
+  var
+    mx = (x + 1) shr 1
+    my = (y + 1) shr 1
+  if prev.x < 128 and prev.y < 128:
+    mx = max(mx, prev.x)
+    my = max(my, prev.y)
+  # Change Dirty Positions
+  let pos = pack(mx, my)
+  const mask = 0xFFFF'u32
+  tile.dirty = (dirty and mask) or pos
 
 # -------------------------
 # Canvas Viewport Tile Uses
@@ -191,8 +213,20 @@ proc swapTiles*(view: var NCanvasViewport) =
 proc locateTile(view: var NCanvasViewport; x, y: cint): ptr NCanvasTile =
   let 
     grid = view.grid
-    w = view.w
-  addr grid[y * w + x]
+    # Tiled Position
+    tx = x shr 8
+    ty = y shr 8
+    tw = view.w
+  # Return Located Tile
+  addr grid[ty * tw + tx]
+
+proc addTile*(view: var NCanvasViewport; x, y: cint) =
+  # Find Tile Position
+  let tile = view.locateTile(x, y)
+  const mask = 0x80800000u32
+  # Mark it as Dirty
+  if tile.texture == 0:
+    tile.dirty = mask
 
 proc cacheTiles*(view: var NCanvasViewport) =
   let
@@ -236,6 +270,44 @@ proc cacheTiles*(view: var NCanvasViewport) =
       inc(idx)
     # Set New Count
     view.count = count
+
+# ------------------------
+# Canvas Render Tile Dirty
+# ------------------------
+
+proc dirtyTile*(view: var NCanvasViewport; region: NCanvasDirty; x, y: cint) =
+  let tile = view.locateTile(x, y)
+  # Check if Tile is added
+  if tile.texture > 0:
+    let
+      ox0 = x and not 0xFF
+      oy0 = y and not 0xFF
+      ox1 = ox0 + 256
+      oy1 = oy0 + 256
+      # Clamp Region Area
+      cx0 = clamp(region.x, ox0, ox1)
+      cy0 = clamp(region.y, oy0, oy1)
+      cx1 = clamp(region.x + region.w, ox0, ox1)
+      cy1 = clamp(region.y + region.h, oy0, oy1)
+    # Mark as Dirty
+    tile.dirty0(cx0, cy0)
+    tile.dirty1(cx1, cy1)
+
+proc dirtyTile32*(view: var NCanvasViewport, x, y: cint) =
+  let tile = view.locateTile(x, y)
+  # Check if Tile is added
+  if tile.texture > 0:
+    let
+      tx = x and not 0xFF
+      ty = y and not 0xFF
+      # Dirty Positions
+      x0 = (x and not 0x1F) - tx
+      y0 = (y and not 0x1F) - ty
+      x1 = x0 + 32
+      y1 = y0 + 32
+    # Mark as Dirty
+    tile.dirty0(x0, y0)
+    tile.dirty1(x1, y1)
 
 # --------------------------
 # Canvas Render Tile Mapping
@@ -285,7 +357,7 @@ proc unmap*(ctx: var NCanvasRenderer) =
     glTexSubImage2D(GL_TEXTURE_2D, 0, 
       r.x, r.y, r.w, r.h, GL_RGBA, GL_UNSIGNED_BYTE, offset)
     # Remove Dirty Region
-    tile.dirty = 0
+    tile.dirty = high(GLuint)
   # UnBind Buffers
   glBindTexture(GL_TEXTURE_2D, 0)
   glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0)
