@@ -99,7 +99,7 @@ proc createViewport*(ctx: var NCanvasRenderer; w, h: cint): NCanvasViewport =
 # Canvas Render Tile Usables
 # --------------------------
 
-proc useTile(ctx: ptr NCanvasRenderer): GLuint =
+proc recycle(ctx: ptr NCanvasRenderer): GLuint =
   if ctx.usables.len > 0:
     return ctx.usables.pop()
   else: # Create New Tile Texture
@@ -123,7 +123,7 @@ proc useTile(ctx: ptr NCanvasRenderer): GLuint =
     # Add New Texture
     ctx.usables.add(result)
 
-proc recycleTile(ctx: ptr NCanvasRenderer, tile: GLuint) {.inline.} =
+proc recycle(ctx: ptr NCanvasRenderer, tile: GLuint) {.inline.} =
   # Add New Tile to Usables
   ctx.usables.add(tile)
 
@@ -197,7 +197,7 @@ func dirty1(tile: ptr NCanvasTile, x, y: cint) =
 # Canvas Viewport Tile Uses
 # -------------------------
 
-proc swapTiles*(view: var NCanvasViewport) =
+proc clear*(view: var NCanvasViewport) =
   let 
     l = view.w * view.h
     cache = cast[NCanvasCache](view.grid)
@@ -210,7 +210,7 @@ proc swapTiles*(view: var NCanvasViewport) =
   # Reset Cache Counter
   view.count = 0
 
-proc locateTile(view: var NCanvasViewport; x, y: cint): ptr NCanvasTile =
+proc lookup(view: var NCanvasViewport; x, y: cint): ptr NCanvasTile =
   let 
     grid = view.grid
     # Tiled Position
@@ -220,15 +220,15 @@ proc locateTile(view: var NCanvasViewport; x, y: cint): ptr NCanvasTile =
   # Return Located Tile
   addr grid[ty * tw + tx]
 
-proc addTile*(view: var NCanvasViewport; x, y: cint) =
+proc activate*(view: var NCanvasViewport; x, y: cint) =
   # Find Tile Position
-  let tile = view.locateTile(x, y)
+  let tile = view.lookup(x, y)
   const mask = 0x80800000u32
   # Mark it as Dirty
   if tile.texture == 0:
     tile.dirty = mask
 
-proc cacheTiles*(view: var NCanvasViewport) =
+proc prepare*(view: var NCanvasViewport) =
   let
     cache = view.cache
     grid = view.grid
@@ -251,7 +251,7 @@ proc cacheTiles*(view: var NCanvasViewport) =
       if tex > 0:
         if tile.invalid:
           tile.texture = tex
-        else: ctx.recycleTile(tex)
+        else: ctx.recycle(tex)
       # Next Tile
       inc(idx)
   # Create Cache List
@@ -262,7 +262,7 @@ proc cacheTiles*(view: var NCanvasViewport) =
       tile = addr grid[idx]
       tex = tile.texture
       if tex == 0 and tile.invalid:
-        tex = ctx.useTile()
+        tex = ctx.recycle()
       if tex > 0:
         cache[count] = tex
         inc(count)
@@ -275,8 +275,8 @@ proc cacheTiles*(view: var NCanvasViewport) =
 # Canvas Render Tile Dirty
 # ------------------------
 
-proc dirtyTile*(view: var NCanvasViewport; region: NCanvasDirty; x, y: cint) =
-  let tile = view.locateTile(x, y)
+proc mark*(view: var NCanvasViewport; region: NCanvasDirty; x, y: cint) =
+  let tile = view.lookup(x, y)
   # Check if Tile is added
   if tile.texture > 0:
     let
@@ -293,8 +293,8 @@ proc dirtyTile*(view: var NCanvasViewport; region: NCanvasDirty; x, y: cint) =
     tile.dirty0(cx0, cy0)
     tile.dirty1(cx1, cy1)
 
-proc dirtyTile32*(view: var NCanvasViewport, x, y: cint) =
-  let tile = view.locateTile(x, y)
+proc mark32*(view: var NCanvasViewport, x, y: cint) =
+  let tile = view.lookup(x, y)
   # Check if Tile is added
   if tile.texture > 0:
     let
@@ -317,7 +317,7 @@ proc map*(view: var NCanvasViewport; x, y: cint): NCanvasTileMap =
   # Define Tile Map
   let
     ctx = view.renderer
-    tile = view.locateTile(x, y)
+    tile = view.lookup(x, y)
     # Tile Regions
     region = tile.bounds()
     offset = ctx.bytes
