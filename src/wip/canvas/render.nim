@@ -5,10 +5,9 @@ import ../../assets
 import matrix
 
 type
-  NCanvasVertex {.pure.} = object
-    x, y, u, v: cushort
   NCanvasTile = object
     texture, dirty: GLuint
+  NCanvasVertex = tuple[x, y, u, v: cushort]
   NCanvasDirty* = tuple[x, y, w, h: cint]
   NCanvasTileMap = ref object
     tile: ptr NCanvasTile
@@ -228,6 +227,48 @@ proc activate*(view: var NCanvasViewport; x, y: cint) =
   if tile.texture == 0:
     tile.dirty = mask
 
+proc locate(view: var NCanvasViewport) =
+  let 
+    count = view.count
+    w = view.w
+    h = view.h
+  glBindBuffer(GL_ARRAY_BUFFER, view.vbo)
+  # Change Buffer VBO Size
+  const 
+    p0 = low(cushort)
+    p1 = high(cushort)
+    chunk = GLint(NCanvasVertex.sizeof)
+  glBufferData(GL_ARRAY_BUFFER,
+    count * chunk * 4, nil, GL_STATIC_DRAW)
+  # Map Chunk Buffer
+  let
+    grid = view.grid
+    map = cast[ptr UncheckedArray[NCanvasVertex]](
+      glMapBuffer(GL_ARRAY_BUFFER, GL_WRITE_ONLY))
+  var 
+    idx, cursor: cint
+    x256, y256: cushort
+    x512, y512: cushort
+  # Change Each Tile Position
+  for y in 0 ..< h:
+    for x in 0 ..< w: 
+      x256 = cushort(x) shl 8
+      y256 = cushort(y) shl 8
+      x512 = x256 + 256
+      y512 = y256 + 256
+      # Define Each Vertex
+      if grid[idx].texture > 0:
+        cursor = idx shl 2
+        map[cursor] = (x256, y256, p0, p0)
+        map[cursor + 1] = (x512, y256, p1, p0)
+        map[cursor + 2] = (x256, y512, p0, p1)
+        map[cursor + 3] = (x512, y512, p1, p1)
+      # Next Tile
+      inc(idx)
+  # Unmap Buffers
+  discard glUnmapBuffer(GL_ARRAY_BUFFER)
+  glBindBuffer(GL_ARRAY_BUFFER, 0)
+
 proc prepare*(view: var NCanvasViewport) =
   let
     cache = view.cache
@@ -270,6 +311,8 @@ proc prepare*(view: var NCanvasViewport) =
       inc(idx)
     # Set New Count
     view.count = count
+  # Locate Tiles
+  view.locate()
 
 # ------------------------
 # Canvas Render Tile Dirty
