@@ -27,7 +27,6 @@ type
   # Canvas Viewport Objects
   NCanvasBuffer = ref UncheckedArray[byte]
   NCanvasGrid = ptr UncheckedArray[NCanvasTile]
-  NCanvasCache = ptr UncheckedArray[GLuint]
   # Canvas Viewport
   NCanvasViewport* = object
     renderer: ptr NCanvasRenderer
@@ -40,7 +39,7 @@ type
     # Grid Buffers
     buffer: NCanvasBuffer
     grid: NCanvasGrid
-    cache: NCanvasCache
+    cache: NCanvasGrid
 
 # ------------------------
 # Canvas Renderer Creation
@@ -70,7 +69,7 @@ proc createViewport*(ctx: var NCanvasRenderer; w, h: cint): NCanvasViewport =
     zeroMem(addr result.buffer[0], chunk shl 1)
     # Configure Grid Pointers
     result.grid = cast[NCanvasGrid](addr result.buffer[0])
-    result.cache = cast[NCanvasCache](addr result.buffer[chunk])
+    result.cache = cast[NCanvasGrid](addr result.buffer[chunk])
     # Canvas Affine Center
     result.affine.cw = w
     result.affine.ch = h
@@ -197,9 +196,9 @@ func dirty1(tile: ptr NCanvasTile, x, y: cint) =
 # -------------------------
 
 proc clear*(view: var NCanvasViewport) =
-  let 
+  let
     l = view.w * view.h
-    cache = cast[NCanvasCache](view.grid)
+    cache = cast[NCanvasGrid](view.grid)
     grid = cast[NCanvasGrid](view.cache)
   # Swap Grid and Cache
   view.grid = grid
@@ -220,18 +219,27 @@ proc lookup(view: var NCanvasViewport; x, y: cint): ptr NCanvasTile =
   addr grid[ty * tw + tx]
 
 proc activate*(view: var NCanvasViewport; x, y: cint) =
-  # Find Tile Position
-  let tile = view.lookup(x, y)
-  const mask = 0x80800000u32
-  # Mark it as Dirty
-  if tile.texture == 0:
-    tile.dirty = mask
+  if view.count == 0:
+    let
+      # Find Tile Position
+      tx = cast[GLuint](x shr 8)
+      ty = cast[GLuint](y shr 8)
+      packed = tx or (ty shl 8)
+      # Calculate Index Position
+      tw = cast[GLuint](view.w)
+      idx = ty * tw + tx
+      # Locate Tile
+      tile = addr view.grid[idx]
+      prev = addr view.cache[idx]
+    # Check if Tile is Already
+    if prev.texture > 0:
+      tile.texture = prev.texture
+    else: tile.dirty = 0x80800000'u32
+    # Store Tile Position
+    prev.dirty = packed
 
 proc locate(view: var NCanvasViewport) =
-  let 
-    count = view.count
-    w = view.w
-    h = view.h
+  let count = view.count
   glBindBuffer(GL_ARRAY_BUFFER, view.vbo)
   # Change Buffer VBO Size
   const 
@@ -249,22 +257,27 @@ proc locate(view: var NCanvasViewport) =
     idx, cursor: cint
     x256, y256: cushort
     x512, y512: cushort
+    # Current Tile
+    tile: ptr NCanvasTile
+    packed: cushort
   # Change Each Tile Position
-  for y in 0 ..< h:
-    for x in 0 ..< w: 
-      x256 = cushort(x) shl 8
-      y256 = cushort(y) shl 8
-      x512 = x256 + 256
-      y512 = y256 + 256
-      # Define Each Vertex
-      if grid[idx].texture > 0:
-        cursor = idx shl 2
-        map[cursor] = (x256, y256, p0, p0)
-        map[cursor + 1] = (x512, y256, p1, p0)
-        map[cursor + 2] = (x256, y512, p0, p1)
-        map[cursor + 3] = (x512, y512, p1, p1)
-      # Next Tile
-      inc(idx)
+  while idx < count:
+    tile = addr grid[idx]
+    packed = cast[cushort](tile.dirty)
+    # Calculate Positions
+    x256 = (packed and 0xFF) shl 8
+    y256 = (packed shr 8) shl 8
+    x512 = x256 + 256
+    y512 = y256 + 256
+    # Define Each Vertex
+    if tile.texture > 0:
+      cursor = idx shl 2
+      map[cursor] = (x256, y256, p0, p0)
+      map[cursor + 1] = (x512, y256, p1, p0)
+      map[cursor + 2] = (x256, y512, p0, p1)
+      map[cursor + 3] = (x512, y512, p1, p1)
+    # Next Tile
+    inc(idx)
   # Unmap Buffers
   discard glUnmapBuffer(GL_ARRAY_BUFFER)
   glBindBuffer(GL_ARRAY_BUFFER, 0)
@@ -273,10 +286,10 @@ proc prepare*(view: var NCanvasViewport) =
   let
     cache = view.cache
     grid = view.grid
+    # Buffer Size
     l = view.w * view.h
     # Previous Tile Grid
     ctx = view.renderer
-    prev = cast[NCanvasGrid](cache)
   var 
     tex: GLuint
     tile: ptr NCanvasTile
@@ -288,11 +301,10 @@ proc prepare*(view: var NCanvasViewport) =
     # Iterate Each Tile
     while idx < l:
       tile = addr grid[idx]
-      tex = prev[idx].texture
-      if tex > 0:
-        if tile.invalid:
-          tile.texture = tex
-        else: ctx.recycle(tex)
+      tex = cache[idx].texture
+      # Check if Texture needs be Recycled
+      if tile.texture == 0 and tex > 0:
+        ctx.recycle(tex)
       # Next Tile
       inc(idx)
   # Create Cache List
@@ -302,10 +314,15 @@ proc prepare*(view: var NCanvasViewport) =
     while idx < l:
       tile = addr grid[idx]
       tex = tile.texture
-      if tex == 0 and tile.invalid:
+      # Lookup Recycled Texture
+      if tex == 0 and tile.dirty > 0:
         tex = ctx.recycle()
       if tex > 0:
-        cache[count] = tex
+        tile = addr cache[count]
+        # Configure Cached Tile
+        tile.dirty = cache[idx].dirty
+        tile.texture = tex
+        # Next Cache
         inc(count)
       # Next Tile
       inc(idx)
@@ -413,7 +430,10 @@ proc unmap*(ctx: var NCanvasRenderer) =
 # ----------------------
 
 proc render*(view: var NCanvasViewport) =
-  let ctx = view.renderer
+  let
+    cache = view.cache
+    ctx = view.renderer
+    count = view.count
   glUseProgram(ctx.program)
   # Upload View Projection Matrix
   glUniformMatrix4fv(ctx.uPro, 1, false,
@@ -425,9 +445,9 @@ proc render*(view: var NCanvasViewport) =
   glBindVertexArray(view.vao)
   # Draw Each Tile
   var cursor: cint 
-  while cursor < view.count:
+  while cursor < count:
     # Bind Texture and Draw Tile Quad
-    glBindTexture(GL_TEXTURE_2D, view.cache[cursor])
+    glBindTexture(GL_TEXTURE_2D, cache[cursor].texture)
     glDrawArrays(GL_TRIANGLE_STRIP, cursor shl 2, 4)
     # Next Tile
     inc(cursor)
