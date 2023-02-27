@@ -4,6 +4,7 @@ from math import cos, sin
 import ../../omath
 
 type
+  NCanvasPoint* = tuple[x, y: cfloat]
   NCanvasMatrix* = array[9, cfloat]
   NCanvasProjection* = array[16, cfloat]
   NCanvasAffine* = object
@@ -91,7 +92,7 @@ proc calculate*(a: var NCanvasAffine) =
   guiProjection(addr a.projection, 
     cfloat a.vw, cfloat a.vh)
 
-proc point*(a: NCanvasAffine; x, y: cfloat): tuple[x, y: cfloat] =
+proc inverse*(a: NCanvasAffine; x, y: cfloat): NCanvasPoint =
   let m = unsafeAddr a.model1
   result.x = a.x * m[0] + a.y * m[1] + m[2]
   result.y = a.y * m[3] + a.y * m[4] + m[5]
