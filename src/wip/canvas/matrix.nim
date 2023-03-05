@@ -92,6 +92,11 @@ proc calculate*(a: var NCanvasAffine) =
   guiProjection(addr a.projection, 
     cfloat a.vw, cfloat a.vh)
 
+proc forward*(a: NCanvasAffine; x, y: cfloat): NCanvasPoint =
+  let m = unsafeAddr a.model0
+  result.x = a.x * m[0] + a.y * m[1] + m[2]
+  result.y = a.y * m[3] + a.y * m[4] + m[5]
+
 proc inverse*(a: NCanvasAffine; x, y: cfloat): NCanvasPoint =
   let m = unsafeAddr a.model1
   result.x = a.x * m[0] + a.y * m[1] + m[2]

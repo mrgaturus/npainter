@@ -8,9 +8,9 @@ type
   NCanvasEdge = object
     a, b, c: cint
   NCanvasTrivial = object
-    reject, accept: cint
+    check0, check1: cint
   NCanvasBounds = object
-    x0, x1, y0, y1: cint
+    x0, y0, x1, y1: cint
   NCanvasQuad = array[4, NCanvasPoint]
   NCanvasCulling = object
     trivial: array[4, NCanvasTrivial]
@@ -31,18 +31,14 @@ proc edge(a, b: NCanvasPoint): NCanvasEdge =
     # Define Incrementals
   result.a = (y0 - y1) shl 4
   result.b = (x1 - x0) shl 4
-  result.c = (x0 * y1) - (x1 * y0)
+  result.c = (x0 * y1) - (y0 * x1)
 
 proc trivial(e: NCanvasEdge): NCanvasTrivial =
   var ox, oy: cint
-  # Calculate Reject
+  # Calculate Reject Test
   ox = if e.a >= 0: 256 else: 0
   oy = if e.b >= 0: 256 else: 0
-  result.reject = e.a * ox + e.b * oy + e.c
-  # Calculate Accept
-  ox = if e.a >= 0: 0 else: 256
-  oy = if e.b >= 0: 0 else: 256
-  result.accept = e.a * ox + e.b * oy + e.c
+  result.check0 = e.a * ox + e.b * oy + e.c
 
 proc bounds(quad: NCanvasQuad, w, h: cint): NCanvasBounds =
   var
@@ -62,7 +58,7 @@ proc bounds(quad: NCanvasQuad, w, h: cint): NCanvasBounds =
     result.y0 = min(y, result.y0)
     result.x1 = max(x, result.x1)
     result.y1 = max(y, result.y1)
-  # Clamp With Canvas Size
+  # Clamp With Canvas Size and Scale
   result.x0 = max(0, result.x0)
   result.y0 = max(0, result.y0)
   result.x1 = min(w, result.x1)
@@ -94,9 +90,76 @@ proc prepare*(view: NCanvasViewport, cull: var NCanvasCulling) =
   # Calculate Bounding Box
   cull.bounds = p.bounds(m.cw, m.ch)
 
+# -------------------
+# Canvas Culling Step
+# -------------------
+
+proc locate(cull: var NCanvasCulling) =
+  let
+    x = cull.bounds.x0 and 0xFF
+    y = cull.bounds.y0 and 0xFF
+  var idx: cint; while idx < 4:
+    let 
+      e = addr cull.edges[idx]
+      c = addr cull.trivial[idx]
+      # Equation Step
+      a = e.a
+      b = e.b
+    # Locate Trivial Position
+    c.check0 += a * x + b * y
+    c.check1 = c.check0
+    # Arrange Tile Step
+    e.a = a shl 8
+    e.b = b shl 8
+    # Next Tile
+    inc(idx)
+
+proc step(cull: var NCanvasCulling, vertical: bool) =
+  var idx: cint; while idx < 4:
+    let 
+      e = addr cull.edges[idx]
+      c = addr cull.trivial[idx]
+    # Step Trivial Position
+    if likely(not vertical):
+      c.check0 += e.a
+    else:
+      c.check0 += e.b
+      c.check1 = c.check0
+    # Next Tile
+    inc(idx)
+
+proc test(cull: var NCanvasCulling): bool =
+  var idx, count: cint
+  while idx < 4:
+    # Test Trivially Rejection
+    let check = cull.trivial[idx].check1
+    count += cast[cint](check < 0)
+  # Return Count
+  count == 0
+
 # ----------------------
 # Canvas Culling Perform
 # ----------------------
 
-proc perform(view: NCanvasViewport, cull: var NCanvasCulling) =
-  discard
+proc assemble*(view: var NCanvasViewport, cull: var NCanvasCulling) =
+  # Locate Culling First
+  view.clear()
+  cull.locate()
+  # Calculate Tiled Size
+  let
+    bounds = addr cull.bounds
+    x0 = bounds.x0 shr 8
+    x1 = bounds.x1 shr 8
+    y0 = bounds.y0 shr 8
+    y1 = bounds.y1 shr 8
+  # Iterate Each Tile
+  for y in y0 ..< y1:
+    for x in x0 ..< x1:
+      if cull.test():
+        view.activate(x shl 8, y shl 8)
+      # Next Tile
+      cull.step(false)
+    # Next Row
+    cull.step(true)
+  # Prepare View Tiles
+  view.prepare()
