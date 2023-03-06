@@ -1,10 +1,10 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 # Copyright (c) 2023 Cristian Camilo Ruiz <mrgaturus>
-import canvas, canvas/render, canvas/matrix
+import render, matrix, context
 
 type
   NCanvasView* = object
-    canvas: ptr NCanvas
+    canvas: ptr NCanvasContext
     affine*: NCanvasAffine
     # Canvas OpenGL Renderer
     viewport: NCanvasViewport
@@ -13,7 +13,7 @@ type
 # Canvas View Creation
 # --------------------
 
-proc createCanvasView*(canvas: var NCanvas, ctx: var NCanvasRenderer): NCanvasView =
+proc createCanvasView*(canvas: var NCanvasContext, ctx: var NCanvasRenderer): NCanvasView =
   result.canvas = addr canvas
   # Create Canvas Viewport
   result.viewport = ctx.createViewport(canvas.w, canvas.h)

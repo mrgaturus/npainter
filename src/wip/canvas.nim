@@ -4,7 +4,7 @@ import canvas/[context, layer]
 
 type
   NCanvas* = object
-    context*: NCanvasContext
+    ctx*: NCanvasContext
     layers*: NLayerList
 
 # ---------------
@@ -12,4 +12,4 @@ type
 # ---------------
 
 proc createCanvas*(w, h: cint): NCanvas =
-  result.context = createCanvasContext(w, h)
+  result.ctx = createCanvasContext(w, h)

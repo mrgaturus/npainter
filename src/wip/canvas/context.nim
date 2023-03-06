@@ -4,21 +4,40 @@
 type
   NCanvasMemory = ref UncheckedArray[byte]
   NCanvasMap = ptr UncheckedArray[byte]
+  NCanvasDirty = object
+    buffer: NCanvasMemory
+    tw32, th32: cint
+    # AABB Region
+    x0, y0, x1, y1: cint
   NCanvasContext* = object
     chunk: cint
     # Canvas Dimensions
     w*, w64*, rw64*: cint 
     h*, h64*, rh64*: cint
-    # Canvas Layers
+    # Canvas Memory Allocation
     memory: NCanvasMemory
     # Memory Block Sections
     buffer0*, buffer1*: NCanvasMap
     mask*, selection*: NCanvasMap
     original, mipmaps: NCanvasMap
+    # Canvas Dirty Grid
+    dirty*: NCanvasDirty
 
 # ------------------------
 # Canvas Buffer Allocation
 # ------------------------
+
+proc createCanvasDirty*(w, h: cint): NCanvasDirty =
+  let
+    tw32 = (w + 31) shr 5
+    th32 = (h + 31) shr 5
+    chunk = tw32 * th32
+  # Allocate and Clear Buffer
+  unsafeNew(result.buffer, chunk)
+  zeroMem(addr result.buffer[0], chunk)
+  # Set Dimensions
+  result.tw32 = tw32
+  result.th32 = th32
 
 proc createCanvasContext*(w, h: cint): NCanvasContext =
   # Canvas Dimensions
@@ -47,6 +66,8 @@ proc createCanvasContext*(w, h: cint): NCanvasContext =
   # Allocate New Canvas
   unsafeNew(result.memory, chunkTotal)
   zeroMem(addr result.memory[0], chunkTotal)
+  # Store Buffer Size
+  result.chunk = chunk
   # Locate Buffer Pointers
   result.buffer0 = cast[NCanvasMap](addr result.memory[0])
   result.buffer1 = cast[NCanvasMap](addr result.buffer0[chunkColor])
@@ -54,8 +75,8 @@ proc createCanvasContext*(w, h: cint): NCanvasContext =
   result.selection = cast[NCanvasMap](addr result.mask[chunkMask])
   result.original = cast[NCanvasMap](addr result.selection[chunkMask])
   result.mipmaps = cast[NCanvasMap](addr result.original[chunkColor])
-  # Store Buffer Size
-  result.chunk = chunk
+  # Create Canvas Dirty Grid
+  result.dirty = createCanvasDirty(w, h)
 
 # ---------------------
 # Canvas Pointer Lookup
@@ -79,3 +100,13 @@ proc composed*(canvas: var NCanvasContext; level: cint): NCanvasMap =
 
 template region*(canvas: var NCanvasContext; field: untyped; size: typedesc; index: cint): NCanvasMap =
   cast[NCanvasMap](addr canvas.field[canvas.chunk * sizeof(size) * index])
+
+# --------------------
+# Canvas Dirty Manager
+# --------------------
+
+proc mark*(canvas: var NCanvasContext; tx, ty: cint) =
+  discard
+
+proc mark*(canvas: var NCanvasContext; x, y, w, h: cint) =
+  discard
