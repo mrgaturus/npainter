@@ -26,59 +26,70 @@ type
 proc affine(a: var NCanvasAffine) =
   let
     m = addr a.model0
-    # Scale, Zoom
+    # Center Position
+    cx = cfloat(a.cw) * -0.5
+    cy = cfloat(a.ch) * -0.5
+    # Scale and Rotation
     cs = cos(a.angle) * a.zoom
     ss = sin(a.angle) * a.zoom
-  var # Center Position
-    cx = cfloat(a.cw) * 0.5
-    cy = cfloat(a.ch) * 0.5
-  # Calculate Scale
+  # Calculate Scale & Rotation
   m[0] = cs
-  m[3] = ss
-  if a.mirror:
-    m[0] = -m[0]
-    m[3] = -m[3]
-    cy = -cy
   m[1] = -ss
+  m[3] = ss
   m[4] = cs
   # Calculate Translate
-  m[2] = a.x - cx * cs - cy * ss
-  m[5] = a.y - cx * ss - cy * cs
-  # Calculate Homogeneous Affine
-  m[6] = 0.0; m[7] = 0.0; m[8] = 1.0
+  m[2] = cx * cs - cy * ss
+  m[5] = cx * ss + cy * cs
+  if a.mirror:
+    m[0] = -m[0]
+    m[1] = -m[1]
+    m[2] = -m[2]
+  m[2] += a.x
+  m[5] += a.y
+  # Calculate Affine
+  m[6] = 0.0 
+  m[7] = 0.0 
+  m[8] = 1.0
   
 # -> [Translate][Rotate][Scale][Translate Center] ->
 proc inverse(a: var NCanvasAffine) =
   let
     m = addr a.model1
-    # Position
+    # Center Position
+    cx = cfloat(a.cw) * -0.5
+    cy = cfloat(a.ch) * -0.5
+    # Offset Position
     x = a.x
     y = a.y
-    # Scale, Zoom
+    # Scale and Rotation
     zoom = a.zoom
-    cs = cos(a.angle) * zoom
-    ss = sin(a.angle) * zoom
     rcp = 1.0 / zoom
-  var # Center Position
-    cx = cfloat(a.cw) * 0.5
-    cy = cfloat(a.ch) * 0.5
+    cs = cos(a.angle)
+    ss = sin(a.angle)
+  var rcp2 = rcp * rcp
   # Calculate Scale
   m[0] = cs * rcp
   m[1] = ss * rcp
-  # Calculate Position
-  m[2] = (x * cs + y * ss - cx * zoom) * rcp
-  if a.mirror:
-    m[0] = -m[0]
-    m[1] = -m[1]
-    m[2] = -m[2]
-    cy = -cy
-  # Calculate Scale
   m[3] = -ss * rcp
   m[4] = cs * rcp
   # Calculate Position
-  m[5] = (x * ss - y * cs - cy * zoom) * rcp
+  m[2] = zoom * (ss * y + cx * zoom)
+  m[5] = zoom * (cs * y + cy * zoom)
+  # Calculate Mirror
+  if a.mirror:
+    m[0] = -m[0]
+    m[2] = -m[2]
+    m[3] = -m[3]
+    rcp2 = -rcp2
+  else:
+    m[5] = -m[5]
+  # Calculate Position
+  m[2] = -(zoom * cs * x + m[2]) * rcp2
+  m[5] = (zoom * ss * x + m[5]) * rcp2
   # Calculate Homogeneous Affine
-  m[6] = 0.0; m[7] = 0.0; m[8] = 1.0
+  m[6] = 0.0 
+  m[7] = 0.0 
+  m[8] = 1.0
 
 # ----------------------------
 # Canvas Transform Calculation
@@ -94,10 +105,10 @@ proc calculate*(a: var NCanvasAffine) =
 
 proc forward*(a: NCanvasAffine; x, y: cfloat): NCanvasPoint =
   let m = unsafeAddr a.model0
-  result.x = a.x * m[0] + a.y * m[1] + m[2]
-  result.y = a.y * m[3] + a.y * m[4] + m[5]
+  result.x = x * m[0] + y * m[1] + m[2]
+  result.y = x * m[3] + y * m[4] + m[5]
 
 proc inverse*(a: NCanvasAffine; x, y: cfloat): NCanvasPoint =
   let m = unsafeAddr a.model1
-  result.x = a.x * m[0] + a.y * m[1] + m[2]
-  result.y = a.y * m[3] + a.y * m[4] + m[5]
+  result.x = x * m[0] + y * m[1] + m[2]
+  result.y = x * m[3] + y * m[4] + m[5]
