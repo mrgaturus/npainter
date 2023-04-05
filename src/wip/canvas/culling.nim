@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 # Copyright (c) 2023 Cristian Camilo Ruiz <mrgaturus>
 from matrix import
-  NCanvasPoint, inverse
+  NCanvasPoint, forward
 import render
 
 type
@@ -24,13 +24,14 @@ type
 
 proc edge(a, b: NCanvasPoint): NCanvasEdge =
   let
-    x0 = cint(a.x * 16.0)
-    y0 = cint(a.y * 16.0)
-    x1 = cint(b.x * 16.0)
-    y1 = cint(b.y * 16.0)
-    # Define Incrementals
-  result.a = (y0 - y1) shl 4
-  result.b = (x1 - x0) shl 4
+    x0 = cint(a.x)
+    y0 = cint(a.y)
+    x1 = cint(b.x)
+    y1 = cint(b.y)
+  # Define Incrementals
+  result.a = y0 - y1
+  result.b = x1 - x0
+  # Define Constant Part
   result.c = (x0 * y1) - (y0 * x1)
 
 proc trivial(e: NCanvasEdge): NCanvasTrivial =
@@ -59,24 +60,28 @@ proc bounds(quad: NCanvasQuad, w, h: cint): NCanvasBounds =
     result.x1 = max(x, result.x1)
     result.y1 = max(y, result.y1)
   # Clamp With Canvas Size and Scale
-  result.x0 = max(0, result.x0)
-  result.y0 = max(0, result.y0)
-  result.x1 = min(w, result.x1)
-  result.y1 = max(h, result.y1)
+  result.x0 = clamp(result.x0, 0, w)
+  result.y0 = clamp(result.y0, 0, h)
+  result.x1 = clamp(result.x1, 0, w)
+  result.y1 = clamp(result.y1, 0, h)
 
 proc prepare*(view: NCanvasViewport, cull: var NCanvasCulling) =
   let 
     m = view.affine
     # Canvas Dimensions
-    w = cfloat(m.cw)
-    h = cfloat(m.ch)
+    w = cfloat(m.vw)
+    h = cfloat(m.vh)
   var 
     p: NCanvasQuad
   # Define Points
-  p[0] = m.inverse(0, 0)
-  p[1] = m.inverse(w, 0)
-  p[2] = m.inverse(w, h)
-  p[3] = m.inverse(0, h)
+  p[0] = m.forward(0, 0)
+  p[1] = m.forward(w, 0)
+  p[2] = m.forward(w, h)
+  p[3] = m.forward(0, h)
+  # Check Mirror
+  if m.mirror:
+    swap(p[0], p[3])
+    swap(p[1], p[2])
   # Create Edge Equations
   cull.edges[0] = edge(p[0], p[1])
   cull.edges[1] = edge(p[1], p[2])
@@ -96,8 +101,8 @@ proc prepare*(view: NCanvasViewport, cull: var NCanvasCulling) =
 
 proc locate(cull: var NCanvasCulling) =
   let
-    x = cull.bounds.x0 and 0xFF
-    y = cull.bounds.y0 and 0xFF
+    x = cull.bounds.x0 and not 0xFF
+    y = cull.bounds.y0 and not 0xFF
   var idx: cint; while idx < 4:
     let 
       e = addr cull.edges[idx]
@@ -121,7 +126,7 @@ proc step(cull: var NCanvasCulling, vertical: bool) =
       c = addr cull.trivial[idx]
     # Step Trivial Position
     if likely(not vertical):
-      c.check0 += e.a
+      c.check1 += e.a
     else:
       c.check0 += e.b
       c.check1 = c.check0
@@ -156,7 +161,7 @@ proc assemble*(view: var NCanvasViewport, cull: var NCanvasCulling) =
   for y in y0 ..< y1:
     for x in x0 ..< x1:
       if cull.test():
-        view.activate(x shl 8, y shl 8)
+        view.activate(x, y)
       # Next Tile
       cull.step(false)
     # Next Row
