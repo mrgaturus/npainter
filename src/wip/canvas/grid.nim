@@ -8,11 +8,11 @@ type
   NCanvasAligned = tuple[x0, y0, x1, y1: uint8]
   # Canvas Texture Tile
   NCanvasSample = array[4, GLuint]
-  NCanvasTile = object
-    texture: GLuint
+  NCanvasTile* = object
+    texture*: GLuint
     # Dirty Region
-    x0, y0: uint8
-    x1, y1: uint8
+    x0*, y0*: uint8
+    x1*, y1*: uint8
   NCanvasBatch = object
     tile*: ptr NCanvasTile
     sample*: ptr NCanvasSample
@@ -25,7 +25,7 @@ type
   NCanvasGrid* = object
     w, h: cint
     # Tile Grid Count
-    count, unused: cint
+    count*, unused: cint
     # Tile Grid Buffer
     buffer: NCanvasBuffer
     tiles, aux: NCanvasTiles
@@ -41,7 +41,7 @@ proc createCanvasGrid*(w256, h256: cint): NCanvasGrid =
   # Configure Grid
   let
     l = w256 * w256
-    chunk = l * sizeof(NCanvasBatch)
+    chunk = l * sizeof(NCanvasSample)
     half = l * sizeof(NCanvasTile)
   # Allocate Viewport Locations
   unsafeNew(result.buffer, chunk shl 1)
@@ -110,13 +110,6 @@ func region*(tile: ptr NCanvasTile): NCanvasDirty =
 # Canvas Grid Manager
 # -------------------
 
-proc lookup*(grid: var NCanvasGrid; tx, ty: cint): ptr NCanvasTile =
-  let 
-    tiles = grid.tiles
-    stride = grid.w
-  # Return Located Tile
-  addr tiles[ty * stride + tx]
-
 proc clear*(grid: var NCanvasGrid) =
   let
     l = grid.w * grid.h
@@ -131,12 +124,17 @@ proc clear*(grid: var NCanvasGrid) =
   grid.count = 0
   grid.unused = 0
 
-proc activate*(grid: var NCanvasGrid, x, y: cint) =
+proc lookup*(grid: var NCanvasGrid; tx, ty: cint): ptr NCanvasTile =
+  let 
+    tiles = grid.tiles
+    stride = grid.w
+  # Return Located Tile
+  addr tiles[ty * stride + tx]
+
+proc activate*(grid: var NCanvasGrid, tx, ty: cint) =
   if grid.count == 0:
     let
       # Tiled Position
-      tx = x shr 8
-      ty = y shr 8
       stride = grid.w
       idx = ty * stride + tx
       # Located Tile
@@ -295,6 +293,7 @@ iterator batches*(grid: var NCanvasGrid): NCanvasBatch =
   while idx < l:
     result.tile = locs[idx]
     result.sample = addr cache[idx]
+    # Yield Render Batch
     yield result
     # Next Tile
     inc(idx)
