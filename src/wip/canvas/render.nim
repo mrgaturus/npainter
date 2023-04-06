@@ -3,22 +3,22 @@
 import ../../libs/gl
 import ../../assets
 import matrix, grid
+export NCanvasDirty
 
 type
   NCanvasVertex = tuple[x, y, u, v: cushort]
   NCanvasPBOMap = ref object
     tile: ptr NCanvasTile
     # Chunk Mapping
-    offset, bytes: GLint
-    chunk: pointer
+    offset, bytes*: GLint
+    chunk*: pointer
   NCanvasRenderer* = object
     # OpenGL Objects
-    program: GLuint
-    uPro, uModel: GLint
+    program: array[2, GLuint]
+    dummy, pbo, ubo: GLuint
     # OpenGL Textures
     usables: seq[GLuint]
     # OpenGL Mappers
-    dummy, pbo: GLuint
     bytes: GLint
     mappers: seq[NCanvasPBOMap]
   # Canvas Viewport
@@ -35,19 +35,59 @@ type
 # Canvas Renderer Creation
 # ------------------------
 
+proc createCanvasShader(frag: string, ubo: GLuint): GLuint =
+  result = newShader("canvas.vert", frag)
+  glUseProgram(result)
+  # Configure UBO Block
+  let 
+    index0 = glGetUniformBlockIndex(result, "AffineBlock")
+    index1 = glGetUniformBlockIndex(result, "ScaleBlock")
+  glUniformBlockBinding(result, index0, 0)
+  glUniformBlockBinding(result, index1, 0)
+  # Configure Each Texture Blocks
+  glUniform1i glGetUniformLocation(result, "uTile0"), 0
+  glUniform1i glGetUniformLocation(result, "uTile1"), 1
+  glUniform1i glGetUniformLocation(result, "uTile2"), 2
+  glUniform1i glGetUniformLocation(result, "uTile3"), 3
+  # Unuse Program
+  glUseProgram(0)
+
 proc createCanvasRenderer*(): NCanvasRenderer =
-  block: # -- Use Program for Define Uniforms
-    result.program = newShader("canvas.vert", "canvas.frag")
-    glUseProgram(result.program)
-    # Define Projection and Texture Uniforms
-    result.uPro = glGetUniformLocation(result.program, "uPro")
-    result.uModel = glGetUniformLocation(result.program, "uModel")
-    # Set Default Uniform Value: Tile Texture
-    glUniform1i glGetUniformLocation(result.program, "uTile"), 0
-    # Unuse Program
-    glUseProgram(0)
-    # Generate Pixel Buffer Object
+  block: # Create Programs
+    var ubo: GLuint
+    # Create UBO and Prepare
+    glGenBuffers(1, addr ubo)
+    glBindBuffer(GL_UNIFORM_BUFFER, ubo)
+    glBufferData(GL_UNIFORM_BUFFER, 128, nil, GL_DYNAMIC_DRAW)
+    glBindBufferBase(GL_UNIFORM_BUFFER, 0, ubo)
+    # Create Downscaling and Upscaling Programs
+    result.program[0] = createCanvasShader("canvas0.frag", ubo)
+    result.program[1] = createCanvasShader("canvas1.frag", ubo)
+    # Unbind Shader UBO
+    glBindBuffer(GL_UNIFORM_BUFFER, 0)
+    # Set Current UBO
+    result.ubo = ubo
+  block: # Create Dummy Texture
     glGenBuffers(1, addr result.pbo)
+    glGenTextures(1, addr result.dummy)
+    glBindTexture(GL_TEXTURE_2D, result.dummy)
+    # Upload Just One Pixel
+    var pixel: cuint = 0
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8.int32, 
+      1, 1, 0, GL_RGBA, GL_UNSIGNED_BYTE, 
+      cast[pointer](addr pixel))
+    # Set Mig/Mag Filter
+    glTexParameteri(GL_TEXTURE_2D, 
+      GL_TEXTURE_MIN_FILTER, cast[GLint](GL_LINEAR))
+    glTexParameteri(GL_TEXTURE_2D, 
+      GL_TEXTURE_MAG_FILTER, cast[GLint](GL_LINEAR))
+    # Set UV Mapping Clamping
+    glTexParameteri(GL_TEXTURE_2D, 
+      GL_TEXTURE_WRAP_S, cast[GLint](GL_CLAMP_TO_EDGE))
+    glTexParameteri(GL_TEXTURE_2D, 
+      GL_TEXTURE_WRAP_T, cast[GLint](GL_CLAMP_TO_EDGE))
+    glGenerateMipmap(GL_TEXTURE_2D)
+    glBindTexture(GL_TEXTURE_2D, 0)
 
 proc createViewport*(ctx: var NCanvasRenderer; w, h: cint): NCanvasViewport =
   result.renderer = addr ctx
@@ -157,11 +197,81 @@ proc locatePositions(view: var NCanvasViewport) =
     # Guarante Tile Texture
     if batch.tile.texture == 0:
       batch.tile.texture = ctx.recycle()
+      batch.tile.whole()
     # Next Position
     cursor += 4
   # Unmap Buffers
   discard glUnmapBuffer(GL_ARRAY_BUFFER)
   glBindBuffer(GL_ARRAY_BUFFER, 0)
+
+# --------------------------
+# Canvas Render Tile Mapping
+# --------------------------
+
+proc map*(view: var NCanvasViewport; x256, y256: cint): NCanvasPBOMap =
+  # Define Tile Map
+  let
+    ctx = view.renderer
+    tile = view.grid.lookup(x256, y256)
+    # Tile Regions
+    region = tile.region()
+    offset = ctx.bytes
+    # Tile Buffer Copy Size
+    bytes = region.w * region.h * 4
+  # Allocate Tile Map
+  new result
+  # Define Dirty Region
+  result.tile = tile
+  result.offset = offset
+  result.bytes = bytes
+  # Add Dirty Region to Mappers
+  ctx.mappers.add(result)
+  ctx.bytes += bytes
+
+proc map*(ctx: var NCanvasRenderer) =
+  let bytes = ctx.bytes
+  # Create New PBO, And Map Each Segment
+  glBindBuffer(GL_PIXEL_UNPACK_BUFFER, ctx.pbo)
+  glBufferData(GL_PIXEL_UNPACK_BUFFER, bytes, nil, GL_STREAM_COPY)
+  for m in ctx.mappers:
+    m.chunk = glMapBufferRange(
+      GL_PIXEL_UNPACK_BUFFER, m.offset, m.bytes, 
+      GL_MAP_WRITE_BIT or GL_MAP_UNSYNCHRONIZED_BIT)
+
+proc unmap*(ctx: var NCanvasRenderer) =
+  # Close Buffer Map
+  discard glUnmapBuffer(GL_PIXEL_UNPACK_BUFFER)
+  # Upload Each Texture
+  for m in ctx.mappers:
+    let
+      tile = m.tile
+      r = tile.region()
+      offset = cast[pointer](m.offset)
+    # Upload Texture
+    glBindTexture(GL_TEXTURE_2D, tile.texture)
+    glTexSubImage2D(GL_TEXTURE_2D, 0, 
+      r.x, r.y, r.w, r.h, GL_RGBA, GL_UNSIGNED_BYTE, offset)
+    # Remove Dirty Region
+    tile.clean()
+  # UnBind Buffers
+  glBindTexture(GL_TEXTURE_2D, 0)
+  glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0)
+  # Clear Mappers
+  newSeq(ctx.mappers, 0)
+  ctx.bytes = 0
+
+# --------------------
+# Canvas Forward Procs
+# --------------------
+
+template mark32*(view: var NCanvasViewport; x32, y32: cint) =
+  view.grid.mark32(x32, y32)
+
+template mark*(view: var NCanvasViewport; dirty: NCanvasDirty) =
+  view.grid.mark(dirty)
+
+template region*(pbo: NCanvasPBOMap): NCanvasDirty =
+  pbo.tile.region()
 
 # ----------------------
 # Canvas Render Commands
@@ -185,15 +295,7 @@ proc active(idx, tex: GLuint) =
 
 proc render*(view: var NCanvasViewport) =
   let ctx = view.renderer
-  glUseProgram(ctx.program)
-  # Upload View Projection Matrix
-  glUniformMatrix4fv(ctx.uPro, 1, false,
-    cast[ptr cfloat](addr view.affine.projection))
-  # Upload View Transform Matrix
-  glUniformMatrix3fv(ctx.uModel, 1, true,
-    cast[ptr cfloat](addr view.affine.model0))
-  # Render Each View Texture
-  glBindVertexArray(view.vao)
+  glUseProgram(ctx.program[1])
   # Draw Each Tile
   var cursor: cint
   for sample in samples(view.grid):

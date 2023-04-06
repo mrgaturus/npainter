@@ -101,10 +101,11 @@ func region*(tile: ptr NCanvasTile): NCanvasDirty =
     x1 = cast[cint](tile.x1) shl 1
     y1 = cast[cint](tile.y1) shl 1
   # Aligned Region
-  result.x = x0
-  result.y = y0
-  result.w = x1 - x0
-  result.h = y1 - y0
+  if tile.texture > 0:
+    result.x = x0
+    result.y = y0
+    result.w = x1 - x0
+    result.h = y1 - y0
 
 # -------------------
 # Canvas Grid Manager
@@ -240,7 +241,7 @@ proc mark32*(grid: var NCanvasGrid; x32, y32: cint) =
     x0 = (x32 and not 0x7) shl 5
     y0 = (y32 and not 0x7) shl 5
     x1 = x0 + 32
-    y1 = x1 + 32
+    y1 = y0 + 32
     # Create Dirty Region
     dirty = (x0, y0, x1, y1)
     tile = grid.lookup(tx, ty)
@@ -252,7 +253,7 @@ proc mark*(grid: var NCanvasGrid; dirty: sink NCanvasDirty) =
     tx0 = dirty.x shr 8
     ty0 = dirty.y shr 8
     tx1 = (dirty.x + dirty.w + 255) shr 8
-    ty1 = (dirty.x + dirty.w + 255) shr 8
+    ty1 = (dirty.y + dirty.h + 255) shr 8
   # Iterate Each Vertical
   for y in ty0 ..< ty1:
     var dirty0 = dirty
@@ -263,7 +264,7 @@ proc mark*(grid: var NCanvasGrid; dirty: sink NCanvasDirty) =
       # Step Region X
       dirty0.x -= 256
     # Step Region Y
-    dirty0.y -= 256
+    dirty.y -= 256
 
 # ----------------
 # Canvas Iterators
