@@ -15,7 +15,7 @@ type
   NCanvasRenderer* = object
     # OpenGL Objects
     program: array[2, GLuint]
-    dummy, pbo, ubo: GLuint
+    dummy, pbo: GLuint
     # OpenGL Textures
     usables: seq[GLuint]
     # OpenGL Mappers
@@ -28,14 +28,14 @@ type
     # Canvas Image Size
     w, h: cint
     # Tile Geometry
-    vao, vbo: GLuint
+    vao, vbo, ubo: GLuint
     grid: NCanvasGrid
 
 # ------------------------
 # Canvas Renderer Creation
 # ------------------------
 
-proc createCanvasShader(frag: string, ubo: GLuint): GLuint =
+proc createCanvasShader(frag: string): GLuint =
   result = newShader("canvas.vert", frag)
   glUseProgram(result)
   # Configure UBO Block
@@ -53,20 +53,9 @@ proc createCanvasShader(frag: string, ubo: GLuint): GLuint =
   glUseProgram(0)
 
 proc createCanvasRenderer*(): NCanvasRenderer =
-  block: # Create Programs
-    var ubo: GLuint
-    # Create UBO and Prepare
-    glGenBuffers(1, addr ubo)
-    glBindBuffer(GL_UNIFORM_BUFFER, ubo)
-    glBufferData(GL_UNIFORM_BUFFER, 128, nil, GL_DYNAMIC_DRAW)
-    glBindBufferBase(GL_UNIFORM_BUFFER, 0, ubo)
-    # Create Downscaling and Upscaling Programs
-    result.program[0] = createCanvasShader("canvas0.frag", ubo)
-    result.program[1] = createCanvasShader("canvas1.frag", ubo)
-    # Unbind Shader UBO
-    glBindBuffer(GL_UNIFORM_BUFFER, 0)
-    # Set Current UBO
-    result.ubo = ubo
+  block: # Create Downscaling and Upscaling Programs
+    result.program[0] = createCanvasShader("canvas0.frag")
+    result.program[1] = createCanvasShader("canvas1.frag")
   block: # Create Dummy Texture
     glGenBuffers(1, addr result.pbo)
     glGenTextures(1, addr result.dummy)
@@ -108,7 +97,12 @@ proc createViewport*(ctx: var NCanvasRenderer; w, h: cint): NCanvasViewport =
     # Unbind VBO and VAO
     glBindBuffer(GL_ARRAY_BUFFER, 0)
     glBindVertexArray(0)
-  block: # Canvas Grid
+  block: # Configure UBO
+    glGenBuffers(1, addr result.ubo)
+    glBindBuffer(GL_UNIFORM_BUFFER, result.ubo)
+    glBufferData(GL_UNIFORM_BUFFER, 128, nil, GL_DYNAMIC_DRAW)
+    glBindBuffer(GL_UNIFORM_BUFFER, 0)
+  block: # Create Canvas Grid
     let
       w256 = (w + 255) shr 8
       h256 = (h + 255) shr 8
@@ -277,8 +271,25 @@ template region*(pbo: NCanvasPBOMap): NCanvasDirty =
 # Canvas Render Commands
 # ----------------------
 
+proc transform(view: var NCanvasViewport) =
+  let affine = addr view.affine
+  # Calculate Matrices
+  affine[].calculate()
+  # Copy Matrices as std140 said
+  glBindBuffer(GL_UNIFORM_BUFFER, view.ubo)
+  let ubo = cast[ptr UncheckedArray[byte]](
+    glMapBuffer(GL_UNIFORM_BUFFER, GL_WRITE_ONLY))
+  copyMem(addr ubo[0], addr affine.zoom, 4)
+  copyMem(addr ubo[16], addr affine.model1[0], 12)
+  copyMem(addr ubo[32], addr affine.model1[3], 12)
+  copyMem(addr ubo[48], addr affine.model1[6], 12)
+  copyMem(addr ubo[64], addr affine.projection[0], 64)
+  discard glUnmapBuffer(GL_UNIFORM_BUFFER)
+  glBindBuffer(GL_UNIFORM_BUFFER, 0)
+
 proc update*(view: var NCanvasViewport) =
-  # Cull Tiles
+  # Update Affine and Grid
+  view.transform()
   view.grid.clear()
   # Recycle and Prepare Tiles
   view.grid.recycle()
@@ -295,7 +306,10 @@ proc active(idx, tex: GLuint) =
 
 proc render*(view: var NCanvasViewport) =
   let ctx = view.renderer
+  # Bind Program and VAO
   glUseProgram(ctx.program[1])
+  glBindVertexArray(view.vao)
+  glBindBufferBase(GL_UNIFORM_BUFFER, 0, view.ubo)
   # Draw Each Tile
   var cursor: cint
   for sample in samples(view.grid):
@@ -308,8 +322,9 @@ proc render*(view: var NCanvasViewport) =
     glDrawArrays(GL_TRIANGLE_STRIP, cursor, 4)
     # Next Vertex
     cursor += 4
-  # Unbind Current State
+  # Unbind Texture
   glActiveTexture(GL_TEXTURE0)
   glBindTexture(GL_TEXTURE_2D, 0)
+  # Unbind Uniform Buffers
   glBindVertexArray(0)
   glUseProgram(0)
