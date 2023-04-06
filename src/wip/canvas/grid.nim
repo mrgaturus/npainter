@@ -7,21 +7,29 @@ type
   NCanvasDirty* = tuple[x, y, w, h: cint]
   NCanvasAligned = tuple[x0, y0, x1, y1: uint8]
   # Canvas Texture Tile
+  NCanvasSample = array[4, GLuint]
   NCanvasTile = object
     texture: GLuint
     # Dirty Region
     x0, y0: uint8
     x1, y1: uint8
+  NCanvasBatch = object
+    tile*: ptr NCanvasTile
+    sample*: ptr NCanvasSample
+  # Canvas Buffer Pointers
   NCanvasBuffer = ref UncheckedArray[byte]
   NCanvasTiles = ptr UncheckedArray[NCanvasTile]
+  NCanvasLocs = ptr UncheckedArray[ptr NCanvasTile]
+  NCanvasSamples = ptr UncheckedArray[NCanvasSample]
   # Canvas Tile Grid
   NCanvasGrid* = object
-    w, h, lod: cint
+    w, h: cint
     # Tile Grid Count
     count, unused: cint
     # Tile Grid Buffer
     buffer: NCanvasBuffer
-    tiles, cache: NCanvasTiles
+    tiles, aux: NCanvasTiles
+    cache: NCanvasSamples
     
 # --------------------
 # Canvas Grid Creation
@@ -31,13 +39,17 @@ proc createCanvasGrid*(w256, h256: cint): NCanvasGrid =
   result.w = w256
   result.h = h256
   # Configure Grid
-  let chunk = w256 * h256 * sizeof(NCanvasTile)
+  let
+    l = w256 * w256
+    chunk = l * sizeof(NCanvasBatch)
+    half = l * sizeof(NCanvasTile)
   # Allocate Viewport Locations
   unsafeNew(result.buffer, chunk shl 1)
   zeroMem(addr result.buffer[0], chunk shl 1)
   # Configure Grid Pointers
   result.tiles = cast[NCanvasTiles](addr result.buffer[0])
-  result.cache = cast[NCanvasTiles](addr result.buffer[chunk])
+  result.aux = cast[NCanvasTiles](addr result.buffer[half])
+  result.cache = cast[NCanvasSamples](result.buffer[chunk])
 
 # ------------------------
 # Canvas Tile Dirty Region
@@ -108,11 +120,11 @@ proc lookup*(grid: var NCanvasGrid; tx, ty: cint): ptr NCanvasTile =
 proc clear*(grid: var NCanvasGrid) =
   let
     l = grid.w * grid.h
-    cache = cast[NCanvasTiles](grid.tiles)
-    tiles = cast[NCanvasTiles](grid.cache)
+    prev = cast[NCanvasTiles](grid.tiles)
+    tiles = cast[NCanvasTiles](grid.aux)
   # Swap Grid and Cache
   grid.tiles = tiles
-  grid.cache = cache
+  grid.aux = prev
   # Clear Grid
   zeroMem(tiles, l * NCanvasTile.sizeof)
   # Reset Cache Counter
@@ -129,7 +141,7 @@ proc activate*(grid: var NCanvasGrid, x, y: cint) =
       idx = ty * stride + tx
       # Located Tile
       tile = addr grid.tiles[idx]
-      prev = addr grid.cache[idx]
+      prev = addr grid.aux[idx]
     var
       x0 = cast[uint8](tx)
       y0 = cast[uint8](ty)
@@ -148,7 +160,7 @@ proc activate*(grid: var NCanvasGrid, x, y: cint) =
 
 proc recycle*(grid: var NCanvasGrid) =
   let
-    caches = grid.cache
+    prevs = grid.aux
     tiles = grid.tiles
     # Buffer Size
     l = grid.w * grid.h
@@ -158,10 +170,10 @@ proc recycle*(grid: var NCanvasGrid) =
     tile, prev: ptr NCanvasTile
   while idx < l:
     tile = addr tiles[idx]
-    prev = addr caches[idx]
+    prev = addr prevs[idx]
     # Check if texture is not needed
     if prev.texture != tile.texture:
-      tile = addr caches[cursor]
+      tile = addr prevs[cursor]
       tile.texture = prev.texture
       # Next Unused
       inc(cursor)
@@ -172,27 +184,51 @@ proc recycle*(grid: var NCanvasGrid) =
 
 proc prepare*(grid: var NCanvasGrid) =
   let
-    caches = grid.cache
+    locs = cast[NCanvasLocs](grid.aux)
     tiles = grid.tiles
     # Buffer Size
     l = grid.w * grid.h
   # Locate Tiles
   var
-    tex: GLuint
     idx, cursor: cint
     tile: ptr NCanvasTile
   while idx < l:
     tile = addr tiles[idx]
-    tex = tile.texture
     # Check if there is a tile
-    if tex > 0 or tile.invalid:
-      caches[cursor] = tile[]
+    if tile.texture > 0 or tile.invalid:
+      locs[cursor] = tile
       # Next Cache
       inc(cursor)
     # Next Tile
     inc(idx)
   # Set Cached Count
   grid.count = cursor
+
+# -------------------
+# Canvas Grid Sampler
+# -------------------
+
+proc sample(grid: var NCanvasGrid; tx, ty: cint): GLuint =
+  let 
+    tiles = grid.tiles
+    stride = grid.w
+    rows = grid.h
+  # Avoid Bound Errors
+  if tx >= 0 and ty >= 0 and tx < stride and ty < rows:
+    let idx = ty * stride + tx
+    result = tiles[idx].texture
+
+proc sample*(grid: var NCanvasGrid; dummy: GLuint; tx, ty: cint): NCanvasSample =
+  let
+    tx1 = tx + 1
+    ty1 = ty + 1
+  result[0] = grid.sample(tx, ty)
+  result[1] = grid.sample(tx1, ty)
+  result[2] = grid.sample(tx, ty1)
+  result[3] = grid.sample(tx1, ty1)
+  # Replace Zeros With Dummy
+  for tex in mitems(result):
+    if tex == 0: tex = dummy
 
 # --------------------
 # Canvas Dirty Manager
@@ -238,21 +274,39 @@ proc mark*(grid: var NCanvasGrid; dirty: sink NCanvasDirty) =
 iterator garbage*(grid: var NCanvasGrid): GLuint =
   let 
     l = grid.unused
-    caches = grid.cache
-  # Iterate Each Unuses
-  var cursor: cint
-  while cursor < l:
-    yield caches[cursor].texture
+    prev = grid.aux
+  # Iterate Garbage
+  var idx: cint
+  while idx < l:
+    yield prev[idx].texture
     # Next Tile
-    inc(cursor)
+    inc(idx)
 
-iterator caches*(grid: var NCanvasGrid): ptr NCanvasTile =
+iterator batches*(grid: var NCanvasGrid): NCanvasBatch =
   let 
     l = grid.count
-    caches = grid.cache
-  # Iterate Each Cached
-  var cursor: cint
-  while cursor < l:
-    yield addr caches[cursor]
+    locs = cast[NCanvasLocs](grid.aux)
+    cache = grid.cache
+  # Iterate Each Batch
+  var
+    idx: cint
+    result: NCanvasBatch
+  # Iterate Samples
+  while idx < l:
+    result.tile = locs[idx]
+    result.sample = addr cache[idx]
+    yield result
     # Next Tile
-    inc(cursor)
+    inc(idx)
+
+iterator samples*(grid: var NCanvasGrid): NCanvasSample =
+  let 
+    l = grid.count
+    cache = grid.cache
+  # Iterate Each Batch
+  var idx: cint
+  # Iterate Samples
+  while idx < l:
+    yield cache[idx]
+    # Next Tile
+    inc(idx)
