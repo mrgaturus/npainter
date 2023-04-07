@@ -1,8 +1,7 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 # Copyright (c) 2023 Cristian Camilo Ruiz <mrgaturus>
-from matrix import
-  NCanvasPoint, forward
-import render
+from matrix import NCanvasPoint, NCanvasAffine, forward
+import grid
 
 type
   NCanvasEdge = object
@@ -12,7 +11,7 @@ type
   NCanvasBounds = object
     x0, y0, x1, y1: cint
   NCanvasQuad = array[4, NCanvasPoint]
-  NCanvasCulling = object
+  NCanvasCulling* = object
     trivial: array[4, NCanvasTrivial]
     edges: array[4, NCanvasEdge]
     # Culling Region
@@ -65,9 +64,8 @@ proc bounds(quad: NCanvasQuad, w, h: cint): NCanvasBounds =
   result.x1 = clamp(result.x1, 0, w)
   result.y1 = clamp(result.y1, 0, h)
 
-proc prepare*(view: NCanvasViewport, cull: var NCanvasCulling) =
+proc prepare*(cull: var NCanvasCulling, m: NCanvasAffine) =
   let 
-    m = view.affine
     # Canvas Dimensions
     w = cfloat(m.vw)
     h = cfloat(m.vh)
@@ -146,9 +144,8 @@ proc test(cull: var NCanvasCulling): bool =
 # Canvas Culling Perform
 # ----------------------
 
-proc assemble*(view: var NCanvasViewport, cull: var NCanvasCulling) =
+proc assemble*(grid: var NCanvasGrid, cull: var NCanvasCulling) =
   # Locate Culling First
-  view.clear()
   cull.locate()
   # Calculate Tiled Size
   let
@@ -161,10 +158,8 @@ proc assemble*(view: var NCanvasViewport, cull: var NCanvasCulling) =
   for y in y0 ..< y1:
     for x in x0 ..< x1:
       if cull.test():
-        view.activate(x, y)
+        grid.activate(x, y)
       # Next Tile
       cull.step(false)
     # Next Row
     cull.step(true)
-  # Prepare View Tiles
-  view.prepare()

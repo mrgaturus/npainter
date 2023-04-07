@@ -2,7 +2,7 @@
 # Copyright (c) 2023 Cristian Camilo Ruiz <mrgaturus>
 import ../../libs/gl
 import ../../assets
-import matrix, grid
+import matrix, culling, grid
 export NCanvasDirty
 
 type
@@ -25,6 +25,7 @@ type
   NCanvasViewport* = object
     renderer: ptr NCanvasRenderer
     affine*: NCanvasAffine
+    cull: NCanvasCulling
     # Canvas Image Size
     w, h: cint
     # Tile Geometry
@@ -288,13 +289,17 @@ proc transform(view: var NCanvasViewport) =
   glBindBuffer(GL_UNIFORM_BUFFER, 0)
 
 proc update*(view: var NCanvasViewport) =
+  let ctx = view.renderer
   # Update Affine and Grid
   view.transform()
   view.grid.clear()
+  # Apply Grid Culling
+  prepare(view.cull, view.affine)
+  assemble(view.grid, view.cull)
   # Recycle and Prepare Tiles
   view.grid.recycle()
   for tex in view.grid.garbage():
-    view.renderer.recycle(tex)
+    ctx.recycle(tex)
   view.grid.prepare()
   # Locate Tiles Cache
   view.locatePositions()
@@ -305,13 +310,13 @@ proc active(idx, tex: GLuint) =
   glBindTexture(GL_TEXTURE_2D, tex)
 
 proc render*(view: var NCanvasViewport) =
+  var cursor: cint
   let ctx = view.renderer
   # Bind Program and VAO
   glUseProgram(ctx.program[1])
   glBindVertexArray(view.vao)
   glBindBufferBase(GL_UNIFORM_BUFFER, 0, view.ubo)
-  # Draw Each Tile
-  var cursor: cint
+  # Render Each Tile
   for sample in samples(view.grid):
     # Bind Textures
     active(0, sample[0])
