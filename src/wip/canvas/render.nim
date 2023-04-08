@@ -7,8 +7,9 @@ export NCanvasDirty
 
 type
   NCanvasVertex = tuple[x, y, u, v: cushort]
-  NCanvasPBOMap = ref object
+  NCanvasPBOMap* = ref object
     tile: ptr NCanvasTile
+    x256*, y256*: cint
     # Chunk Mapping
     offset, bytes*: GLint
     chunk*: pointer
@@ -23,7 +24,7 @@ type
     mappers: seq[NCanvasPBOMap]
   # Canvas Viewport
   NCanvasViewport* = object
-    renderer: ptr NCanvasRenderer
+    renderer*: ptr NCanvasRenderer
     affine*: NCanvasAffine
     cull: NCanvasCulling
     # Canvas Image Size
@@ -79,7 +80,7 @@ proc createCanvasRenderer*(): NCanvasRenderer =
     glGenerateMipmap(GL_TEXTURE_2D)
     glBindTexture(GL_TEXTURE_2D, 0)
 
-proc createViewport*(ctx: var NCanvasRenderer; w, h: cint): NCanvasViewport =
+proc createCanvasViewport*(ctx: var NCanvasRenderer; w, h: cint): NCanvasViewport =
   result.renderer = addr ctx
   block: # Configure OpenGL Objects
     glGenVertexArrays(1, addr result.vao)
@@ -192,7 +193,6 @@ proc locatePositions(view: var NCanvasViewport) =
     # Guarante Tile Texture
     if batch.tile.texture == 0:
       batch.tile.texture = ctx.recycle()
-      batch.tile.whole()
     # Next Position
     cursor += 4
   # Unmap Buffers
@@ -202,6 +202,27 @@ proc locatePositions(view: var NCanvasViewport) =
 # --------------------------
 # Canvas Render Tile Mapping
 # --------------------------
+
+proc map*(view: var NCanvasViewport; invalid: ptr NCanvasTile): NCanvasPBOMap =
+  let 
+    ctx = view.renderer
+    offset = ctx.bytes
+  const bytes = 256 * 256 * 4
+  # Allocate Tile Map
+  new result
+  # Define Dirty Region
+  result.tile = invalid
+  result.offset = offset
+  result.bytes = bytes
+  # Check Really Invalid
+  assert invalid.invalid, "tile not invalid"
+  result.x256 = cast[cint](invalid.x0)
+  result.y256 = cast[cint](invalid.y0)
+  # Dirty All Tile
+  invalid.whole()
+  # Add Dirty Region to Mappers
+  ctx.mappers.add(result)
+  ctx.bytes += bytes
 
 proc map*(view: var NCanvasViewport; x256, y256: cint): NCanvasPBOMap =
   # Define Tile Map
@@ -215,7 +236,10 @@ proc map*(view: var NCanvasViewport; x256, y256: cint): NCanvasPBOMap =
     bytes = region.w * region.h * 4
   # Allocate Tile Map
   new result
-  # Define Dirty Region
+  # Define Dirty Position
+  result.x256 = x256
+  result.y256 = y256
+  # Define Dirty Chunk
   result.tile = tile
   result.offset = offset
   result.bytes = bytes
@@ -255,9 +279,12 @@ proc unmap*(ctx: var NCanvasRenderer) =
   newSeq(ctx.mappers, 0)
   ctx.bytes = 0
 
-# --------------------
-# Canvas Forward Procs
-# --------------------
+# -----------------------
+# Canvas Viewport Helpers
+# -----------------------
+
+iterator tiles*(view: var NCanvasViewport): ptr NCanvasTile =
+  for tile in view.grid.tiles: yield tile
 
 template mark32*(view: var NCanvasViewport; x32, y32: cint) =
   view.grid.mark32(x32, y32)

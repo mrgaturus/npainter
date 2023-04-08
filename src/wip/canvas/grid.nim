@@ -299,6 +299,18 @@ iterator batches*(grid: var NCanvasGrid): NCanvasBatch =
     # Next Tile
     inc(idx)
 
+iterator tiles*(grid: var NCanvasGrid): ptr NCanvasTile =
+  let 
+    l = grid.count
+    locs = cast[NCanvasLocs](grid.aux)
+  # Iterate Each Batch
+  var idx: cint
+  # Iterate Samples
+  while idx < l:
+    yield locs[idx]
+    # Next Tile
+    inc(idx)
+
 iterator samples*(grid: var NCanvasGrid): NCanvasSample =
   let 
     l = grid.count
