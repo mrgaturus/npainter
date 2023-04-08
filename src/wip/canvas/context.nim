@@ -68,11 +68,12 @@ proc createCanvasContext*(w, h: cint): NCanvasContext =
   zeroMem(addr result.memory[0], chunkTotal)
   # Store Buffer Size
   result.chunk = chunk
-  # Locate Buffer Pointers
+  # Locate Working Buffer Pointers
   result.buffer0 = cast[NCanvasMap](addr result.memory[0])
   result.buffer1 = cast[NCanvasMap](addr result.buffer0[chunkColor])
   result.mask = cast[NCanvasMap](addr result.buffer1[chunkColor])
   result.selection = cast[NCanvasMap](addr result.mask[chunkMask])
+  # Locate Composed Buffer Pointers
   result.original = cast[NCanvasMap](addr result.selection[chunkMask])
   result.mipmaps = cast[NCanvasMap](addr result.original[chunkColor])
   # Create Canvas Dirty Grid
