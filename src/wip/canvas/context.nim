@@ -51,8 +51,8 @@ proc createCanvasContext*(w, h: cint): NCanvasContext =
   # Calculate Memory Size
   let
     chunk = result.w64 * result.h64
-    chunkColor = chunk shl 2
-    chunkMask = chunk shl 1
+    chunkColor = chunk shl 3
+    chunkMask = chunk shl 2
     chunkMipmap =
       (chunkColor shr 2) + 
       (chunkColor shr 4) +

@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 # Copyright (c) 2023 Cristian Camilo Ruiz <mrgaturus>
 import canvas/[context, render, grid]
+from canvas/matrix import NCanvasAffine
 
 type
   NCanvasCheck = object
@@ -8,6 +9,7 @@ type
     buffer: seq[bool]
   NCanvasProof* = ref object
     ctx*: NCanvasContext
+    render: NCanvasRenderer
     view: NCanvasViewport
     check: NCanvasCheck
 
@@ -81,17 +83,16 @@ proc copy(dst: NCanvasAwful8, src: NCanvasAwful16; stride, x, y, w, h: int) =
 # Canvas Proof Creation
 # ---------------------
 
-proc createCanvasProof*(render: var NCanvasRenderer; w, h: cint): NCanvasProof =
+proc createCanvasProof*(w, h: cint): NCanvasProof =
+  new result
   result.ctx = createCanvasContext(w, h)
-  result.view = render.createCanvasViewport(w, h)
+  result.render = createCanvasRenderer()
+  result.view = result.render.createCanvasViewport(w, h)
   result.check = createCanvasCheck(w, h)
 
 # -------------------------
 # Canvas Proof Manipulation
 # -------------------------
-
-proc copy*(canvas: var NCanvasProof) =
-  discard
 
 proc update*(canvas: var NCanvasProof) =
   canvas.view.update()
@@ -99,16 +100,16 @@ proc update*(canvas: var NCanvasProof) =
     stride = canvas.ctx.w
     img = cast[NCanvasAwful16](canvas.ctx.composed 0)
   # Calculate Canvas New Tiles
-  var pbos: seq[NCanvasPBOMap]
-  for tile in tiles(canvas.view):
-    if tile.invalid:
-      pbos.add canvas.view.map(tile)
+  #var pbos: seq[NCanvasPBOMap]
+  #for tile in tiles(canvas.view):
+    #if tile.invalid:
+      #pbos.add canvas.view.map(tile)
   # XXX: Where use renderer directly?
-  map(canvas.view.renderer[])
-  for pbo in pbos:
-    let chunk = cast[NCanvasAwful8](pbo.chunk)
-    copy(chunk, img, stride, pbo.x256 shl 8, pbo.y256 shl 8, 256, 256)
-  unmap(canvas.view.renderer[])
+  #map(canvas.view.renderer[])
+  #for pbo in pbos:
+    #let chunk = cast[NCanvasAwful8](pbo.chunk)
+    #copy(chunk, img, stride, pbo.x256 shl 8, pbo.y256 shl 8, 256, 256)
+  #unmap(canvas.view.renderer[])
 
 proc clean*(canvas: var NCanvasProof) =
   # Iterate Each Check to Copy Buffer
@@ -134,5 +135,27 @@ proc clean*(canvas: var NCanvasProof) =
 
 proc mark*(canvas: var NCanvasProof; x, y, w, h: cint) =
   let dirty = (x, y, w, h)
+  echo dirty.repr
   canvas.view.mark(dirty)
   canvas.check.mark(x, y, w, h)
+
+proc clear*(canvas: var NCanvasProof) =
+  let
+    w = canvas.ctx.w
+    h = canvas.ctx.h
+    chunk = w * h shl 3
+    composed = canvas.ctx.composed(0)
+    buffer0 = canvas.ctx.buffer0
+    buffer1 = canvas.ctx.buffer1
+  zeroMem(composed, chunk)
+  zeroMem(buffer0, chunk)
+  zeroMem(buffer1, chunk)
+  # Mark Whole Image Dirty
+  canvas.mark(0, 0, w, h)
+  canvas.clean()
+
+proc render*(canvas: var NCanvasProof) {.inline.} =
+  canvas.view.render()
+
+proc affine*(canvas: var NCanvasProof): ptr NCanvasAffine =
+  addr canvas.view.affine
