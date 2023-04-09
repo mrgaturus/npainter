@@ -27,8 +27,8 @@ proc affine(a: var NCanvasAffine) =
   let
     m = addr a.model0
     # Center Position
-    cx = cfloat(a.cw) * -0.5
-    cy = cfloat(a.ch) * -0.5
+    cx = -cfloat(a.vw shr 1)
+    cy = -cfloat(a.vh shr 1)
     # Scale and Rotation
     cs = cos(a.angle) * a.zoom
     ss = sin(a.angle) * a.zoom
@@ -56,8 +56,8 @@ proc inverse(a: var NCanvasAffine) =
   let
     m = addr a.model1
     # Center Position
-    cx = cfloat(a.cw) * -0.5
-    cy = cfloat(a.ch) * -0.5
+    cx = -cfloat(a.vw shr 1)
+    cy = -cfloat(a.vh shr 1)
     # Offset Position
     x = a.x
     y = a.y
