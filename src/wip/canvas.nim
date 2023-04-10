@@ -38,7 +38,7 @@ proc mark(check: var NCanvasCheck; x, y, w, h: cint) =
     x0 = x shr 8
     y0 = y shr 8
     x1 = (x + w + 255) shr 8
-    y1 = (y + w + 255) shr 8
+    y1 = (y + h + 255) shr 8
   for y in y0 ..< y1:
     for x in x0 ..< x1:
       check.mark(x, y)
@@ -100,16 +100,30 @@ proc update*(canvas: var NCanvasProof) =
     stride = canvas.ctx.w
     img = cast[NCanvasAwful16](canvas.ctx.composed 0)
   # Calculate Canvas New Tiles
-  #var pbos: seq[NCanvasPBOMap]
-  #for tile in tiles(canvas.view):
-    #if tile.invalid:
-      #pbos.add canvas.view.map(tile)
+  var pbos: seq[NCanvasPBOMap]
+  for tile in tiles(canvas.view):
+    if tile.invalid:
+      pbos.add canvas.view.map(tile)
+    else: tile.clean()
   # XXX: Where use renderer directly?
-  #map(canvas.view.renderer[])
-  #for pbo in pbos:
-    #let chunk = cast[NCanvasAwful8](pbo.chunk)
-    #copy(chunk, img, stride, pbo.x256 shl 8, pbo.y256 shl 8, 256, 256)
-  #unmap(canvas.view.renderer[])
+  if pbos.len > 0:
+    map(canvas.view.renderer[])
+    for pbo in pbos:
+      let 
+        chunk = cast[NCanvasAwful8](pbo.chunk)
+        bytes = pbo.bytes shr 2
+      #copy(chunk, img, stride, pbo.x256 shl 8, pbo.y256 shl 8, 256, 256)
+      #zeroMem(chunk, pbo.bytes)
+      let 
+        check = ((pbo.x256 xor pbo.y256) and 1) > 0
+        col = cast[byte](if check: 0xFF else: 0xD4)
+      for idx in 0 ..< bytes:
+        let i = idx shl 2
+        chunk[i + 0] = col
+        chunk[i + 1] = col
+        chunk[i + 2] = col
+        chunk[i + 3] = 0xFF
+    unmap(canvas.view.renderer[])
 
 proc clean*(canvas: var NCanvasProof) =
   # Iterate Each Check to Copy Buffer
@@ -125,19 +139,31 @@ proc clean*(canvas: var NCanvasProof) =
       if canvas.check.test(x256, y256):
         pbos.add canvas.view.map(x256, y256)
   # XXX: Where use renderer directly?
-  map(canvas.view.renderer[])
-  for pbo in pbos:
-    let chunk = cast[NCanvasAwful8](pbo.chunk)
-    copy(chunk, img, stride, pbo.x256 shl 8, pbo.y256 shl 8, 256, 256)
-  unmap(canvas.view.renderer[])
+  if pbos.len > 0:
+    map(canvas.view.renderer[])
+    for pbo in pbos:
+      let 
+        chunk = cast[NCanvasAwful8](pbo.chunk)
+        bytes = pbo.bytes shr 2
+      echo "pbo byes: ", bytes
+      #copy(chunk, img, stride, pbo.x256 shl 8, pbo.y256 shl 8, 256, 256)
+      for idx in 0 ..< bytes:
+        let i = idx shl 2
+        chunk[i + 0] = 0xFF
+        chunk[i + 1] = 0x00
+        chunk[i + 2] = 0x00
+        chunk[i + 3] = 0xFF
+    unmap(canvas.view.renderer[])
   # Clear Canvas Check 
   canvas.check.clear()
 
 proc mark*(canvas: var NCanvasProof; x, y, w, h: cint) =
   let dirty = (x, y, w, h)
-  echo dirty.repr
-  canvas.view.mark(dirty)
-  canvas.check.mark(x, y, w, h)
+  echo "dirty pre: ", dirty
+  if w > 0 and h > 0:
+    echo "dirty: ", dirty
+    canvas.view.mark(dirty)
+    canvas.check.mark(x, y, w, h)
 
 proc clear*(canvas: var NCanvasProof) =
   let

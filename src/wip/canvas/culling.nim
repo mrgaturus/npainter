@@ -160,7 +160,6 @@ proc assemble*(grid: var NCanvasGrid, cull: var NCanvasCulling) =
   for y in y0 .. y1:
     for x in x0 .. x1:
       if cull.test():
-        echo "activated: ", x, " ", y
         grid.activate(x, y)
       # Next Tile
       cull.step(false)

@@ -72,13 +72,14 @@ func align(dirty: NCanvasDirty): NCanvasAligned =
   # Clamp Values
   x0 = clamp(x0, 0, 256)
   y0 = clamp(y0, 0, 256)
-  x1 = clamp(x1, 0, 256)
-  y1 = clamp(y1, 0, 256)
+  x1 = clamp(x1, 0, 256) + 1
+  y1 = clamp(y1, 0, 256) + 1
   # Return Values
   result.x0 = cast[uint8](x0 shr 1)
   result.y0 = cast[uint8](y0 shr 1)
   result.x1 = cast[uint8](x1 shr 1)
   result.y1 = cast[uint8](y1 shr 1)
+  debugEcho "aligned: ", result
 
 func mark*(tile: ptr NCanvasTile, dirty: NCanvasDirty) =
   let (x0, y0, x1, y1) = dirty.align()
@@ -156,6 +157,7 @@ proc activate*(grid: var NCanvasGrid, tx, ty: cint) =
     # Set Tile Invalid
     tile.x1 = x0
     tile.y1 = y0
+    echo "activated tile: ", x0, " ", y0, " ", tile.texture
 
 proc recycle*(grid: var NCanvasGrid) =
   let
@@ -195,7 +197,7 @@ proc prepare*(grid: var NCanvasGrid) =
     tile = addr tiles[idx]
     # Check if there is a tile
     if tile.texture > 0 or tile.invalid:
-      echo "prepared tile: ", idx
+      echo "prepared tile: ", idx, " ", tile.texture
       locs[cursor] = tile
       # Next Cache
       inc(cursor)
@@ -256,14 +258,19 @@ proc mark*(grid: var NCanvasGrid; dirty: sink NCanvasDirty) =
     ty0 = dirty.y shr 8
     tx1 = (dirty.x + dirty.w + 255) shr 8
     ty1 = (dirty.y + dirty.h + 255) shr 8
+  # Locate Dirty
+  dirty.x -= tx0 shl 8
+  dirty.y -= ty0 shl 8
   # Iterate Each Vertical
   for y in ty0 ..< ty1:
     var dirty0 = dirty
     # Iterate Each Horizontal
     for x in tx0 ..< tx1:
       let tile = grid.lookup(x, y)
+      echo "prev x", x, " y ", y, " ", tile.region
       if tile.texture > 0:
         tile.mark(dirty0)
+      echo "next x", x, " y ", y, " ", tile.region
       # Step Region X
       dirty0.x -= 256
     # Step Region Y

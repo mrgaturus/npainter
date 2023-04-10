@@ -3,7 +3,7 @@ import gui/widgets/[slider, label, color, radio, check, button]
 # Import OpenGL
 import libs/gl
 # Import Maths
-from math import floor, arctan2, pow, log2
+from math import floor, arctan2, pow, log2, degToRad
 import omath
 # Import Brush Engine
 import wip/[brush, texture, binary, canvas]
@@ -337,7 +337,11 @@ proc eventBrush(self: GUICanvas, state: ptr GUIState) =
   elif self.test(wGrab) and 
   state.kind == evCursorMove and 
   self.handle == LeftButton:
-    point(self.path, state.px, state.py, state.pressure, 0.0)
+    # Forward Point
+    let 
+      affine = self.view.affine
+      p = affine[].forward(state.px, state.py)
+    point(self.path, p.x, p.y, state.pressure, 0.0)
     # Call Dispatch
     if not self.busy:
       # Push Dispatch Callback
@@ -476,6 +480,8 @@ method layout(self: GUICanvas) =
   let affine = self.view.affine
   affine.vw = self.rect.w
   affine.vh = self.rect.h
+  # Locate Shape Panel
+  self.shape.geometry(self.rect.w - 250 - 5, 5, 250, 550)
   self.view.update()
 
 # ------------------
@@ -889,7 +895,7 @@ proc newBucketPanel(): GUIBucketPanel =
 # -------------------
 # GUI Canvas Creation
 # -------------------
-from math import degToRad
+
 proc newCanvas(): GUICanvas =
   new result
   # Create Canvas Brush Panel
@@ -985,6 +991,9 @@ when isMainModule:
       glClearColor(0.5, 0.5, 0.5, 1.0)
       glClear(GL_COLOR_BUFFER_BIT or GL_DEPTH_BUFFER_BIT)
       # Render GUI
+      glEnable(GL_BLEND)
+      glBlendEquation(GL_FUNC_ADD)
+      glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA)
       c.canvas.view.render()
       win.render()
   # Close Window
