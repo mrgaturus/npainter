@@ -22,6 +22,7 @@ $ ./npainter
   - Fast Enough Rendering using SSE4.1
   - Anti-Aliased and Amazing Brush Engine
   - Anti-Aliased Bucket Fill + Gap Closing
+  - OpenGL 3.3 Accelerated Canvas
 
 ## Work in Progress Features
   * Tiled Layering
@@ -30,10 +31,9 @@ $ ./npainter
     - Folder Layers
     - Fundamental Blending Modes
     - Clipping Group & Alpha Lock
-  - OpenGL 3.3 Accelerated Canvas
+  - Intuitive and Similar UI/UX
   - Transform Tool (Standard, Mesh, Liquify)
   - Infinite Undo using Compressed Files
-  - Intuitive and Traditional UI/UX
   - Basic and Useful Filters
   - Windows and Mac Versions
 
@@ -48,4 +48,4 @@ $ ./npainter
   - Very Realistic Brushes
   - 1:1 Features with Similar Software
   - AI Filters and Cryptocurrency
-  - Animated and Fancy GUI
+  - Animated GUI

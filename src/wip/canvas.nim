@@ -208,9 +208,7 @@ proc clean*(canvas: var NCanvasProof) =
 
 proc mark*(canvas: var NCanvasProof; x, y, w, h: cint) =
   let dirty = (x, y, w, h)
-  echo "dirty pre: ", dirty
   if w > 0 and h > 0:
-    echo "dirty: ", dirty
     canvas.view.mark(dirty)
     canvas.check.mark(x, y, w, h)
 

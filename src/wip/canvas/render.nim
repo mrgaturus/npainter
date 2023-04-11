@@ -157,7 +157,6 @@ proc locateSamples(view: var NCanvasViewport) =
       y0 = cast[cint](batch.tile.y0)
     # Locate Four Samples
     batch.sample[] = view.grid.sample(dummy, x0, y0)
-    echo "x0: ", x0, " y0: ", y0, " tile: ", batch.tile.texture
 
 proc locatePositions(view: var NCanvasViewport) =
   let 
@@ -272,7 +271,6 @@ proc unmap*(ctx: var NCanvasRenderer) =
     glTexSubImage2D(GL_TEXTURE_2D, 0, 
       r.x, r.y, r.w, r.h, GL_RGBA, GL_UNSIGNED_BYTE, offset)
     # Remove Dirty Region
-    echo "region copy: ": r
     tile.clean()
   # UnBind Buffers
   glBindTexture(GL_TEXTURE_2D, 0)

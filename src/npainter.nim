@@ -382,6 +382,13 @@ proc cb_canvas100(global: ptr GUICanvasState, pos: ptr NCanvasPacket) =
   affine.zoom = 1.0
   self.view.update()
 
+proc cb_canvas0deg(global: ptr GUICanvasState, pos: ptr NCanvasPacket) =
+  let 
+    self = global.canvas
+    affine = self.view.affine
+  affine.angle = 0.0
+  self.view.update()
+
 proc cb_canvasMirror(global: ptr GUICanvasState, pos: ptr NCanvasPacket) =
   let 
     self = global.canvas
@@ -468,6 +475,7 @@ proc eventCanvas(self: GUICanvas, state: ptr GUIState) =
 # ------------------------
 
 method event(self: GUICanvas, state: ptr GUIState) =
+  echo state.kind
   case state.kind
   # Test if Canvas Needs to be Moved
   of evKeyDown: 
@@ -931,13 +939,16 @@ proc newCanvas(): GUICanvas =
     let
       btn0 = newButton("Brush Demo", cast[GUICallback](cb_panel_brush))
       btn1 = newButton("Bucket Demo", cast[GUICallback](cb_panel_bucket))
-      btn2 = newButton("View 100%", cast[GUICallback](cb_canvas100))
+      btn2 = newButton("Zoom 100%", cast[GUICallback](cb_canvas100))
+      btn3 = newButton("Angle 0°", cast[GUICallback](cb_canvas0deg))
     btn0.geometry(280, 5, 150, btn0.hint.h + 8)
     btn1.geometry(450, 5, 150, btn0.hint.h + 8)
     btn2.geometry(620, 5, 150, btn0.hint.h + 8)
+    btn3.geometry(790, 5, 150, btn0.hint.h + 8)
     result.add btn0
     result.add btn1
     result.add btn2
+    result.add btn3
   # Set Mouse Enabled
   result.flags = wMouse or wKeyboard
   # Create OpenGL Texture
