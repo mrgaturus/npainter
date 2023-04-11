@@ -312,6 +312,7 @@ proc cb_clear(g: pointer, w: ptr GUITarget) =
   let self = cast[GUICanvas](w[])
   # Clear View
   self.view.clear()
+  echo "cleared"
   # Recover Status
   self.busy = false
 
@@ -373,6 +374,21 @@ proc eventPaint(self: GUICanvas, state: ptr GUIState) =
 # GUICanvas Canvas Callbacks
 # --------------------------
 type NCanvasPacket = tuple[x, y: cfloat]
+
+proc cb_canvas100(global: ptr GUICanvasState, pos: ptr NCanvasPacket) =
+  let 
+    self = global.canvas
+    affine = self.view.affine
+  affine.zoom = 1.0
+  self.view.update()
+
+proc cb_canvasMirror(global: ptr GUICanvasState, pos: ptr NCanvasPacket) =
+  let 
+    self = global.canvas
+    affine = self.view.affine
+  affine.mirror = not affine.mirror
+  affine.angle = -affine.angle
+  self.view.update()
 
 proc cb_canvasMove(global: ptr GUICanvasState, pos: ptr NCanvasPacket) =
   let 
@@ -454,20 +470,21 @@ proc eventCanvas(self: GUICanvas, state: ptr GUIState) =
 method event(self: GUICanvas, state: ptr GUIState) =
   case state.kind
   # Test if Canvas Needs to be Moved
-  of evKeyDown: self.spacebar = 
-    self.spacebar or state.key == 32
+  of evKeyDown: 
+    if state.key == 109:
+      var target = (state.px, state.py)
+      pushCallback(cb_canvasMirror, target)
+    self.spacebar = self.spacebar or state.key == 32
   of evKeyUp: self.spacebar = 
     self.spacebar and state.key != 32
   # Perform Current Event
   of evCursorClick:
-    if state.key == LeftButton:
-      self.mode = if not self.spacebar: moPaint
-      elif (state.mods and ShiftMod) == ShiftMod: moZoom
-      elif (state.mods and CtrlMod) == CtrlMod: moRotate
-      else: moMove
+    self.mode = if not self.spacebar: moPaint
+    elif (state.mods and ShiftMod) == ShiftMod: moZoom
+    elif (state.mods and CtrlMod) == CtrlMod: moRotate
+    else: moMove
   of evCursorRelease: 
-    if state.key == LeftButton:
-      self.mode = moNone
+    self.mode = moNone
   else: discard
   # Dispatch Canvas Mode
   case self.mode
@@ -914,10 +931,13 @@ proc newCanvas(): GUICanvas =
     let
       btn0 = newButton("Brush Demo", cast[GUICallback](cb_panel_brush))
       btn1 = newButton("Bucket Demo", cast[GUICallback](cb_panel_bucket))
+      btn2 = newButton("View 100%", cast[GUICallback](cb_canvas100))
     btn0.geometry(280, 5, 150, btn0.hint.h + 8)
     btn1.geometry(450, 5, 150, btn0.hint.h + 8)
+    btn2.geometry(620, 5, 150, btn0.hint.h + 8)
     result.add btn0
     result.add btn1
+    result.add btn2
   # Set Mouse Enabled
   result.flags = wMouse or wKeyboard
   # Create OpenGL Texture
@@ -938,10 +958,10 @@ proc newCanvas(): GUICanvas =
   let a = result.view.affine()
   a.cw = bw
   a.ch = bh
-  a.x = 200.0
-  a.y = 500.0
+  a.x = bw * 0.5
+  a.y = bh * 0.5
   a.zoom = 1.0
-  a.angle = degToRad(35.0)
+  a.angle = degToRad(0.0)
   a.vw = bw
   a.vh = bh
   result.view.update()
