@@ -3,9 +3,12 @@ import gui/widgets/[slider, label, color, radio, check, button]
 # Import OpenGL
 import libs/gl
 # Import Maths
+from math import floor, arctan2, pow, log2, degToRad
 import omath
 # Import Brush Engine
-import wip/[brush, texture, binary]
+import wip/[brush, texture, binary, canvas]
+from wip/canvas/context import composed
+import wip/canvas/matrix
 import spmc
 
 const
@@ -75,23 +78,24 @@ type
     gap: Value
     # Antialiasing Check
     antialiasing: bool
+  CanvasMode = enum
+    moNone, moPaint
+    moMove, moRotate, moZoom
   GUICanvas = ref object of GUIWidget
     # Canvas Brush Panel
     panel: GUIBlendPanel
     shape: GUIShapePanel
     bucket: GUIBucketPanel
-    # Mask & Color Buffer
-    buffer0: array[bw*bh, int16]
-    buffer1: array[bw*bh*4, int16]
-    # Destination Color Buffer
-    dst: array[bw*bh*4, int16]
-    dst_copy: array[bw*bh*8, uint8]
-    # OpenGL Texture
-    tex: GLuint
+    # Canvas Engine
+    view: NCanvasProof
+    backup: NCanvasAffine
+    bx, by: cfloat
     # Brush Engine
     path: NBrushStroke
     fill: NBucketProof
     # Busy Indicator
+    mode: CanvasMode
+    spacebar: bool
     busy, eraser: bool
     handle: uint
     # Thread Pool
@@ -104,6 +108,7 @@ type
 # -------------------------
 
 # Can Be SIMD, of course
+#[
 proc copy(self: GUICanvas, x, y, w, h: int) =
   var
     cursor_src = 
@@ -131,6 +136,7 @@ proc copy(self: GUICanvas, x, y, w, h: int) =
     cast[int32](x), cast[int32](y), cast[int32](w), cast[int32](h),
     GL_RGBA, GL_UNSIGNED_BYTE, addr self.dst_copy[0])
   glBindTexture(GL_TEXTURE_2D, 0)
+]#
 
 # -----------------------
 # GUI CANVAS MANIPULATION
@@ -242,9 +248,10 @@ proc prepare(self: GUICanvas) =
   # Prepare Path Rendering
   self.path.prepare()
 
-# -------------
-# GUI Callbacks
-# -------------
+# -------------------
+# GUI Paint Callbacks
+# -------------------
+
 proc cb_panel_bucket(global: ptr GUICanvasState, dummy: pointer) =
   global.canvas.shape.set(wHidden)
   global.canvas.bucket.clear(wHidden)
@@ -271,7 +278,8 @@ proc cb_bucket(global: ptr GUICanvasState, p: ptr tuple[x, y: cint]) =
   else: fill[].similar(p.x, p.y)
   fill[].blend()
   # Update Render Region
-  canvas.copy(0, 0, bw, bh)
+  canvas.view.mark(0, 0, bw, bh)
+  canvas.view.clean()
   canvas.busy = false
 
 proc cb_dispatch(g: pointer, w: ptr GUITarget) =
@@ -287,9 +295,11 @@ proc cb_dispatch(g: pointer, w: ptr GUITarget) =
   aabb.x2 = min(bw, aabb.x2)
   aabb.y2 = min(bh, aabb.y2)
   # Copy To Buffer
-  self.copy(aabb.x1, aabb.y1, 
+  self.view.mark(
+    aabb.x1, aabb.y1, 
     aabb.x2 - aabb.x1,
     aabb.y2 - aabb.y1)
+  self.view.clean()
   #self.copy(0, 0, 
   #  1280, 720)
   # Reset Dirty Region
@@ -300,25 +310,15 @@ proc cb_dispatch(g: pointer, w: ptr GUITarget) =
 
 proc cb_clear(g: pointer, w: ptr GUITarget) =
   let self = cast[GUICanvas](w[])
-  # Clear Both Canvas Buffers
-  zeroMem(addr self.dst[0], 
-    sizeof(self.dst))
-  zeroMem(addr self.buffer1[0], 
-    sizeof(self.dst))
-  zeroMem(addr self.dst_copy[0], 
-    sizeof(self.dst_copy))
-  # Copy Cleared Buffer
-  glBindTexture(GL_TEXTURE_2D, self.tex)
-  glTexSubImage2D(GL_TEXTURE_2D, 0, 
-    0, 0, bw, bh, GL_RGBA, GL_UNSIGNED_BYTE, 
-    addr self.dst_copy[0])
-  glBindTexture(GL_TEXTURE_2D, 0)
+  # Clear View
+  self.view.clear()
+  echo "cleared"
   # Recover Status
   self.busy = false
 
-# ------------------------
-# GUICanvas Widget Methods
-# ------------------------
+# ----------------------
+# GUICanvas Widget Paint
+# ----------------------
 
 proc eventBrush(self: GUICanvas, state: ptr GUIState) =
   if state.kind == evCursorClick:
@@ -338,7 +338,11 @@ proc eventBrush(self: GUICanvas, state: ptr GUIState) =
   elif self.test(wGrab) and 
   state.kind == evCursorMove and 
   self.handle == LeftButton:
-    point(self.path, state.px, state.py, state.pressure, 0.0)
+    # Forward Point
+    let 
+      affine = self.view.affine
+      p = affine[].forward(state.px, state.py)
+    point(self.path, p.x, p.y, state.pressure, 0.0)
     # Call Dispatch
     if not self.busy:
       # Push Dispatch Callback
@@ -359,25 +363,151 @@ proc eventBucket(self: GUICanvas, state: ptr GUIState) =
         # Avoid Repeat
         self.busy = true
 
-method event(self: GUICanvas, state: ptr GUIState) =
+proc eventPaint(self: GUICanvas, state: ptr GUIState) =
   # Dirty But Works for a Proof of Concept
   if self.shape.test(wVisible):
     eventBrush(self, state)
   elif self.bucket.test(wVisible):
     eventBucket(self, state)
 
-method draw(self: GUICanvas, ctx: ptr CTXRender) =
-  ctx.color(uint32 0xFFFFFFFF)
-  #ctx.color(uint32 0xFFFF2f2f)
-  var r: CTXRect
-  r = rect(0, 0, 1280, 720)
-  ctx.fill(r)
-  ctx.color(uint32 0xFF000000)
-  r = rect(640, 0, 640, 720)
-  #ctx.fill(r)
-  r = rect(0, 0, 1280, 720)
-  ctx.color(uint32 0xFFFFFFFF)
-  ctx.texture(r, self.tex)
+# --------------------------
+# GUICanvas Canvas Callbacks
+# --------------------------
+type NCanvasPacket = tuple[x, y: cfloat]
+
+proc cb_canvas100(global: ptr GUICanvasState, pos: ptr NCanvasPacket) =
+  let 
+    self = global.canvas
+    affine = self.view.affine
+  affine.zoom = 1.0
+  self.view.update()
+
+proc cb_canvas0deg(global: ptr GUICanvasState, pos: ptr NCanvasPacket) =
+  let 
+    self = global.canvas
+    affine = self.view.affine
+  affine.angle = 0.0
+  self.view.update()
+
+proc cb_canvasMirror(global: ptr GUICanvasState, pos: ptr NCanvasPacket) =
+  let 
+    self = global.canvas
+    affine = self.view.affine
+  affine.mirror = not affine.mirror
+  affine.angle = -affine.angle
+  self.view.update()
+
+proc cb_canvasMove(global: ptr GUICanvasState, pos: ptr NCanvasPacket) =
+  let 
+    self = global.canvas
+    affine = self.view.affine
+    backup = addr self.backup
+  # Calculate Movement
+  let
+    # Apply Inverse Matrix
+    p0 = affine[].forward(floor self.bx, floor self.by)
+    p1 = affine[].forward(floor pos.x, floor pos.y)
+    dx = p1.x - p0.x
+    dy = p1.y - p0.y
+  # Apply Movement
+  affine.x = backup.x - dx
+  affine.y = backup.y - dy
+  self.view.update()
+  self.busy = false
+
+proc cb_canvasRotate(global: ptr GUICanvasState, pos: ptr NCanvasPacket) =
+  let 
+    self = global.canvas
+    affine = self.view.affine
+    backup = addr self.backup
+  # Calculate Rotation
+  let
+    cx = cfloat(self.rect.w shr 1)
+    cy = cfloat(self.rect.h shr 1)
+    dx0 = self.bx - cx
+    dy0 = self.by - cy
+    dx1 = pos.x - cx
+    dy1 = pos.y - cy
+    # Calculate Rotation
+    rot1 = arctan2(dy1, dx1)
+    rot0 = arctan2(dy0, dx0)
+    d = rot1 - rot0
+  # Apply Rotation
+  affine.angle = backup.angle - d
+  self.view.update()
+  self.busy = false
+
+proc cb_canvasZoom(global: ptr GUICanvasState, pos: ptr NCanvasPacket) =
+  let
+    self = global.canvas
+    affine = self.view.affine
+    backup = addr self.backup
+  # We need Power Of Two
+  let
+    size = cfloat(self.rect.h)
+    dist = self.by - pos.y
+    scale = (dist / size) * 6
+  # Log2 Scale
+    l0 = log2(backup.zoom)
+    zoom = pow(2, l0 + scale)
+  affine.zoom = zoom
+  self.view.update()
+  self.busy = false
+
+proc eventCanvas(self: GUICanvas, state: ptr GUIState) =
+  if state.kind == evCursorClick and state.key == LeftButton:
+    self.backup = self.view.affine[]
+    self.bx = state.px
+    self.by = state.py
+    # Backup Affine and Points
+  elif self.test(wGrab) and not self.busy:
+    var target = (state.px, state.py)
+    # Decide Which Mode
+    case self.mode
+    of moMove: pushCallback(cb_canvasMove, target)
+    of moRotate: pushCallback(cb_canvasRotate, target)
+    of moZoom: pushCallback(cb_canvasZoom, target)
+    else: discard
+    self.busy = true
+
+# ------------------------
+# GUICanvas Widget Methods
+# ------------------------
+
+method event(self: GUICanvas, state: ptr GUIState) =
+  echo state.kind
+  case state.kind
+  # Test if Canvas Needs to be Moved
+  of evKeyDown: 
+    if state.key == 109:
+      var target = (state.px, state.py)
+      pushCallback(cb_canvasMirror, target)
+    self.spacebar = self.spacebar or state.key == 32
+  of evKeyUp: self.spacebar = 
+    self.spacebar and state.key != 32
+  # Perform Current Event
+  of evCursorClick:
+    self.mode = if not self.spacebar: moPaint
+    elif (state.mods and ShiftMod) == ShiftMod: moZoom
+    elif (state.mods and CtrlMod) == CtrlMod: moRotate
+    else: moMove
+  of evCursorRelease: 
+    self.mode = moNone
+  else: discard
+  # Dispatch Canvas Mode
+  case self.mode
+  of moPaint: eventPaint(self, state)
+  of moMove, moRotate, moZoom: 
+    eventCanvas(self, state)
+  of moNone: discard
+
+method layout(self: GUICanvas) =
+  let affine = self.view.affine
+  affine.vw = self.rect.w
+  affine.vh = self.rect.h
+  # Locate Shape Panel
+  self.shape.geometry(self.rect.w - 250 - 5, 5, 250, 550)
+  self.view.update()
 
 # ------------------
 # GUI PANEL CREATION
@@ -809,13 +939,20 @@ proc newCanvas(): GUICanvas =
     let
       btn0 = newButton("Brush Demo", cast[GUICallback](cb_panel_brush))
       btn1 = newButton("Bucket Demo", cast[GUICallback](cb_panel_bucket))
+      btn2 = newButton("Zoom 100%", cast[GUICallback](cb_canvas100))
+      btn3 = newButton("Angle 0°", cast[GUICallback](cb_canvas0deg))
     btn0.geometry(280, 5, 150, btn0.hint.h + 8)
     btn1.geometry(450, 5, 150, btn0.hint.h + 8)
+    btn2.geometry(620, 5, 150, btn0.hint.h + 8)
+    btn3.geometry(790, 5, 150, btn0.hint.h + 8)
     result.add btn0
     result.add btn1
+    result.add btn2
+    result.add btn3
   # Set Mouse Enabled
-  result.flags = wMouse
+  result.flags = wMouse or wKeyboard
   # Create OpenGL Texture
+  #[
   glGenTextures(1, addr result.tex)
   glBindTexture(GL_TEXTURE_2D, result.tex)
   glTexImage2D(GL_TEXTURE_2D, 0, cast[GLint](GL_RGBA8), 
@@ -826,21 +963,40 @@ proc newCanvas(): GUICanvas =
   glTexParameteri(GL_TEXTURE_2D, 
     GL_TEXTURE_MAG_FILTER, cast[GLint](GL_NEAREST))
   glBindTexture(GL_TEXTURE_2D, 0)
+  ]#
+  result.view = createCanvasProof(bw, bh)
+  # Initialize View Transform
+  let a = result.view.affine()
+  a.cw = bw
+  a.ch = bh
+  a.x = bw * 0.5
+  a.y = bh * 0.5
+  a.zoom = 1.0
+  a.angle = degToRad(0.0)
+  a.vw = bw
+  a.vh = bh
+  result.view.update()
   # Bind Brush Engine to Canvas
-  let canvas = addr result.path.pipe.canvas
-  canvas.w = bw
-  canvas.h = bh
+  let
+    ctx = addr result.view.ctx
+    canvas = addr result.path.pipe.canvas
+    composed = cast[ptr cshort](ctx[].composed 0)
+    buffer0 = cast[ptr cshort](addr ctx.buffer0[0])
+    buffer1 = cast[ptr cshort](addr ctx.buffer1[0])
+  canvas.w = ctx.w
+  canvas.h = ctx.h
   # Set Canvas Stride
   canvas.stride = canvas.w
   # Working Buffers
-  canvas.dst = addr result.dst[0]
-  canvas.buffer0 = addr result.buffer0[0]
-  canvas.buffer1 = addr result.buffer1[0]
+  canvas.dst = cast[ptr cshort](ctx[].composed 0)
+  canvas.buffer0 = cast[ptr cshort](addr ctx.buffer0[0])
+  canvas.buffer1 = cast[ptr cshort](addr ctx.buffer1[0])
   # Bind Bucket to Canvas
+  result.path.clear()
   result.fill = configure(
-    addr result.dst[0], 
-    addr result.buffer1[0], 
-    addr result.dst_copy[0], 
+    composed, 
+    buffer0, 
+    buffer1, 
     bw, bh
   )
 
@@ -866,6 +1022,10 @@ when isMainModule:
       glClearColor(0.5, 0.5, 0.5, 1.0)
       glClear(GL_COLOR_BUFFER_BIT or GL_DEPTH_BUFFER_BIT)
       # Render GUI
+      glEnable(GL_BLEND)
+      glBlendEquation(GL_FUNC_ADD)
+      glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA)
+      c.canvas.view.render()
       win.render()
   # Close Window
   win.close()

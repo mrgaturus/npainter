@@ -7,6 +7,7 @@ export NCanvasDirty
 
 type
   NCanvasVertex = tuple[x, y, u, v: cushort]
+  NCanvasPBOBuffer = ptr UncheckedArray[byte]
   NCanvasPBOMap* = ref object
     tile: ptr NCanvasTile
     x256*, y256*: cint
@@ -138,8 +139,6 @@ proc recycle(ctx: ptr NCanvasRenderer): GLuint =
       GL_TEXTURE_WRAP_T, cast[GLint](GL_CLAMP_TO_EDGE))
     # Unbind Texture
     glBindTexture(GL_TEXTURE_2D, 0)
-    # Add New Texture
-    ctx.usables.add(result)
 
 proc recycle(ctx: ptr NCanvasRenderer, tile: GLuint) {.inline.} =
   # Add New Tile to Usables
@@ -181,8 +180,8 @@ proc locatePositions(view: var NCanvasViewport) =
   # Locate Each Batch
   for batch in batches(view.grid):
     # Calculate Tile Positions
-    x256 = (batch.tile.x0) shl 8
-    y256 = (batch.tile.y0) shl 8
+    x256 = cast[cushort](batch.tile.x0) shl 8
+    y256 = cast[cushort](batch.tile.y0) shl 8
     x512 = x256 + 256
     y512 = y256 + 256
     # Upload Position
@@ -252,10 +251,11 @@ proc map*(ctx: var NCanvasRenderer) =
   # Create New PBO, And Map Each Segment
   glBindBuffer(GL_PIXEL_UNPACK_BUFFER, ctx.pbo)
   glBufferData(GL_PIXEL_UNPACK_BUFFER, bytes, nil, GL_STREAM_COPY)
+  var chunk = cast[NCanvasPBOBuffer](
+    glMapBufferRange(GL_PIXEL_UNPACK_BUFFER, 0, bytes,
+    GL_MAP_WRITE_BIT or GL_MAP_UNSYNCHRONIZED_BIT))
   for m in ctx.mappers:
-    m.chunk = glMapBufferRange(
-      GL_PIXEL_UNPACK_BUFFER, m.offset, m.bytes, 
-      GL_MAP_WRITE_BIT or GL_MAP_UNSYNCHRONIZED_BIT)
+    m.chunk = addr chunk[m.offset]
 
 proc unmap*(ctx: var NCanvasRenderer) =
   # Close Buffer Map

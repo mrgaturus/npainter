@@ -91,7 +91,7 @@ proc prepare*(cull: var NCanvasCulling, m: NCanvasAffine) =
   cull.trivial[2] = trivial(cull.edges[2])
   cull.trivial[3] = trivial(cull.edges[3])
   # Calculate Bounding Box
-  cull.bounds = p.bounds(m.cw, m.ch)
+  cull.bounds = p.bounds(m.cw - 1, m.ch - 1)
 
 # -------------------
 # Canvas Culling Step
@@ -137,6 +137,8 @@ proc test(cull: var NCanvasCulling): bool =
     # Test Trivially Rejection
     let check = cull.trivial[idx].check1
     count += cast[cint](check < 0)
+    # Next Tile
+    inc(idx)
   # Return Count
   count == 0
 
@@ -155,8 +157,8 @@ proc assemble*(grid: var NCanvasGrid, cull: var NCanvasCulling) =
     y0 = bounds.y0 shr 8
     y1 = bounds.y1 shr 8
   # Iterate Each Tile
-  for y in y0 ..< y1:
-    for x in x0 ..< x1:
+  for y in y0 .. y1:
+    for x in x0 .. x1:
       if cull.test():
         grid.activate(x, y)
       # Next Tile

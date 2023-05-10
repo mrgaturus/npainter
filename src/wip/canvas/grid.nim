@@ -49,7 +49,7 @@ proc createCanvasGrid*(w256, h256: cint): NCanvasGrid =
   # Configure Grid Pointers
   result.tiles = cast[NCanvasTiles](addr result.buffer[0])
   result.aux = cast[NCanvasTiles](addr result.buffer[half])
-  result.cache = cast[NCanvasSamples](result.buffer[chunk])
+  result.cache = cast[NCanvasSamples](addr result.buffer[chunk])
 
 # ------------------------
 # Canvas Tile Dirty Region
@@ -72,8 +72,8 @@ func align(dirty: NCanvasDirty): NCanvasAligned =
   # Clamp Values
   x0 = clamp(x0, 0, 256)
   y0 = clamp(y0, 0, 256)
-  x1 = clamp(x1, 0, 256)
-  y1 = clamp(y1, 0, 256)
+  x1 = clamp(x1, 0, 256) + 1
+  y1 = clamp(y1, 0, 256) + 1
   # Return Values
   result.x0 = cast[uint8](x0 shr 1)
   result.y0 = cast[uint8](y0 shr 1)
@@ -92,7 +92,7 @@ func dirty*(tile: ptr NCanvasTile): bool {.inline.} =
   tile.x0 < tile.x1 and tile.y0 < tile.y1
 
 func invalid*(tile: ptr NCanvasTile): bool {.inline.} =
-  (tile.x0 or tile.x1 or tile.y0 or tile.y1) == 0xFF
+  ((tile.x0 or tile.x1) and (tile.y0 or tile.y1)) == 0xFF
 
 func region*(tile: ptr NCanvasTile): NCanvasDirty =
   let
@@ -246,7 +246,8 @@ proc mark32*(grid: var NCanvasGrid; x32, y32: cint) =
     dirty = (x0, y0, x1, y1)
     tile = grid.lookup(tx, ty)
   # Invalidate Tile
-  tile.mark(dirty)
+  if tile.texture > 0:
+    tile.mark(dirty)
 
 proc mark*(grid: var NCanvasGrid; dirty: sink NCanvasDirty) =
   let
@@ -254,13 +255,17 @@ proc mark*(grid: var NCanvasGrid; dirty: sink NCanvasDirty) =
     ty0 = dirty.y shr 8
     tx1 = (dirty.x + dirty.w + 255) shr 8
     ty1 = (dirty.y + dirty.h + 255) shr 8
+  # Locate Dirty
+  dirty.x -= tx0 shl 8
+  dirty.y -= ty0 shl 8
   # Iterate Each Vertical
   for y in ty0 ..< ty1:
     var dirty0 = dirty
     # Iterate Each Horizontal
     for x in tx0 ..< tx1:
       let tile = grid.lookup(x, y)
-      tile.mark(dirty0)
+      if tile.texture > 0:
+        tile.mark(dirty0)
       # Step Region X
       dirty0.x -= 256
     # Step Region Y
