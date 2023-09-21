@@ -1,7 +1,8 @@
 npainter
 npainter.dump
-svg/icons_pack
 
-input.png
-output.png
-sdf.png
+# Ignore Generated List
+icons.list
+paths.list
+# Ignore Data Folder
+data/
