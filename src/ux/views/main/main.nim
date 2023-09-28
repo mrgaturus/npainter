@@ -46,7 +46,7 @@ controller NCMainFrame:
       title = createMenu(self.ncmenu)
       tools = createToolbar(self.nctools)
     # Open Some Docks
-    let dock0 = dock("Color", iconTest, margin(colorwheel(addr self.color)))
+    let dock0 = dock("Color", iconTest, colorwheel(addr self.color))
     dock0.move(20, 20)
     dock0.resize(200, 200)
     dock0.open()
@@ -59,7 +59,7 @@ controller NCMainFrame:
         menuoption("Bar Square", self.selected, 2)
         menuoption("Bar Triangle", self.selected, 3)
     # Open Some Docks
-    let dock1 = dock("Color", iconTest, margin(colorcube(addr self.color)))
+    let dock1 = dock("Color", iconTest, colorcube(addr self.color))
     dock1.move(20, 20)
     dock1.resize(200, 200)
     dock1.open()

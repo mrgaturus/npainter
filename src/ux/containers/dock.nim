@@ -50,17 +50,19 @@ widget UXDock:
       m0 = addr self.head.metrics
       m1 = addr self.widget.metrics
       # TODO: allow custom margin
-      pad = getApp().font.asc shr 1
-      pad0 = pad shr 1
-      #pad = 0'i16
-    # Calculate Min Size X
-    m0.x = pad0; m0.w = m.w - pad
-    m1.x = pad0; m1.w = m.w - pad
-    # Calculate Min Size Y
-    m0.y = pad0
+      pad0 = getApp().font.asc and not 3
+      pad1 = pad0 shr 1
+      pad2 = pad0 shr 2
+    # Header Metrics
+    m0.x = pad2
+    m0.w = m.w - pad1
+    m0.y = pad2
     m0.h = m0.minH
-    m1.y = m0.h + pad0
-    m1.h = m.h - m0.h - pad
+    # Body Metrics
+    m1.x = pad1
+    m1.w = m.w - pad0
+    m1.y = m0.h + pad1
+    m1.h = m.h - m0.h - pad0
 
   method event(state: ptr GUIState) =
     discard
@@ -70,8 +72,5 @@ widget UXDock:
       rect = rect self.rect
       colors = addr getApp().colors
       # TODO: allow custom margin
-      pad = getApp().font.asc shr 2
-    ctx.color colors.panel and 0xCDFFFFFF'u32
+    ctx.color colors.panel and 0xC0FFFFFF'u32
     ctx.fill rect
-    #ctx.color colors.item
-    #ctx.line rect, float32 pad
