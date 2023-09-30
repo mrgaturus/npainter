@@ -3,7 +3,6 @@ from nogui/builder import widget, controller, child
 import nogui/ux/prelude
 import nogui/ux/widgets/menu
 import nogui/ux/widgets/color
-import nogui/ux/layouts/misc
 import nogui/values
 from nogui/pack import icons
 

@@ -148,17 +148,3 @@ widget UXDockHeader:
       p.x = (p.x - p0.x) + r.x
       p.y = (p.y - p0.y) + r.y
       push(self.onmove, p)
-
-# ---------------
-# Debug Propurses
-# ---------------
-
-icons "dock", 16:
-  test := "test.svg"
-
-proc headtest*(title: string, x, y, w: int16, menu: UXMenu): UXDockHeader =
-  result = dockhead(title, iconTest)
-  result.metrics.x = x
-  result.metrics.y = y
-  result.metrics.w = w
-  result.bindMenu(menu)

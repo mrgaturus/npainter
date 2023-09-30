@@ -7,13 +7,31 @@ widget UXDock:
     {.cursor.}:
       head: UXDockHeader
       widget: GUIWidget
+    # Resize Pivot
+    pivot: DockResize
+
+  proc apply(r: GUIRect) =
+    let m = addr self.metrics
+    # Clamp Dimensions
+    m.w = int16 max(m.minW, r.w)
+    m.h = int16 max(m.minH, r.h)
+    # Apply Position, Avoid Moving Side
+    if r.x != m.x: m.x = int16 r.x - m.w + r.w
+    if r.y != m.y: m.y = int16 r.y - m.h + r.h
+    # Action Update
+    self.set(wDirty)
 
   # -- Dock Callbacks --
   callback cbMove(p: DockMove):
     self.move(p.x, p.y)
 
-  callback cbResize(p: DockSnap):
-    discard
+  callback cbResize(p: DockMove):
+    let
+      p0 = self.pivot
+      dx = p.x - p0.x
+      dy = p.y - p0.y
+    # Apply Resize to Dock
+    self.apply resize(p0, dx, dy)
 
   # -- Dock Constructor --
   new dock(title: string, icon: CTXIconID, w: GUIWidget):
@@ -65,7 +83,16 @@ widget UXDock:
     m1.h = m.h - m0.h - pad0
 
   method event(state: ptr GUIState) =
-    discard
+    let
+      x = state.mx
+      y = state.my
+    if state.kind == evCursorClick:
+      # TODO: allow custom margin
+      let pad = getApp().font.asc and not 3
+      self.pivot = resizePivot(self.rect, x, y, pad)
+    elif self.test(wGrab):
+      let p = DockMove(x: x, y: y)
+      push(self.cbResize, p)
 
   method draw(ctx: ptr CTXRender) =
     let 

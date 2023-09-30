@@ -1,24 +1,68 @@
 from nogui/ux/prelude import
   GUIRect, GUIWidget, getApp
 
-# --------------------
-# Widget Dock Snapping
-# --------------------
-
 type
-  UXDockSide* = enum
+  DockSide* = enum
     dockTop
+    dockDown
     dockLeft
     dockRight
-    dockBottom
     # No Docking
     dockAlone
+  DockSides* = set[DockSide]
   # Callback Moving
   DockMove* = object
     x*, y*: int32
   DockSnap* = object
-    side*: UXDockSide
+    sides*: DockSides
     x*, y*: int32
+  # Callback Resize
+  DockResize* = object
+    sides*: DockSides
+    # Pivot Capture
+    rect*: GUIRect
+    x*, y*: int32
+
+# ------------------
+# Widget Dock Resize
+# ------------------
+
+proc resizePivot*(r: GUIRect, x, y, thr: int32): DockResize =
+  let
+    x0 = x - r.x
+    y0 = y - r.y
+  var sides: DockSides
+  # Check Horizontal Sides
+  if x0 >= r.w - thr: sides.incl dockRight
+  elif x0 < thr: sides.incl dockLeft
+  # Check Vertical Sides
+  if y0 >= r.h - thr: sides.incl dockDown
+  elif y0 < thr: sides.incl dockTop
+  # Create New Pivot
+  DockResize(
+    x: x, y: y,
+    rect: r,
+    sides: sides)
+
+proc resize*(pivot: DockResize, dx, dy: int32): GUIRect =
+  result = pivot.rect
+  let sides = pivot.sides
+  # Down-Right Expanding
+  if dockDown in sides: 
+    result.h += dy
+  if dockRight in sides: 
+    result.w += dx
+  # Top-Left Expanding
+  if dockTop in sides:
+    result.y += dy
+    result.h -= dy
+  if dockLeft in sides:
+    result.x += dx
+    result.w -= dx
+
+# --------------------
+# Widget Dock Snapping
+# --------------------
 
 proc checkTop(a, b: GUIRect, thr: int32): bool =
   if abs(a.y - b.y - b.h) < thr:
@@ -59,7 +103,7 @@ proc snap*(a, b: GUIWidget): DockSnap =
     if checkTop(a0, b0, thr): dockTop
     elif checkLeft(a0, b0, thr): dockLeft
     # Check Opposite Dock Sides
-    elif checkTop(b0, a0, thr): dockBottom
+    elif checkTop(b0, a0, thr): dockDown
     elif checkLeft(b0, a0, thr): dockRight
     # No Sticky
     else: dockAlone
@@ -68,8 +112,8 @@ proc snap*(a, b: GUIWidget): DockSnap =
     case side
     of dockTop: (a0.x, b0.y + b0.h)
     of dockLeft: (b0.x + b0.w, a0.y)
-    of dockBottom: (a0.x, b0.y - a0.h)
+    of dockDown: (a0.x, b0.y - a0.h)
     of dockRight: (b0.x - a0.w, a0.y)
     else: (a0.x, a0.y)
   # Return Sticky Info
-  DockSnap(side: side, x: x, y: y)
+  DockSnap(sides: {side}, x: x, y: y)
