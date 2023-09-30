@@ -9,6 +9,10 @@ widget UXDock:
       widget: GUIWidget
     # Resize Pivot
     pivot: DockResize
+    fold: int16
+
+  proc unfolded: bool =
+    (self.widget.flags and wHidden) == 0
 
   proc apply(r: GUIRect) =
     let m = addr self.metrics
@@ -21,7 +25,7 @@ widget UXDock:
     # Action Update
     self.set(wDirty)
 
-  # -- Dock Callbacks --
+  # -- Dock Move Callbacks --
   callback cbMove(p: DockMove):
     self.move(p.x, p.y)
 
@@ -33,6 +37,33 @@ widget UXDock:
     # Apply Resize to Dock
     self.apply resize(p0, dx, dy)
 
+  # -- Dock Button Callbacks --
+  callback cbFold:
+    let 
+      w = self.widget
+      m = addr self.metrics
+      # TODO: allow custom margin
+      pad = getApp().font.asc shr 1
+    var flags = w.flags
+    # Toggle Widget Hidden
+    let check = (flags and wHidden) != wHidden
+    if check:
+      flags.set(wHidden)
+      self.fold = m.h
+      # Remove Dimensions
+      m.h -= w.metrics.h + pad
+    else: # Restore Dimensions
+      flags.clear(wHidden)
+      m.h = self.fold
+    # Change Flags
+    w.flags = flags
+    # Notify Callback
+    notifyFold(self.head, not check)
+    self.set(wDirty)
+
+  callback cbClose:
+    self.close()
+
   # -- Dock Constructor --
   new dock(title: string, icon: CTXIconID, w: GUIWidget):
     result.kind = wgFrame
@@ -40,6 +71,7 @@ widget UXDock:
     # Create Dock Head
     let head = dockhead(title, icon)
     head.onmove = result.cbMove
+    head.bindButtons(result.cbClose, result.cbFold)
     # Add Header and Widget
     result.add head
     result.add w
@@ -90,7 +122,8 @@ widget UXDock:
       # TODO: allow custom margin
       let pad = getApp().font.asc and not 3
       self.pivot = resizePivot(self.rect, x, y, pad)
-    elif self.test(wGrab):
+    # Send Reside Callback if not folded
+    elif self.test(wGrab) and self.unfolded:
       let p = DockMove(x: x, y: y)
       push(self.cbResize, p)
 

@@ -20,8 +20,8 @@ icons "dock", 16:
   # Menu Context Button
   context := "context.svg"
   # Collapse Button
+  fold := "fold.svg"
   visible := "visible.svg"
-  collapse := "collapse.svg"
   # Close Button
   close := "close.svg"
 
@@ -35,7 +35,7 @@ widget UXDockHeader:
     menu: UXMenu
     # Header Buttons
     {.cursor.}:
-      btnCollapse: UXIconButton
+      btnFold: UXIconButton
       btnClose: UXIconButton
       btnMenu: UXIconButton
     # Dock Moving Operation
@@ -65,34 +65,34 @@ widget UXDockHeader:
     let 
       dummy = GUICallback()
       btnMenu = button(iconContext, result.cbMenu)
-      btnCollapse = button(iconVisible, dummy)
+      btnFold = button(iconVisible, dummy)
       btnClose = button(iconClose, dummy)
     # Add Buttons
     result.add: 
       level().child:
         btnClose.opaque()
-        btnCollapse.opaque()
+        btnFold.opaque()
         btnMenu.opaque()
     # Store Buttons
     result.btnMenu = btnMenu
-    result.btnCollapse = btnCollapse
+    result.btnFold = btnFold
     result.btnClose = btnClose
 
-  proc bindButtons*(onclose, oncollapse: GUICallback) =
+  proc bindButtons*(onclose, onfold: GUICallback) =
     privateAccess(UXButton)
     # Bind Header Callbacks
-    self.btnCollapse.cb = oncollapse
+    self.btnFold.cb = onfold
     self.btnClose.cb = onclose
 
   proc bindMenu*(menu: UXMenu) {.inline.} =
     menu.kind = wgPopup
     self.menu = menu
 
-  proc notifyCollapse*(check: bool) =
+  proc notifyFold*(check: bool) =
     privateAccess(UXIconButton)
-    # Change Icon Collapse
-    self.btnCollapse.icon =
-      if check: iconCollapse
+    # Change Fold Icon
+    self.btnFold.icon =
+      if check: iconFold
       else: iconVisible
 
   method update =
