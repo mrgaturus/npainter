@@ -62,13 +62,13 @@ widget UXDockHeader:
     result.title = title
     result.icon = icon
     # Dummy Callback
-    let 
+    let
       dummy = GUICallback()
       btnMenu = button(iconContext, result.cbMenu)
-      btnFold = button(iconVisible, dummy)
+      btnFold = button(iconFold, dummy)
       btnClose = button(iconClose, dummy)
     # Add Buttons
-    result.add: 
+    result.add:
       level().child:
         btnClose.opaque()
         btnFold.opaque()

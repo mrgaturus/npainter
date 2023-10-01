@@ -46,7 +46,7 @@ widget UXDock:
       pad = getApp().font.asc shr 1
     var flags = w.flags
     # Toggle Widget Hidden
-    let check = (flags and wHidden) != wHidden
+    let check = self.unfolded
     if check:
       flags.set(wHidden)
       self.fold = m.h
@@ -100,19 +100,31 @@ widget UXDock:
       m0 = addr self.head.metrics
       m1 = addr self.widget.metrics
       # TODO: allow custom margin
-      pad0 = getApp().font.asc and not 3
-      pad1 = pad0 shr 1
-      pad2 = pad0 shr 2
+      pad0 = getApp().font.height and not 3
+      pad1 = pad0 shr 2
+      pad2 = pad0 shr 3
+      pad = pad1 + pad2
+    # Margin Calculation Helper
+    proc margin(m2: ptr GUIMetrics, o, ow, oh: int16) =
+      m2.x += o
+      m2.y += o
+      m2.w -= ow + ow
+      m2.h -= oh + oh
     # Header Metrics
-    m0.x = pad2
-    m0.w = m.w - pad1
-    m0.y = pad2
+    m0.x = 0
+    m0.y = 0
+    m0.w = m.w
     m0.h = m0.minH
     # Body Metrics
-    m1.x = pad1
-    m1.w = m.w - pad0
-    m1.y = m0.h + pad1
-    m1.h = m.h - m0.h - pad0
+    m1.x = 0
+    m1.w = m.w
+    m1.y = m0.h
+    m1.h = m.h - m1.y
+    # Apply Padding
+    m0.margin(pad, pad, 0)
+    m1.margin(pad, pad, pad)
+    m1.y += pad1
+    m1.h -= pad1
 
   method event(state: ptr GUIState) =
     let
@@ -129,8 +141,16 @@ widget UXDock:
 
   method draw(ctx: ptr CTXRender) =
     let 
-      rect = rect self.rect
       colors = addr getApp().colors
       # TODO: allow custom margin
+      pad0 = getApp().font.height shr 3
+      pad1 = pad0 shl 1
+    # Calculate Background Rect
+    var rect = self.rect
+    rect.x += pad0
+    rect.y += pad0
+    rect.w -= pad1
+    rect.h -= pad1
+    # Draw Background Rect
     ctx.color colors.panel and 0xC0FFFFFF'u32
-    ctx.fill rect
+    ctx.fill rect(rect)
