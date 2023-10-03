@@ -1,5 +1,5 @@
-from nogui/ux/prelude import
-  GUIRect, GUIWidget, getApp
+import nogui/gui/widget
+from nogui/ux/prelude import GUIRect, getApp
 
 type
   DockSide* = enum
@@ -60,6 +60,17 @@ proc resize*(pivot: DockResize, dx, dy: int32): GUIRect =
     result.x += dx
     result.w -= dx
 
+proc apply*(self: GUIWidget, r: GUIRect) =
+  let m = addr self.metrics
+  # Clamp Dimensions
+  m.w = int16 max(m.minW, r.w)
+  m.h = int16 max(m.minH, r.h)
+  # Apply Position, Avoid Moving Side
+  if r.x != m.x: m.x = int16 r.x - m.w + r.w
+  if r.y != m.y: m.y = int16 r.y - m.h + r.h
+  # Action Update
+  self.set(wDirty)
+
 # --------------------
 # Widget Dock Snapping
 # --------------------
@@ -117,3 +128,7 @@ proc snap*(a, b: GUIWidget): DockSnap =
     else: (a0.x, a0.y)
   # Return Sticky Info
   DockSnap(sides: {side}, x: x, y: y)
+
+# ------------------
+# Widget Dock Moving
+# ------------------

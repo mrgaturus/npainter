@@ -1,6 +1,7 @@
 from nogui/ux/widgets/menu import UXMenu
 import nogui/ux/prelude
 import ./dock/[header, snap]
+# TODO: fold with wHidden and modify w in layout
 
 widget UXDock:
   attributes:
@@ -9,21 +10,9 @@ widget UXDock:
       widget: GUIWidget
     # Resize Pivot
     pivot: DockResize
-    fold: int16
 
   proc unfolded: bool =
     (self.widget.flags and wHidden) == 0
-
-  proc apply(r: GUIRect) =
-    let m = addr self.metrics
-    # Clamp Dimensions
-    m.w = int16 max(m.minW, r.w)
-    m.h = int16 max(m.minH, r.h)
-    # Apply Position, Avoid Moving Side
-    if r.x != m.x: m.x = int16 r.x - m.w + r.w
-    if r.y != m.y: m.y = int16 r.y - m.h + r.h
-    # Action Update
-    self.set(wDirty)
 
   # -- Dock Move Callbacks --
   callback cbMove(p: DockMove):
@@ -43,18 +32,18 @@ widget UXDock:
       w = self.widget
       m = addr self.metrics
       # TODO: allow custom margin
-      pad = getApp().font.asc shr 1
+      pad = getApp().font.height shr 2
     var flags = w.flags
     # Toggle Widget Hidden
-    let check = self.unfolded
-    if check:
+    let 
+      check = self.unfolded
+      size = w.metrics.h + pad
+    if check: # Remove Dimensions
       flags.set(wHidden)
-      self.fold = m.h
-      # Remove Dimensions
-      m.h -= w.metrics.h + pad
+      m.h -= size
     else: # Restore Dimensions
       flags.clear(wHidden)
-      m.h = self.fold
+      m.h += size
     # Change Flags
     w.flags = flags
     # Notify Callback
@@ -115,16 +104,17 @@ widget UXDock:
     m0.y = 0
     m0.w = m.w
     m0.h = m0.minH
-    # Body Metrics
-    m1.x = 0
-    m1.w = m.w
-    m1.y = m0.h
-    m1.h = m.h - m1.y
-    # Apply Padding
     m0.margin(pad, pad, 0)
-    m1.margin(pad, pad, pad)
-    m1.y += pad1
-    m1.h -= pad1
+    # Body Metrics
+    if self.unfolded:
+      m1.x = 0
+      m1.w = m.w
+      m1.y = m0.h
+      m1.h = m.h - m1.y
+      # Apply Padding
+      m1.margin(pad, pad, pad)
+      m1.y += pad1
+      m1.h -= pad1
 
   method event(state: ptr GUIState) =
     let
@@ -132,7 +122,7 @@ widget UXDock:
       y = state.my
     if state.kind == evCursorClick:
       # TODO: allow custom margin
-      let pad = getApp().font.asc and not 3
+      let pad = getApp().font.height and not 3
       self.pivot = resizePivot(self.rect, x, y, pad)
     # Send Reside Callback if not folded
     elif self.test(wGrab) and self.unfolded:
