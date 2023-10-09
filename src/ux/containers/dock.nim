@@ -8,7 +8,7 @@ widget UXDock:
     {.cursor.}:
       head: UXDockHeader
       widget: GUIWidget
-    # Resize Pivot
+    # Dock Manipulation
     pivot: DockResize
 
   proc unfolded: bool =

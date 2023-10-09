@@ -7,12 +7,13 @@ type
     dockDown
     dockLeft
     dockRight
-    # No Docking
-    dockAlone
+    # Dock Manipulation
+    dockNothing
   DockSides* = set[DockSide]
   # Callback Moving
   DockMove* = object
     x*, y*: int32
+  # Callback Snapping
   DockSnap* = object
     sides*: DockSides
     x*, y*: int32
@@ -116,8 +117,8 @@ proc snap*(a, b: GUIWidget): DockSnap =
     # Check Opposite Dock Sides
     elif checkTop(b0, a0, thr): dockDown
     elif checkLeft(b0, a0, thr): dockRight
-    # No Sticky
-    else: dockAlone
+    # No Sticky Found
+    else: dockNothing
   # Calculate Sticky Position
   let (x, y) =
     case side
