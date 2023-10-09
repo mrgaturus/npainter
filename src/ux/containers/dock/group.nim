@@ -1,6 +1,8 @@
 import nogui/builder
 import nogui/ux/prelude
 import header, snap, ../dock
+# TODO: unify event and callback queue
+from nogui/gui/widget import arrange
 
 # ------------------
 # Linked List Helper
@@ -42,6 +44,7 @@ type
     # Backup Dock Callbacks
     cbMove*: GUICallbackEX[DockMove]
     cbResize*: GUICallbackEX[DockMove]
+    cbFold*: GUICallback
   # Docking Row Opaque
   DockOpaque = distinct pointer
 
@@ -56,6 +59,7 @@ controller UXDockNode:
 
   # -- Forward Declaration --
   proc update(opaque: DockOpaque)
+  proc detach(opaque: DockOpaque)
 
   # -- Dock Node Attach at Next --
   proc attach*(node: UXDockNode) =
@@ -73,16 +77,22 @@ controller UXDockNode:
     # Restore Dock Callbacks
     dock.cbMove = target.cbMove
     dock.cbResize = target.cbResize
+    dock.cbFold = target.cbFold
+    # Update Buttons
+    dock.headerUpdate()
+    detach(self, self.row)
 
   # -- Dock Node Callbacks --
   callback cbMove(p: DockMove):
     self.detach()
     update(self, self.row)
-    # Move After Dettach
-    force(self.target.cbMove, p)
 
   callback cbResize(p: DockMove):
     force(self.target.cbResize, p)
+    update(self, self.row)
+
+  callback cbFold:
+    force(self.target.cbFold)
     update(self, self.row)
 
   # -- Dock Node Constructor --
@@ -91,10 +101,14 @@ controller UXDockNode:
     result.target = DockAttach(
       dock: dock,
       cbMove: dock.cbMove,
-      cbResize: dock.cbResize)
+      cbResize: dock.cbResize,
+      cbFold: dock.cbFold)
     # Hook Dock Callbacks
     dock.cbMove = result.cbMove
     dock.cbResize = result.cbResize
+    dock.cbFold = result.cbFold
+    # Update Buttons
+    dock.headerUpdate()
 
 # ------------------
 # Docking Group Node
@@ -105,7 +119,7 @@ controller UXDockRow:
     first: UXDockNode
     metrics: GUIMetrics
     # Delta Position Callback
-    cbDelta: GUICallbackEX[DockOpaque]
+    cbNotify: GUICallbackEX[DockOpaque]
     # Linked List
     next: UXDockRow
     {.cursor.}:
@@ -115,7 +129,7 @@ controller UXDockRow:
     discard
 
   # -- Dock Arrange --
-  proc bounds(w: int16) =
+  proc bounds =
     var m0: GUIMetrics
     # Iterate Nodes
     self.walk0 node:
@@ -124,9 +138,10 @@ controller UXDockRow:
       m0.minW = max(m0.minW, m.minW)
       m0.minH = max(m0.minH, m.minH)
       # Calculate Size
+      m0.w = max(m0.w, m.w)
       m0.h = max(m0.h, m.h)
     # Apply Minimum Width
-    m0.w = max(w, m0.minW)
+    m0.w = max(m0.w, m0.minW)
     # Replace Metrics
     self.metrics = m0
 
@@ -158,7 +173,9 @@ controller UXDockRow:
   # -- Dock Row Attachment --
   proc attach*(node: UXDockNode) =
     # Attach Prev to First Node
-    let first {.cursor.} = self.first
+    let 
+      first {.cursor.} = self.first
+      opaque = cast[DockOpaque](self)
     # Replace First Prev
     if not isNil(first):
       first.prev = node
@@ -166,12 +183,14 @@ controller UXDockRow:
       node.prev = nil
     # Replace First Node
     self.first = node
-    node.row = cast[DockOpaque](self)
+    node.row = opaque
+    # Notify Node Update
+    update(node, opaque)
 
   proc attach*(row: UXDockRow) =
     attach0(self, row)
-    # Change Row Delta
-    row.cbDelta = self.cbDelta
+    # Change Row Delta Callback
+    row.cbNotify = self.cbNotify
 
   proc detach*() =
     detach0(self)
@@ -190,7 +209,7 @@ proc adjustX(row: UXDockRow, target: ptr DockAttach) =
     m0 = addr target.metrics
     m1 = addr target.dock.metrics
     # Calculated Width
-    w0 = max(m.w, m1.w)
+    w0 = max(m1.w, m.minW)
     dw = w0 - m1.w
     dx = m1.x - m0.x - dw
   # Apply Min Size
@@ -198,18 +217,34 @@ proc adjustX(row: UXDockRow, target: ptr DockAttach) =
   m1.w = w0
   # Delta X
   m.x = dx
+  m.w = w0
 
 proc update(self: UXDockNode, opaque: DockOpaque) =
   let 
     target = addr self.target
     row {.cursor.} = cast[UXDockRow](opaque)
   # Calculate Row Bounds
-  row.bounds(target.dock.metrics.w)
+  row.bounds()
   # Adjust X and Y Positions
   row.adjustX(target)
   row.adjustY(target)
   # Arrange Row and Notify
-  push(row.cbDelta, opaque)
+  force(row.cbNotify, addr opaque)
+
+proc detach(self: UXDockNode, opaque: DockOpaque) =
+  let row {.cursor.} = cast[UXDockRow](opaque)
+  # Check Detatch
+  var first = row.first
+  if self == first:
+    first = self.next
+    row.first = first
+    # Detach if there is nothing
+    if isNil(first):
+      row.detach()
+  # Calculate Row Bounds
+  row.bounds()
+  # Notify Row Changes
+  force(row.cbNotify, addr opaque)
 
 # --------------------
 # Docking Group Widget
@@ -227,15 +262,22 @@ widget UXDockGroup:
     # Re-arrange Groups
     self.move(p.x, p.y)
 
-  callback cbDelta(o: DockOpaque):
+  callback cbNotify(o: DockOpaque):
     let 
-      row = cast[UXDockRow](o).metrics
+      row = cast[UXDockRow](o[])
+      m0 = addr row.metrics
       m = addr self.metrics
-    # Apply Row Delta Position
-    m.x += row.x
-    m.y += row.y
-    # Re-arrange Groups
-    self.set(wDirty)
+    # Dettach if there is not nodes
+    if isNil(row.first) and row == self.first0:
+      self.first0 = row.next
+      # Close Group When no Dock
+      if isNil(self.first0):
+        self.close()
+    # Row Delta Position
+    m.x += m0.x
+    m.y += m0.y
+    # TODO: unify event and callback queue
+    self.arrange()
 
   new dockgroup(first: UXDockRow):
     result.kind = wgFrame
@@ -248,7 +290,7 @@ widget UXDockGroup:
     result.head = head
     # Set First Row
     result.first0 = first
-    first.cbDelta = result.cbDelta
+    first.cbNotify = result.cbNotify
 
   method update =
     let
@@ -288,4 +330,3 @@ widget UXDockGroup:
     # Scale Header
     m0.w = m.w - (margin shl 1)
     m0.h = m0.minH
-    echo m[]

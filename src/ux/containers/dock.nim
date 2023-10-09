@@ -68,6 +68,11 @@ widget UXDock:
     result.head = head
     result.widget = w
 
+  proc headerUpdate* =
+    let head {.cursor.} = self.head
+    head.onmove = self.cbMove
+    head.bindButtons(self.cbClose, self.cbFold)
+
   proc bindMenu*(m: UXMenu) {.inline.} =
     bindMenu(self.head, m)
 

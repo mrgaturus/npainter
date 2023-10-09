@@ -65,20 +65,31 @@ controller NCMainFrame:
       dock2 = self.dummyDock(colorcube0triangle col)
       dock3 = self.dummyDock(colorwheel0triangle col)
       dock4 {.used.} = self.dummyDock(colorwheel col)
+
+      dock5 {.used.} = self.dummyDock(colorwheel col)
+      dock6 {.used.} = self.dummyDock(colorwheel col)
       # Create Frame Group
       row0 = dockrow()
       group = dockgroup(row0)
       row1 = dockrow()
+      row2 = dockrow()
       node0 = docknode(dock1)
       node1 = docknode(dock2)
       node2 = docknode(dock3)
       node3 = docknode(dock4)
+
+      node4 = docknode(dock5)
+      node5 = docknode(dock6)
     row0.attach(node0)
     node0.attach(node1)
     node1.attach(node2)
     # Second Row Attach
-    row1.attach(node3)
     row0.attach(row1)
+    row1.attach(node3)
+    # Third Row Attach
+    row1.attach(row2)
+    row2.attach(node4)
+    node4.attach(node5)
     # Create Group
     group.move(20, 20)
     group.open()
