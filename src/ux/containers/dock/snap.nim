@@ -9,6 +9,7 @@ type
     dockRight
     # Dock Manipulation
     dockNothing
+    dockOpposite
   DockSides* = set[DockSide]
   # Callback Moving
   DockMove* = object

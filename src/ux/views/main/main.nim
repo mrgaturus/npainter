@@ -70,14 +70,14 @@ controller NCMainFrame:
       dock6 {.used.} = self.dummyDock(colorwheel col)
       # Create Frame Group
       row0 = dockrow()
-      group = dockgroup(row0)
       row1 = dockrow()
       row2 = dockrow()
+      group = dockgroup(row0)
+      # Create Some Nodes
       node0 = docknode(dock1)
       node1 = docknode(dock2)
       node2 = docknode(dock3)
       node3 = docknode(dock4)
-
       node4 = docknode(dock5)
       node5 = docknode(dock6)
     row0.attach(node0)

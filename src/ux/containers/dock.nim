@@ -9,9 +9,10 @@ widget UXDock:
       head: UXDockHeader
       widget: GUIWidget
     # Dock Manipulation
-    pivot: DockResize
+    {.public.}:
+      pivot: DockResize
 
-  proc unfolded: bool =
+  proc unfolded*: bool =
     (self.widget.flags and wHidden) == 0
 
   # -- Dock Move Callbacks --
@@ -94,7 +95,7 @@ widget UXDock:
       m0 = addr self.head.metrics
       m1 = addr self.widget.metrics
       # TODO: allow custom margin
-      pad0 = getApp().font.height and not 3
+      pad0 = getApp().font.height
       pad1 = pad0 shr 2
       pad2 = pad0 shr 3
       pad = pad1 + pad2
