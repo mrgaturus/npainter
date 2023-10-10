@@ -17,13 +17,11 @@ import snap
 # ------------------
 
 icons "dock", 16:
-  # Menu Context Button
   context := "context.svg"
-  # Collapse Button
+  close := "close.svg"
+  # Dock Folding
   fold := "fold.svg"
   visible := "visible.svg"
-  # Close Button
-  close := "close.svg"
 
 widget UXDockHeader:
   attributes:
@@ -56,6 +54,25 @@ widget UXDockHeader:
         # Move Nearly to Button Menu
         menu.move(loc.x, loc.y + loc.h)
       else: menu.close()
+
+  new dockhead0awful():
+    # TODO: generalize buttons when
+    #       event propagation ready
+    result.flags = wMouse
+    result.title = ""
+    result.icon = CTXIconEmpty
+    # Dummy Callback
+    let
+      dummy = GUICallback()
+      btnMenu = button(iconContext, dummy)
+      btnFold = button(iconFold, dummy)
+      btnClose = button(iconClose, dummy)
+    # Add Empty
+    result.add level()
+    # Store Buttons
+    result.btnMenu = btnMenu
+    result.btnFold = btnFold
+    result.btnClose = btnClose
 
   new dockhead(title: string, icon = CTXIconEmpty):
     result.flags = wMouse

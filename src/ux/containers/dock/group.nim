@@ -325,15 +325,15 @@ widget UXDockGroup:
     # TODO: unify event and callback queue
     force(self.cbNotify, o)
     # Check is There is One Node
-    let first1 = first0.first
+    let first1 {.cursor.} = first0.first
     if isNil(first1.next) and isNil(first0.next):
-      detach(first1)
+      first1.detach()
 
   new dockgroup(first: UXDockRow):
     result.kind = wgFrame
     result.flags = wMouse
     # Create Dock Head
-    let head = dockhead("", CTXIconEmpty)
+    let head = dockhead0awful()
     head.onmove = result.cbMove
     # Add Header and Widget
     result.add head
