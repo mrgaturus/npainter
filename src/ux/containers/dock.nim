@@ -10,22 +10,49 @@ widget UXDock:
       widget: GUIWidget
     # Dock Manipulation
     {.public.}:
+      crc32: int32
+      node: pointer
       pivot: DockResize
+      # Dock Session Watcher
+      cbWatch: GUICallbackEX[DockWatch]
 
-  proc unfolded*: bool =
+  proc watch(reason: DockReason, p: DockMove) =
+    # TODO: make force optional as push
+    # TODO: remove point when unify queue and events
+    if valid(self.cbWatch):
+      let w = DockWatch(
+        reason: reason, p: p, 
+        opaque: cast[pointer](self))
+      force(self.cbWatch, addr w)
+
+  proc unfolded*: bool {.inline.} =
     (self.widget.flags and wHidden) == 0
 
-  # -- Dock Move Callbacks --
-  callback cbMove(p: DockMove):
-    self.move(p.x, p.y)
-
-  callback cbResize(p: DockMove):
+  proc resize*(p: DockMove) =
     let
       p0 = self.pivot
       dx = p.x - p0.x
       dy = p.y - p0.y
     # Apply Resize to Dock
     self.apply resize(p0, dx, dy)
+
+  # -- Dock Move Callbacks --
+  callback cbMove(p: sink DockMove):
+    self.pivot.sides = {dockNothing}
+    # Move Dock Awfully
+    let head {.cursor.} = self.head
+    head.move0awful(p)
+    # Session Watch Movement
+    let reason =
+      if head.grab: dockWatchMove
+      else: dockWatchRelease
+    # Watch About Move
+    self.watch(reason, p)
+
+  callback cbResize(p: sink DockMove):
+    self.resize(p)
+    # Session Watch Resize
+    self.watch(dockWatchResize, p)
 
   # -- Dock Button Callbacks --
   callback cbFold:
@@ -53,6 +80,11 @@ widget UXDock:
 
   callback cbClose:
     self.close()
+    # Session Watch Action
+    let 
+      m = addr self.metrics
+      p = DockMove(x: m.x, y: m.y)
+    self.watch(dockWatchClose, p)
 
   # -- Dock Constructor --
   new dock(title: string, icon: CTXIconID, w: GUIWidget):

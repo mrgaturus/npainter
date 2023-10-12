@@ -38,10 +38,21 @@ widget UXDockHeader:
       btnMenu: UXIconButton
     # Dock Moving Operation
     {.public.}:
+      grab: bool
       pivot: DockMove
       capture: GUIRect
       # Dock Moving Callback
       onmove: GUICallbackEX[DockMove]
+
+  proc move0awful*(p: DockMove) =
+    # TODO: REMOVE THIS WHEN UNIFY QUEUE AND EVENTS
+    let
+      p0 = self.pivot
+      r = self.capture
+      x = (p.x - p0.x) + r.x
+      y = (p.y - p0.y) + r.y
+    # Move Container Parent
+    self.parent.move(x, y)
 
   callback cbMenu:
     let 
@@ -158,10 +169,10 @@ widget UXDockHeader:
       # Capture Pivot Point
       self.pivot = p
       self.capture = self.parent.rect
-    elif self.test(wGrab):
-      let
-        p0 = self.pivot
-        r = self.capture
-      p.x = (p.x - p0.x) + r.x
-      p.y = (p.y - p0.y) + r.y
-      push(self.onmove, p)
+      self.grab = self.test(wGrab)
+    # Check if is grabbed or preceded by grabbed
+    elif self.grab:
+      # TODO: don't force callback when
+      #       unify queue and event is done
+      self.grab = self.test(wGrab)
+      force(self.onmove, addr p)

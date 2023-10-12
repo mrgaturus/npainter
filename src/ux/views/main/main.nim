@@ -1,4 +1,4 @@
-import menu, tools, ../../containers/[main, dock, dock/group]
+import menu, tools, ../../containers/[main, dock, dock/group, dock/session]
 from nogui/builder import widget, controller, child
 import nogui/ux/prelude
 import nogui/ux/widgets/menu
@@ -65,7 +65,6 @@ controller NCMainFrame:
       dock2 = self.dummyDock(colorcube0triangle col)
       dock3 = self.dummyDock(colorwheel0triangle col)
       dock4 {.used.} = self.dummyDock(colorwheel col)
-
       dock5 {.used.} = self.dummyDock(colorwheel col)
       dock6 {.used.} = self.dummyDock(colorwheel col)
       # Create Frame Group
@@ -80,6 +79,8 @@ controller NCMainFrame:
       node3 = docknode(dock4)
       node4 = docknode(dock5)
       node5 = docknode(dock6)
+      # Session Manager
+      session = docksession()
     row0.attach(node0)
     node0.attach(node1)
     node1.attach(node2)
@@ -91,6 +92,13 @@ controller NCMainFrame:
     row2.attach(node4)
     node4.attach(node5)
     # Create Group
+    session.add dock1
+    session.add dock2
+    session.add dock3
+    session.add dock4
+    session.add dock5
+    session.add dock6
+    session.add group
     group.move(20, 20)
     group.open()
     # Return Main Frame

@@ -46,7 +46,7 @@ type
     cbResize: GUICallbackEX[DockMove]
     # Backup Dock Header Callbacks
     cbFold, cbClose: GUICallback
-  # Docking Row Opaque
+  # Dock Row Opaque
   DockOpaque = distinct pointer
 
 controller UXDockNode:
@@ -80,6 +80,8 @@ controller UXDockNode:
     dock.cbResize = target.cbResize
     dock.cbFold = target.cbFold
     dock.cbClose = target.cbClose
+    # Remove Node Bind for Watcher
+    dock.node = nil
     # Update Buttons
     dock.headerUpdate()
     detach(self, self.row)
@@ -88,6 +90,8 @@ controller UXDockNode:
   callback cbMove(p: DockMove):
     self.detach()
     update(self, self.row)
+    # Perform Move Callback
+    force(self.target.cbMove, p)
 
   callback cbResize(p: DockMove):
     let 
@@ -142,6 +146,8 @@ controller UXDockNode:
     dock.cbResize = result.cbResize
     dock.cbFold = result.cbFold
     dock.cbClose = result.cbClose
+    # Bind Node to Dock for Watcher
+    dock.node = cast[pointer](result)
     # Update Buttons
     dock.headerUpdate()
 
@@ -293,11 +299,36 @@ widget UXDockGroup:
       head: UXDockHeader
     # Linked List
     first0: UXDockRow
+    # Dock Session Manager
+    {.public.}:
+      cbWatch: GUICallbackEX[DockWatch]
+
+  proc watch(reason: DockReason, p: DockMove) =
+    # TODO: make force optional as push
+    if valid(self.cbWatch):
+      let w = DockWatch(
+        reason: reason, p: p, 
+        opaque: cast[pointer](self))
+      force(self.cbWatch, addr w)
+
+  proc close0awful() =
+    self.close()
+    # Session Watch Action
+    let 
+      m = addr self.metrics
+      p = DockMove(x: m.x, y: m.y)
+    self.watch(groupWatchClose, p)
 
   # -- Dock Group Callbacks --
-  callback cbMove(p: DockMove):
+  callback cbMove(p: sink DockMove):
     # Re-arrange Groups
-    self.move(p.x, p.y)
+    let head {.cursor.} = self.head
+    head.move0awful(p)
+    # Session Watch Movement
+    let reason =
+      if head.grab: groupWatchMove
+      else: groupWatchRelease
+    self.watch(reason, p)
 
   callback cbNotify(o: DockOpaque):
     let 
@@ -318,7 +349,7 @@ widget UXDockGroup:
       first0 = row.next
       # Close Group When no Dock
       if isNil(first0):
-        self.close()
+        self.close0awful()
         return
       # Replace First
       self.first0 = first0

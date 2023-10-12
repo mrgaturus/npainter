@@ -14,7 +14,6 @@ type
   # Callback Moving
   DockMove* = object
     x*, y*: int32
-  # Callback Snapping
   DockSnap* = object
     sides*: DockSides
     x*, y*: int32
@@ -24,6 +23,21 @@ type
     # Pivot Capture
     rect*: GUIRect
     x*, y*: int32
+  # Callback Watching
+  DockReason* = enum
+    dockWatchMove
+    dockWatchResize
+    dockWatchClose
+    dockWatchRelease
+    # Grouping Reasons
+    groupWatchMove
+    groupWatchClose
+    groupWatchRelease
+  DockWatch* = object
+    reason*: DockReason
+    p*: DockMove
+    # Watch Target
+    opaque*: pointer
 
 # ------------------
 # Widget Dock Resize
@@ -131,6 +145,6 @@ proc snap*(a, b: GUIWidget): DockSnap =
   # Return Sticky Info
   DockSnap(sides: {side}, x: x, y: y)
 
-# ------------------
-# Widget Dock Moving
-# ------------------
+# --------------------
+# Widget Dock Grouping
+# --------------------
