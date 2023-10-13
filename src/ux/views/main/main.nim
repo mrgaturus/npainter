@@ -36,6 +36,8 @@ controller NCMainFrame:
     nctools: NCMainTools
     selected: @ int32
     color: HSVColor
+    # Dock Session
+    session: UXDockSession
 
   callback dummy: 
     discard
@@ -91,7 +93,7 @@ controller NCMainFrame:
     row1.attach(row2)
     row2.attach(node4)
     node4.attach(node5)
-    # Create Group
+    # Create Session and Store It
     session.add dock1
     session.add dock2
     session.add dock3
@@ -99,6 +101,8 @@ controller NCMainFrame:
     session.add dock5
     session.add dock6
     session.add group
+    self.session = session
+    # Create Group
     group.move(20, 20)
     group.open()
     # Return Main Frame
@@ -107,4 +111,3 @@ controller NCMainFrame:
   new ncMainWindow():
     result.ncmenu = ncMainMenu()
     result.nctools = ncMainTools()
-

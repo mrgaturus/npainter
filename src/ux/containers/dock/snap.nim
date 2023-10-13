@@ -88,6 +88,42 @@ proc apply*(self: GUIWidget, r: GUIRect) =
   self.set(wDirty)
 
 # --------------------
+# Widget Dock Grouping
+# --------------------
+
+proc groupSide*(r: GUIRect, p: DockMove, thr: int32): DockSide =
+  # Move Point As Relative
+  let
+    x = p.x - r.x
+    y = p.y - r.y
+  # Check Inside Rectangle
+  if x >= 0 and y >= 0 and x < r.w and y < r.h:
+    # Check Horizontal Sides
+    if x >= 0 and x <= thr: dockLeft
+    elif x >= r.w - thr and x < r.w: dockRight
+    # Check Vertical Sides
+    elif y >= 0 and y <= thr: dockTop
+    elif y >= r.h - thr and y < r.h: dockDown
+    # Otherwise Nothing
+    else: dockNothing
+  else: dockNothing
+
+proc groupHint*(r: GUIRect, side: DockSide, thr: int32): GUIRect =
+  result = r
+  case side
+  of dockLeft:
+    result.w = thr
+  of dockRight:
+    result.x += r.w - thr
+    result.w = thr
+  of dockTop:
+    result.h = thr
+  of dockDown:
+    result.y += result.h - thr
+    result.h = thr
+  else: discard
+
+# --------------------
 # Widget Dock Snapping
 # --------------------
 
@@ -144,7 +180,3 @@ proc snap*(a, b: GUIWidget): DockSnap =
     else: (a0.x, a0.y)
   # Return Sticky Info
   DockSnap(sides: {side}, x: x, y: y)
-
-# --------------------
-# Widget Dock Grouping
-# --------------------

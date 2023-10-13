@@ -18,6 +18,16 @@ template attach0(self, node: typed) =
   self.next = node
   node.prev = self
 
+template attach0prev(self, node: typed) =
+  let prev {.cursor.} = self.prev
+  # Prev to Self Next
+  node.prev = prev
+  if not isNil(prev):
+    prev.next = node
+  # Next to Self
+  self.prev = node
+  node.next = self
+
 template detach0(self: typed) =
   let
     next {.cursor.} = self.next
@@ -69,6 +79,12 @@ controller UXDockNode:
     node.row = self.row
     update(self, self.row)
 
+  proc prettach*(node: UXDockNode) =
+    attach0prev(self, node)
+    # Set Node Row
+    node.row = self.row
+    update(self, self.row)
+
   proc detach*() =
     detach0(self)
     # Attached Dock
@@ -80,8 +96,9 @@ controller UXDockNode:
     dock.cbResize = target.cbResize
     dock.cbFold = target.cbFold
     dock.cbClose = target.cbClose
-    # Remove Node Bind for Watcher
+    # Remove Node and Row Bind
     dock.node = nil
+    dock.row = nil
     # Update Buttons
     dock.headerUpdate()
     detach(self, self.row)
@@ -89,8 +106,7 @@ controller UXDockNode:
   # -- Dock Node Callbacks --
   callback cbMove(p: DockMove):
     self.detach()
-    update(self, self.row)
-    # Perform Move Callback
+    # Force Callback Moving
     force(self.target.cbMove, p)
 
   callback cbResize(p: DockMove):
@@ -137,6 +153,8 @@ controller UXDockNode:
     # Create Dock Attach
     result.target = DockAttach(
       dock: dock,
+      metrics: dock.metrics,
+      # Backup Callbacks
       cbMove: dock.cbMove,
       cbResize: dock.cbResize,
       cbFold: dock.cbFold,
@@ -146,8 +164,6 @@ controller UXDockNode:
     dock.cbResize = result.cbResize
     dock.cbFold = result.cbFold
     dock.cbClose = result.cbClose
-    # Bind Node to Dock for Watcher
-    dock.node = cast[pointer](result)
     # Update Buttons
     dock.headerUpdate()
 
@@ -208,9 +224,12 @@ controller UXDockRow:
       m.x = x0
       m.y = y
       y += m.h - pad
+      # Update Dock Group Locations
+      dock.node = cast[pointer](node)
+      dock.row = cast[pointer](self)
       # Mark As Dirty
       target.metrics = m[]
-      target.dock.set(wDirty)
+      dock.set(wDirty)
     # Apply Metrics Position
     m0.x = x0
     m0.y = y0
@@ -234,6 +253,12 @@ controller UXDockRow:
 
   proc attach*(row: UXDockRow) =
     attach0(self, row)
+    # Change Row Delta Callback
+    row.cbNotify = self.cbNotify
+    row.cbDetach = self.cbDetach
+
+  proc prettach*(row: UXDockRow) =
+    attach0prev(self, row)
     # Change Row Delta Callback
     row.cbNotify = self.cbNotify
     row.cbDetach = self.cbDetach
@@ -268,6 +293,10 @@ proc adjust(row: UXDockRow, node: UXDockNode) =
 
 proc update(self: UXDockNode, opaque: DockOpaque) =
   let row {.cursor.} = cast[UXDockRow](opaque)
+  # Change First Node
+  let prev = row.first.prev
+  if not isNil(prev):
+    row.first = prev
   # Calculate Row Bounds and Adjust
   row.bounds()
   row.adjust(self)
@@ -338,6 +367,10 @@ widget UXDockGroup:
     # Row Delta Position
     m.x += m0.x
     m.y += m0.y
+    # Change First Row
+    let prev = self.first0.prev
+    if not isNil(prev):
+      self.first0 = prev
     # TODO: unify event and callback queue
     self.arrange()
 

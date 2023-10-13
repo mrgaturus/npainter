@@ -10,8 +10,8 @@ widget UXDock:
       widget: GUIWidget
     # Dock Manipulation
     {.public.}:
-      crc32: int32
-      node: pointer
+      serial: int32
+      [node, row]: pointer
       pivot: DockResize
       # Dock Session Watcher
       cbWatch: GUICallbackEX[DockWatch]
