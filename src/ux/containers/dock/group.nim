@@ -48,9 +48,9 @@ template walk0(self: typed, name, body: untyped) =
 # ------------------
 
 type
-  DockAttach* = object
+  DockTarget* = object
     dock {.cursor.}: UXDock
-    metrics: GUIMetrics
+    pivot, metrics: GUIMetrics
     # Backup Dock Callbacks
     cbMove: GUICallbackEX[DockMove]
     cbResize: GUICallbackEX[DockMove]
@@ -61,7 +61,7 @@ type
 
 controller UXDockNode:
   attributes:
-    target: DockAttach
+    target: DockTarget
     row: DockOpaque
     # Linked List
     next: UXDockNode
@@ -70,6 +70,7 @@ controller UXDockNode:
 
   # -- Forward Declaration --
   proc update(opaque: DockOpaque)
+  proc attach(opaque: DockOpaque)
   proc detach(opaque: DockOpaque)
 
   # -- Dock Node Attach at Next --
@@ -77,13 +78,13 @@ controller UXDockNode:
     attach0(self, node)
     # Set Node Row
     node.row = self.row
-    update(self, self.row)
+    attach(self, self.row)
 
   proc prettach*(node: UXDockNode) =
     attach0prev(self, node)
     # Set Node Row
     node.row = self.row
-    update(self, self.row)
+    attach(self, self.row)
 
   proc detach*() =
     detach0(self)
@@ -110,35 +111,11 @@ controller UXDockNode:
     force(self.target.cbMove, p)
 
   callback cbResize(p: DockMove):
-    let 
-      t0 = addr self.target
-      pv0 = addr t0.dock.pivot
-      # Cursor Pointers
-      row = self.row
-      prev = self.prev
-    var sides = pv0.sides
-    # Syncronize Pivot With Previous
-    if (dockTop in sides) and not isNil(prev):
-      let
-        t1 = addr prev.target
-        pv1 = addr t1.dock.pivot
-      # Move Prev From Down
-      if dockOpposite notin sides:
-        sides = sides - {dockTop} + {dockDown}
-        # Replace Pivot
-        pv1.x = pv0.x
-        pv1.y = pv0.y
-        pv1.sides = sides
-        pv1.rect = t1.dock.rect
-        # Avoid Redefine Pivot
-        pv0.sides.incl dockOpposite
-      # Execute Prev Callback
-      if t1.dock.unfolded:
-        force(t1.cbResize, p)
-        update(prev, row)
-    else: # Forward Update
-      force(t0.cbResize, p)
-      update(self, row)
+    # Calculate Resize Delta
+    let d0 = self.target.dock
+    d0.rect = delta(d0.pivot, p.x, p.y)
+    # Execute Row Update
+    update(self, self.row)
 
   callback cbFold:
     force(self.target.cbFold)
@@ -151,7 +128,7 @@ controller UXDockNode:
   # -- Dock Node Constructor --
   new docknode(dock: UXDock):
     # Create Dock Attach
-    result.target = DockAttach(
+    result.target = DockTarget(
       dock: dock,
       metrics: dock.metrics,
       # Backup Callbacks
@@ -175,7 +152,8 @@ controller UXDockRow:
   attributes:
     first: UXDockNode
     metrics: GUIMetrics
-    # Delta Position Callback
+    orient: ptr DockSide
+    # Group Notify Callbacks
     cbNotify: GUICallbackEX[DockOpaque]
     cbDetach: GUICallbackEX[DockOpaque]
     # Linked List
@@ -223,6 +201,7 @@ controller UXDockRow:
       m.w = w0
       m.x = x0
       m.y = y
+      # Next Node
       y += m.h - pad
       # Update Dock Group Locations
       dock.node = cast[pointer](node)
@@ -249,58 +228,136 @@ controller UXDockRow:
     self.first = node
     node.row = opaque
     # Notify Node Update
-    update(node, opaque)
+    attach(node, opaque)
 
   proc attach*(row: UXDockRow) =
     attach0(self, row)
     # Change Row Delta Callback
     row.cbNotify = self.cbNotify
     row.cbDetach = self.cbDetach
+    row.orient = self.orient
 
   proc prettach*(row: UXDockRow) =
     attach0prev(self, row)
     # Change Row Delta Callback
     row.cbNotify = self.cbNotify
     row.cbDetach = self.cbDetach
+    row.orient = self.orient
 
   proc detach*() =
     detach0(self)
 
-# ------------------------
-# Docking Group Row Update
-# ------------------------
+# ----------------------------
+# Docking Group Metrics Adjust
+# ----------------------------
 
-proc adjust(row: UXDockRow, node: UXDockNode) =
+proc adjust0(row: UXDockRow, node: UXDockNode) =
   let
     target = addr node.target
     m = addr row.metrics
-    # Target Metrics
-    m0 = addr target.metrics
-    m1 = addr target.dock.metrics
-    # Calculated Width
-    w0 = max(m1.w, m.minW)
-    dw = w0 - m1.w
-    dx = m1.x - m0.x - dw
-  # Move Top Corners
-  if node == row.first:
-    m.y = m1.y - m0.y
-  # Apply Min Size
-  m1.x -= dw
-  m1.w = w0
-  # Delta X
-  m.x = dx
-  m.w = w0
+    w = target.dock.metrics.w
+  # Apply Dock Metrics
+  m.w = max(w, m.minW)
+
+proc adjustY(row: UXDockRow, node: UXDockNode) =
+  let 
+    t0 = addr node.target
+    d0 {.cursor.} = t0.dock
+    pv0 = addr d0.pivot
+    # Metrics Pointers
+    r0 = addr d0.rect
+    m0 = addr d0.metrics
+    m = addr row.metrics
+    # Previous Node  
+    prev = node.prev
+  # Check Clicked Sides
+  var sides = pv0.sides
+  let check = dockTop in sides
+  # Check Top Side for Prev
+  if check and not isNil(prev):
+    let
+      t1 = addr prev.target
+      d1 {.cursor.} = t1.dock
+      m1 = addr d1.metrics
+    # Define Previous Pivot
+    if dockOppositeY notin sides:
+      t0.pivot = t1.metrics
+      sides.incl dockOppositeY
+      # Replace Node Sides
+      pv0.sides = sides
+    # Apply Y Delta to Height
+    if d1.unfolded:
+      let h = t0.pivot.h + r0.y
+      m1.h = max(m1.minH, int16 h)
+  else: # Apply Height to Node
+    let
+      pr0 = addr pv0.rect
+      h = pr0.h + r0.h
+    m0.h = max(m0.minH, int16 h)
+    # Move When is First
+    if isNil(prev) and check:
+      let y = (pr0.y + r0.y) - m0.h + h
+      m.y = cast[int16](y - m0.y)
+
+proc adjustXright(row: UXDockRow, node: UXDockNode) =
+  let 
+    t0 = addr node.target
+    d0 {.cursor.} = t0.dock
+    pv0 = addr d0.pivot
+    # Metrics Pointers
+    r0 = addr d0.rect
+    m0 = addr d0.metrics
+    prev = row.prev
+  # Check Clicked Sides
+  var 
+    sides = pv0.sides
+    m = addr row.metrics
+  let check = dockLeft in sides
+  # Check Clicked Opposite
+  if check and not isNil(prev):
+    m = addr prev.metrics
+    # Define Previous Pivot
+    if dockOppositeX notin sides:
+      t0.pivot = m[]
+      sides.incl dockOppositeX
+      # Replace Node Sides
+      pv0.sides = sides
+    # Move Width Position
+    m.w = int16(t0.pivot.w - r0.w)
+    m.w = max(m.w, m.minW)
+  else: # Move Width Position
+    let
+      pr0 = addr pv0.rect
+      w = int16(pr0.w + r0.w)
+    m.w = max(w, m.minW)
+    # Move Offset When Expand
+    if isNil(prev) and check:
+      let x = (pr0.x - r0.w) - m.w + w
+      m.x = cast[int16](x - m0.x)
+
+# --------------------
+# Docking Group Notify
+# --------------------
 
 proc update(self: UXDockNode, opaque: DockOpaque) =
+  let row {.cursor.} = cast[UXDockRow](opaque)
+  # Process Node Changes
+  row.bounds()
+  row.adjustY(self)
+  row.adjustXright(self)
+  # Notify Row Changes
+  force(row.cbNotify, addr opaque)
+
+proc attach(self: UXDockNode, opaque: DockOpaque) =
   let row {.cursor.} = cast[UXDockRow](opaque)
   # Change First Node
   let prev = row.first.prev
   if not isNil(prev):
     row.first = prev
-  # Calculate Row Bounds and Adjust
+  # Calculate Row Bounds
   row.bounds()
-  row.adjust(self)
-  # Arrange Row and Notify
+  row.adjust0(self)
+  # Notify Row Changes
   force(row.cbNotify, addr opaque)
 
 proc detach(self: UXDockNode, opaque: DockOpaque) =
@@ -328,9 +385,11 @@ widget UXDockGroup:
       head: UXDockHeader
     # Linked List
     first0: UXDockRow
+    orient: DockSide
     # Dock Session Manager
     {.public.}:
       cbWatch: GUICallbackEX[DockWatch]
+      region: ptr GUIRect
 
   proc watch(reason: DockReason, p: DockMove) =
     # TODO: make force optional as push
@@ -407,11 +466,19 @@ widget UXDockGroup:
     # Connect Callbacks
     first.cbNotify = result.cbNotify
     first.cbDetach = result.cbDetach
+    # Mark as Invalidated
+    result.metrics.w = low int16
+    result.metrics.h = low int16
 
   method update =
     let
       m = addr self.metrics
       m0 = addr self.head.metrics
+      # TODO: allow custom margin
+      pad = getApp().font.height shr 3
+    # Adjust Initial Offset
+    if (m.w and m.h) < 0:
+      m.y -= m0.minH
     # Adjust Respect Header + Margin
     m.minW = m0.minW
     m.minH = m0.minH
@@ -424,11 +491,11 @@ widget UXDockGroup:
     var row {.cursor.} = self.first0
     while not isNil(row):
       row.arrange(x, y)
+      x += row.metrics.w - pad
       # Next Dock Row
-      x += row.metrics.w
       row = row.next
     # Set Container Size
-    m.w = x - m.x
+    m.w = x - m.x + pad
     m.h = m.minH
 
   method layout =

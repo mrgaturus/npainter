@@ -7,9 +7,11 @@ type
     dockDown
     dockLeft
     dockRight
-    # Dock Manipulation
+    # Dock Orient
+    dockOppositeX
+    dockOppositeY
+    # No Sides
     dockNothing
-    dockOpposite
   DockSides* = set[DockSide]
   # Callback Moving
   DockMove* = object
@@ -60,9 +62,30 @@ proc resizePivot*(r: GUIRect, x, y, thr: int32): DockResize =
     rect: r,
     sides: sides)
 
-proc resize*(pivot: DockResize, dx, dy: int32): GUIRect =
+proc delta*(pivot: DockResize, x, y: int32): GUIRect =
+  let 
+    sides = pivot.sides
+    dx = x - pivot.x
+    dy = y - pivot.y
+  # Down-Right Expanding
+  if dockDown in sides: 
+    result.h = dy
+  if dockRight in sides: 
+    result.w = dx
+  # Top-Left Expanding
+  if dockTop in sides:
+    result.y = dy
+    result.h = -dy
+  if dockLeft in sides:
+    result.x = dx
+    result.w = -dx
+
+proc resize*(pivot: DockResize, x, y: int32): GUIRect =
   result = pivot.rect
-  let sides = pivot.sides
+  let 
+    sides = pivot.sides
+    dx = x - pivot.x
+    dy = y - pivot.y
   # Down-Right Expanding
   if dockDown in sides: 
     result.h += dy
@@ -122,6 +145,17 @@ proc groupHint*(r: GUIRect, side: DockSide, thr: int32): GUIRect =
     result.y += result.h - thr
     result.h = thr
   else: discard
+
+proc groupOrient*(m: GUIMetrics, clip: GUIRect): DockSide =
+  let
+    x0 = m.x
+    x1 = x0 + m.w
+    # Calculate Distances
+    dx0 = x0 - clip.x
+    dx1 = x1 - clip.x + clip.w
+  # Check Which is Near to a Side
+  if dx1 < dx0: dockLeft
+  else: dockRight
 
 # --------------------
 # Widget Dock Snapping

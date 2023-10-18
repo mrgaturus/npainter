@@ -66,12 +66,14 @@ proc groupStart(dock: UXDock): UXDockGroup =
   let 
     row = dockrow()
     node = docknode(dock)
+    m = addr dock.metrics
   # Create Group And Attach Node
   result = dockgroup(row)
+  result.metrics.x = m.x
+  result.metrics.y = m.y
+  # Attach Node
   row.attach(node)
-  # Move To Widget
-  let m = addr dock.rect
-  result.move(m.x, m.y)
+  result.open()
 
 proc groupDock(dock, to: UXDock, side: DockSide) =
   # Lookup Row And Warp to Node
@@ -100,19 +102,22 @@ proc groupDock(dock, to: UXDock, side: DockSide) =
 controller UXDockSession:
   attributes:
     hint: UXDockHint
-    metrics: GUIMetrics
     # Opened Docks
     docks: seq[UXDock]
     groups: seq[UXDockGroup]
+    # Clipping Session
+    {.public.}:
+      clip: GUIRect
 
   # -- Dock Session Manipulation --
   proc add*(dock: UXDock) =
     dock.cbWatch = self.cbWatchDock
-    self.docks.add(dock)
+    #self.docks.add(dock)
 
   proc add*(group: UXDockGroup) =
     group.cbWatch = self.cbWatchGroup
-    self.groups.add(group)
+    # Calculate Group Orient
+
 
   # -- Dock Session Grouping --
   proc groupDock(hold: UXDock, p: DockMove) =
@@ -123,13 +128,12 @@ controller UXDockSession:
       w {.cursor.} = findDock(hold, p)
       # TODO: allow customize margins
       thr = getApp().font.height shl 1
-      side = groupSide(w.rect, p, 32)
+      side = groupSide(w.rect, p, thr)
     if w == hold or side == dockNothing: return
     # Create A New Group
     if isNil(w.row):
-      let group = groupStart(w)
-      group.open()
-      self.groups.add(group)
+      self.add groupStart(w)
+      #self.groups.add(group)
     # Attach New Group
     groupDock(hold, w, side)
 

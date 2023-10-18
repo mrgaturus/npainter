@@ -28,14 +28,6 @@ widget UXDock:
   proc unfolded*: bool {.inline.} =
     (self.widget.flags and wHidden) == 0
 
-  proc resize*(p: DockMove) =
-    let
-      p0 = self.pivot
-      dx = p.x - p0.x
-      dy = p.y - p0.y
-    # Apply Resize to Dock
-    self.apply resize(p0, dx, dy)
-
   # -- Dock Move Callbacks --
   callback cbMove(p: sink DockMove):
     self.pivot.sides = {dockNothing}
@@ -50,8 +42,8 @@ widget UXDock:
     self.watch(reason, p)
 
   callback cbResize(p: sink DockMove):
-    self.resize(p)
-    # Session Watch Resize
+    # Apply Resize and Watch Resize
+    self.apply resize(self.pivot, p.x, p.y)
     self.watch(dockWatchResize, p)
 
   # -- Dock Button Callbacks --
@@ -158,14 +150,20 @@ widget UXDock:
     let
       x = state.mx
       y = state.my
-    if state.kind == evCursorClick:
+      kind = state.kind
+    if kind == evCursorClick:
       # TODO: allow custom margin
       let pad = getApp().font.height and not 3
       self.pivot = resizePivot(self.rect, x, y, pad)
     # Send Reside Callback if not folded
     elif self.test(wGrab) and self.unfolded:
       let p = DockMove(x: x, y: y)
-      push(self.cbResize, p)
+      # TODO: don't force callback when
+      #       unify queue and event is done
+      force(self.cbResize, addr p)
+    # Clear Pivot Sides
+    elif kind == evCursorRelease:
+      self.pivot.sides = {}
 
   method draw(ctx: ptr CTXRender) =
     let 
