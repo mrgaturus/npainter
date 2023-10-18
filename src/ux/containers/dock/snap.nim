@@ -152,7 +152,7 @@ proc groupOrient*(m: GUIMetrics, clip: GUIRect): DockSide =
     x1 = x0 + m.w
     # Calculate Distances
     dx0 = x0 - clip.x
-    dx1 = x1 - clip.x + clip.w
+    dx1 = clip.x + clip.w - x1
   # Check Which is Near to a Side
   if dx1 < dx0: dockLeft
   else: dockRight

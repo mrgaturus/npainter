@@ -73,7 +73,6 @@ proc groupStart(dock: UXDock): UXDockGroup =
   result.metrics.y = m.y
   # Attach Node
   row.attach(node)
-  result.open()
 
 proc groupDock(dock, to: UXDock, side: DockSide) =
   # Lookup Row And Warp to Node
@@ -102,22 +101,16 @@ proc groupDock(dock, to: UXDock, side: DockSide) =
 controller UXDockSession:
   attributes:
     hint: UXDockHint
-    # Opened Docks
-    docks: seq[UXDock]
-    groups: seq[UXDockGroup]
     # Clipping Session
-    {.public.}:
-      clip: GUIRect
+    {.public, cursor.}:
+      weird: GUIWidget
 
   # -- Dock Session Manipulation --
-  proc add*(dock: UXDock) =
+  proc watch*(dock: UXDock) =
     dock.cbWatch = self.cbWatchDock
-    #self.docks.add(dock)
 
-  proc add*(group: UXDockGroup) =
+  proc watch*(group: UXDockGroup) =
     group.cbWatch = self.cbWatchGroup
-    # Calculate Group Orient
-
 
   # -- Dock Session Grouping --
   proc groupDock(hold: UXDock, p: DockMove) =
@@ -132,8 +125,7 @@ controller UXDockSession:
     if w == hold or side == dockNothing: return
     # Create A New Group
     if isNil(w.row):
-      self.add groupStart(w)
-      #self.groups.add(group)
+      groupStart(w).open()
     # Attach New Group
     groupDock(hold, w, side)
 
@@ -160,6 +152,7 @@ controller UXDockSession:
   # -- Dock Session Callbacks --
   callback cbWatchDock(watch: DockWatch):
     let target = cast[UXDock](watch.opaque)
+    # Process Watch Reason
     case watch.reason
     of dockWatchRelease:
       self.groupDock(target, watch.p)
@@ -168,14 +161,31 @@ controller UXDockSession:
     else: discard
 
   callback cbWatchGroup(watch: DockWatch):
+    # TODO: see what to do with this
     let target = cast[UXDockGroup](watch.opaque)
-    echo watch.reason, ": ", watch.p
+    # Process Watch Reason
+    if watch.reason == groupWatchMove:
+      target.orient0awful(self.weird.rect)
+
+  # -- Dock Session Updater --
+  callback cbUpdate:
+    var weird {.cursor.} = self.weird
+    let clip = weird.rect
+    # FUTURE DIRECTION:
+    # make docks/groups be childrens
+    while not isNil(weird.parent):
+      weird = weird.parent
+    while not isNil(weird.next):
+      weird = weird.next
+    # Iterate Groups
+    while not isNil(weird):
+      if weird of UXDockGroup:
+        # Update Group Orientation
+        let g = cast[UXDockGroup](weird)
+        g.orient0awful(clip)
+      # Next Weird
+      weird = weird.prev
 
   # -- Dock Session Constructor --
   new docksession():
     result.hint = dockhint()
-    result.docks = newSeq[UXDock]()
-    result.groups = newSeq[UXDockGroup]()
-
-  proc update*(metrics: GUIMetrics) =
-    discard

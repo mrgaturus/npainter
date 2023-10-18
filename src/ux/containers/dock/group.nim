@@ -299,41 +299,62 @@ proc adjustY(row: UXDockRow, node: UXDockNode) =
       let y = (pr0.y + r0.y) - m0.h + h
       m.y = cast[int16](y - m0.y)
 
-proc adjustXright(row: UXDockRow, node: UXDockNode) =
-  let 
+proc adjustX(row: UXDockRow, node: UXDockNode) =
+  let
     t0 = addr node.target
     d0 {.cursor.} = t0.dock
+    # Pivot Metrics
     pv0 = addr d0.pivot
+    pr0 = addr pv0.rect
+    pv1 = addr t0.pivot
     # Metrics Pointers
     r0 = addr d0.rect
-    m0 = addr d0.metrics
-    prev = row.prev
-  # Check Clicked Sides
-  var 
+    mm = addr row.metrics
+    # Linked List
+    prev {.cursor.} = row.prev
+    next {.cursor.} = row.next
+  # Clicked Sides
+  var
+    m = mm
     sides = pv0.sides
-    m = addr row.metrics
-  let check = dockLeft in sides
-  # Check Clicked Opposite
-  if check and not isNil(prev):
-    m = addr prev.metrics
+    # Horizontal Calculation
+    x0 = t0.metrics.x
+    x = pr0.x + r0.x
+    w = pr0.w + r0.w
+  # Unique X Checking
+  const
+    checkLeft = {dockLeft, dockOppositeX}
+    checkRight = {dockRight, dockOppositeX}
+  # Redundancy Template
+  template adjustXChoose(c: UXDockRow) =
+    m = addr c.metrics
     # Define Previous Pivot
     if dockOppositeX notin sides:
-      t0.pivot = m[]
+      pv1[] = m[]
       sides.incl dockOppositeX
-      # Replace Node Sides
-      pv0.sides = sides
-    # Move Width Position
-    m.w = int16(t0.pivot.w - r0.w)
-    m.w = max(m.w, m.minW)
-  else: # Move Width Position
-    let
-      pr0 = addr pv0.rect
-      w = int16(pr0.w + r0.w)
-    m.w = max(w, m.minW)
-    # Move Offset When Expand
-    if isNil(prev) and check:
-      let x = (pr0.x - r0.w) - m.w + w
-      m.x = cast[int16](x - m0.x)
+    # TODO: unify event and callback queue
+    c.bounds()
+  # Adjust Clicked Opposite
+  if sides <= checkLeft and not isNil(prev):
+    adjustXChoose(prev)
+    # Calculate Opposite
+    x = x0; w = pv1.w - r0.w
+  elif sides <= checkRight and not isNil(next):
+    adjustXChoose(next)
+    # Calculate Opposite
+    x = pr0.x + r0.w
+    w = pv1.w - r0.w
+  # Replace Node Sides
+  pv0.sides = sides
+  # Calculate Horizontal
+  let 
+    w0 = max(w, m.minW)
+    dw = w0 - w
+    dx = x - x0 - dw
+  # Apply Horizontal
+  m.w = int16 w0
+  if x != x0:
+    mm.x = int16 dx
 
 # --------------------
 # Docking Group Notify
@@ -344,7 +365,7 @@ proc update(self: UXDockNode, opaque: DockOpaque) =
   # Process Node Changes
   row.bounds()
   row.adjustY(self)
-  row.adjustXright(self)
+  row.adjustX(self)
   # Notify Row Changes
   force(row.cbNotify, addr opaque)
 
@@ -384,12 +405,11 @@ widget UXDockGroup:
     {.cursor.}:
       head: UXDockHeader
     # Linked List
-    first0: UXDockRow
     orient: DockSide
+    first0: UXDockRow
     # Dock Session Manager
     {.public.}:
       cbWatch: GUICallbackEX[DockWatch]
-      region: ptr GUIRect
 
   proc watch(reason: DockReason, p: DockMove) =
     # TODO: make force optional as push
@@ -406,6 +426,9 @@ widget UXDockGroup:
       m = addr self.metrics
       p = DockMove(x: m.x, y: m.y)
     self.watch(groupWatchClose, p)
+
+  proc orient0awful*(clip: GUIRect) =
+    self.orient = groupOrient(self.metrics, clip)
 
   # -- Dock Group Callbacks --
   callback cbMove(p: sink DockMove):
@@ -466,6 +489,8 @@ widget UXDockGroup:
     # Connect Callbacks
     first.cbNotify = result.cbNotify
     first.cbDetach = result.cbDetach
+    # Connect Orient
+    first.orient = addr result.orient
     # Mark as Invalidated
     result.metrics.w = low int16
     result.metrics.h = low int16

@@ -1,5 +1,6 @@
 # TODO: client side decoration
 # TODO: syncronize min size with native handle
+import dock/session
 import nogui/ux/layouts/base
 import nogui/ux/prelude
 
@@ -52,15 +53,23 @@ widget UXMainFrame:
     m1.w = w; m1.h = h1
 
 widget UXMainBody:
-  attributes: {.public, cursor.}:
-    [tools, body]: GUIWidget
+  attributes: 
+    {.public, cursor.}:
+      [tools, body]: GUIWidget
+    {.public.}:
+      # FUTURE DIRECTION:
+      # make docks/groups be childrens
+      session: UXDockSession
   
-  new mainbody(tools, body: GUIWidget):
+  new mainbody(tools, body: GUIWidget, s: UXDockSession):
     result.add tools
     result.add body
     # Register Tools and Body
     result.tools = tools
     result.body = body
+    # Register Session
+    result.session = s
+    s.weird = result
 
   method draw(ctx: ptr CTXRender) =
     ctx.color getApp().colors.panel
@@ -82,4 +91,5 @@ widget UXMainBody:
     # Arrange Content
     m1.x = w0; m1.y = 0
     m1.w = w1; m1.h = h
-    echo m0.repr
+    # Update Session Directions
+    push(self.session.cbUpdate)

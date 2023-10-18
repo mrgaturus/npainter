@@ -94,19 +94,19 @@ controller NCMainFrame:
     row2.attach(node4)
     node4.attach(node5)
     # Create Session and Store It
-    session.add dock1
-    session.add dock2
-    session.add dock3
-    session.add dock4
-    session.add dock5
-    session.add dock6
-    session.add group
+    session.watch dock1
+    session.watch dock2
+    session.watch dock3
+    session.watch dock4
+    session.watch dock5
+    session.watch dock6
+    session.watch group
     self.session = session
     # Create Group
     group.move(20, 20)
     group.open()
     # Return Main Frame
-    mainframe title, mainbody(tools, dummy())
+    mainframe title, mainbody(tools, dummy(), session)
 
   new ncMainWindow():
     result.ncmenu = ncMainMenu()
