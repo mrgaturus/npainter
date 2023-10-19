@@ -255,9 +255,22 @@ proc adjust0(row: UXDockRow, node: UXDockNode) =
   let
     target = addr node.target
     m = addr row.metrics
+    # Dock Width Metric
     w = target.dock.metrics.w
+    orient = row.orient[]
   # Apply Dock Metrics
   m.w = max(w, m.minW)
+  # Apply Offset With Orient
+  if orient == dockLeft:
+    # TODO: allow custom margin
+    let 
+      pad = getApp().font.height shr 3
+      first {.cursor.} = row.first
+    # Offset Detached or Attached
+    if isNil(first): 
+      m.x = w - pad
+    elif node == first and isNil(node.next):
+      m.x = pad - w
 
 proc adjustY(row: UXDockRow, node: UXDockNode) =
   let 
@@ -313,6 +326,8 @@ proc adjustX(row: UXDockRow, node: UXDockNode) =
     # Linked List
     prev {.cursor.} = row.prev
     next {.cursor.} = row.next
+    # Group Orientation
+    orient = row.orient[]
   # Clicked Sides
   var
     m = mm
@@ -321,10 +336,8 @@ proc adjustX(row: UXDockRow, node: UXDockNode) =
     x0 = t0.metrics.x
     x = pr0.x + r0.x
     w = pr0.w + r0.w
-  # Unique X Checking
-  const
-    checkLeft = {dockLeft, dockOppositeX}
-    checkRight = {dockRight, dockOppositeX}
+  # Orient and Side Checker
+  let check = sides - {dockOppositeX}
   # Redundancy Template
   template adjustXChoose(c: UXDockRow) =
     m = addr c.metrics
@@ -335,15 +348,16 @@ proc adjustX(row: UXDockRow, node: UXDockNode) =
     # TODO: unify event and callback queue
     c.bounds()
   # Adjust Clicked Opposite
-  if sides <= checkLeft and not isNil(prev):
-    adjustXChoose(prev)
-    # Calculate Opposite
-    x = x0; w = pv1.w - r0.w
-  elif sides <= checkRight and not isNil(next):
-    adjustXChoose(next)
-    # Calculate Opposite
-    x = pr0.x + r0.w
-    w = pv1.w - r0.w
+  if check + {orient} == {dockRight, dockLeft}:
+    if (dockLeft in check) and not isNil(prev):
+      adjustXChoose(prev)
+      # Calculate Opposite
+      x = x0; w = pv1.w - r0.w
+    elif (dockRight in check) and not isNil(next):
+      adjustXChoose(next)
+      # Calculate Opposite
+      x = pr0.x + r0.w
+      w = pv1.w - r0.w
   # Replace Node Sides
   pv0.sides = sides
   # Calculate Horizontal
@@ -393,6 +407,7 @@ proc detach(self: UXDockNode, opaque: DockOpaque) =
       row.detach()
   # Calculate Row Bounds
   row.bounds()
+  row.adjust0(self)
   # Notify Row Changes
   force(row.cbDetach, addr opaque)
 
@@ -486,10 +501,9 @@ widget UXDockGroup:
     result.head = head
     # Set First Row
     result.first0 = first
-    # Connect Callbacks
+    # Connect Callbacks and Orient
     first.cbNotify = result.cbNotify
     first.cbDetach = result.cbDetach
-    # Connect Orient
     first.orient = addr result.orient
     # Mark as Invalidated
     result.metrics.w = low int16

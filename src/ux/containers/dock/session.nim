@@ -125,7 +125,12 @@ controller UXDockSession:
     if w == hold or side == dockNothing: return
     # Create A New Group
     if isNil(w.row):
-      groupStart(w).open()
+      let g = groupStart(w)
+      # Watch Group and Adjust Orient
+      g.cbWatch = self.cbWatchGroup
+      g.orient0awful(self.weird.rect)
+      # TODO: future direction
+      g.open()
     # Attach New Group
     groupDock(hold, w, side)
 
