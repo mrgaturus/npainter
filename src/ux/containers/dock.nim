@@ -42,9 +42,10 @@ widget UXDock:
     self.watch(reason, p)
 
   callback cbResize(p: sink DockMove):
-    # Apply Resize and Watch Resize
-    self.apply resize(self.pivot, p.x, p.y)
-    self.watch(dockWatchResize, p)
+    if self.unfolded:
+      # Apply Resize and Watch Resize
+      self.apply resize(self.pivot, p.x, p.y)
+      self.watch(dockWatchResize, p)
 
   # -- Dock Button Callbacks --
   callback cbFold:
@@ -155,8 +156,8 @@ widget UXDock:
       # TODO: allow custom margin
       let pad = getApp().font.height and not 3
       self.pivot = resizePivot(self.rect, x, y, pad)
-    # Send Reside Callback if not folded
-    elif self.test(wGrab) and self.unfolded:
+    # Send Reside Callback
+    elif self.test(wGrab):
       let p = DockMove(x: x, y: y)
       # TODO: don't force callback when
       #       unify queue and event is done

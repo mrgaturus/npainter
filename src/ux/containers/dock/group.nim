@@ -119,7 +119,7 @@ controller UXDockNode:
 
   callback cbFold:
     force(self.target.cbFold)
-    update(self, self.row)
+    update(nil, self.row)
 
   callback cbClose:
     self.detach()
@@ -302,7 +302,8 @@ proc adjustY(row: UXDockRow, node: UXDockNode) =
     if d1.unfolded:
       let h = t0.pivot.h + r0.y
       m1.h = max(m1.minH, int16 h)
-  else: # Apply Height to Node
+  # Apply Height to Node
+  elif d0.unfolded:
     let
       pr0 = addr pv0.rect
       h = pr0.h + r0.h
@@ -376,10 +377,12 @@ proc adjustX(row: UXDockRow, node: UXDockNode) =
 
 proc update(self: UXDockNode, opaque: DockOpaque) =
   let row {.cursor.} = cast[UXDockRow](opaque)
-  # Process Node Changes
+  # Recalculate Bounds
   row.bounds()
-  row.adjustY(self)
-  row.adjustX(self)
+  # Process Node Changes
+  if not isNil(self):
+    row.adjustY(self)
+    row.adjustX(self)
   # Notify Row Changes
   force(row.cbNotify, addr opaque)
 

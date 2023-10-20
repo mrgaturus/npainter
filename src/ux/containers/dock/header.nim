@@ -11,6 +11,9 @@ from nogui/ux/widgets/button import
 import std/importutils
 # Import Docking Snapping
 import snap
+# TODO: REMOVE THIS WHEN ADDITION EVENT
+from std/monotimes import
+  getMonoTime, ticks
 
 # ------------------
 # Widget Dock Header
@@ -29,6 +32,10 @@ widget UXDockHeader:
     title: string
     icon: CTXIconID
     lm: GUILabelMetrics
+    # TODO: REMOVE THIS WHEN ADDITION EVENT
+    clicks: int32
+    stamp: int64
+    awful: bool
     # Context Menu
     menu: UXMenu
     # Header Buttons
@@ -84,6 +91,8 @@ widget UXDockHeader:
     result.btnMenu = btnMenu
     result.btnFold = btnFold
     result.btnClose = btnClose
+    # Mark as Awful
+    result.awful = true
 
   new dockhead(title: string, icon = CTXIconEmpty):
     result.flags = wMouse
@@ -169,10 +178,32 @@ widget UXDockHeader:
       # Capture Pivot Point
       self.pivot = p
       self.capture = self.parent.rect
-      self.grab = self.test(wGrab)
+      # Calculate Timestamp Click Count
+      let stamp = getMonoTime().ticks()
+      if stamp - self.stamp > 500000000:
+        self.clicks = 0
+      inc(self.clicks)
+      # Replace Timestamp
+      self.stamp = stamp
+    elif state.kind == evCursorRelease:
+      # Unfold When Clicked
+      if self.clicks == 2:
+        privateAccess(UXButton)
+        if not self.awful:
+          push(self.btnFold.cb)
+        self.clicks = 0
     # Check if is grabbed or preceded by grabbed
     elif self.grab:
       # TODO: don't force callback when
       #       unify queue and event is done
       self.grab = self.test(wGrab)
       force(self.onmove, addr p)
+    elif self.test(wGrab):
+      let
+        dx = p.x - self.pivot.x
+        dy = p.y - self.pivot.y
+        dist = dx * dx + dy * dy
+      # If Distance Enough Start Moving
+      if dist > 64:
+        self.grab = self.test(wGrab)
+        self.clicks = 0
