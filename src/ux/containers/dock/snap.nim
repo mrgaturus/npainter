@@ -17,7 +17,7 @@ type
   DockMove* = object
     x*, y*: int32
   DockSnap* = object
-    sides*: DockSides
+    side*: DockSide
     x*, y*: int32
   # Callback Resize
   DockResize* = object
@@ -161,7 +161,7 @@ proc groupOrient*(m: GUIMetrics, clip: GUIRect): DockSide =
 # Widget Dock Snapping
 # --------------------
 
-proc checkTop(a, b: GUIRect, thr: int32): bool =
+proc checkTop(a, b: GUIMetrics, thr: int32): bool =
   if abs(a.y - b.y - b.h) < thr:
     let
       ax0 = a.x
@@ -169,13 +169,19 @@ proc checkTop(a, b: GUIRect, thr: int32): bool =
       # Sticky Area
       x0 = b.x
       x1 = x0 + b.w
-      # X Distance Check
-      check0 = ax0 >= x0 and ax0 <= x1
-      check1 = ax1 >= x0 and ax1 <= x1
+      # X Distance Check A
+      check0a = ax0 >= x0 and ax0 <= x1
+      check1a = ax1 >= x0 and ax1 <= x1
+      # X Distance Check B
+      check0b = x0 >= ax0 and x0 <= ax1
+      check1b = x1 >= ax0 and x1 <= ax1
+      # Merge Distance Checks
+      check0 = check0a or check0b
+      check1 = check1a or check1b
     # Check if is sticky to top side
-    result = check0 and check1
+    result = check0 or check1
 
-proc checkLeft(a, b: GUIRect, thr: int32): bool =
+proc checkLeft(a, b: GUIMetrics, thr: int32): bool =
   if abs(a.x - b.x - b.w) < thr:
     let
       ay0 = a.y
@@ -184,17 +190,45 @@ proc checkLeft(a, b: GUIRect, thr: int32): bool =
       y0 = b.y
       y1 = y0 + b.h
       # X Distance Check
-      check0 = ay0 >= y0 and ay0 <= y1
-      check1 = ay1 >= y0 and ay1 <= y1
+      check0a = ay0 >= y0 and ay0 <= y1
+      check1a = ay1 >= y0 and ay1 <= y1
+      # X Distance Check B
+      check0b = y0 >= ay0 and y0 <= ay1
+      check1b = y1 >= ay0 and y1 <= ay1
+      # Merge Distance Checks
+      check0 = check0a or check0b
+      check1 = check1a or check1b
     # Check if is sticky to top side
-    result = check0 and check1
+    result = check0 or check1
+
+proc cornerX(a, b: GUIMetrics, thr: int32): int16 =
+  let 
+    d0 = a.x - b.x
+    d1 = d0 + a.w - b.w
+  # Check Nearly Deltas
+  if abs(d0) < thr: b.x
+  elif abs(d1) < thr:
+    b.x + b.w - a.w
+  else: a.x
+
+proc cornerY(a, b: GUIMetrics, thr: int32): int16 =
+  let 
+    d0 = a.y - b.y
+    d1 = d0 + a.h - b.h
+  # Check Nearly Deltas
+  if abs(d0) < thr: b.y
+  elif abs(d1) < thr:
+    b.y + b.h - a.h
+  else: a.y
 
 proc snap*(a, b: GUIWidget): DockSnap =
   let
-    a0 = a.rect
-    b0 = b.rect
-    # Sticky Threshold
-    thr = getApp().font.asc shr 1
+    a0 = a.metrics
+    b0 = b.metrics
+    # TODO: allow custom margin
+    h = getApp().font.height
+    thr = h shr 1
+    pad = h shr 3
   # Calculate Where is
   let side = 
     if checkTop(a0, b0, thr): dockTop
@@ -204,13 +238,33 @@ proc snap*(a, b: GUIWidget): DockSnap =
     elif checkLeft(b0, a0, thr): dockRight
     # No Sticky Found
     else: dockNothing
+  # Initial Position
+  var
+    x = a0.x
+    y = a0.y
   # Calculate Sticky Position
-  let (x, y) =
-    case side
-    of dockTop: (a0.x, b0.y + b0.h)
-    of dockLeft: (b0.x + b0.w, a0.y)
-    of dockDown: (a0.x, b0.y - a0.h)
-    of dockRight: (b0.x - a0.w, a0.y)
-    else: (a0.x, a0.y)
+  case side
+  of dockTop: 
+    y = b0.y + b0.h - pad
+    x = cornerX(a0, b0, thr)
+  of dockDown: 
+    y = b0.y - a0.h + pad
+    x = cornerX(a0, b0, thr)
+  of dockLeft: 
+    x = b0.x + b0.w - pad
+    y = cornerY(a0, b0, thr)
+  of dockRight: 
+    x = b0.x - a0.w + pad
+    y = cornerY(a0, b0, thr)
+  # No Snapping Found
+  else: discard
   # Return Sticky Info
-  DockSnap(sides: {side}, x: x, y: y)
+  DockSnap(side: side, x: x, y: y)
+
+proc apply*(self: GUIWidget, s: DockSnap) =
+  let m = addr self.metrics
+  # Move Accourding Position
+  m.x = int16 s.x
+  m.y = int16 s.y
+  # Action Update
+  self.set(wDirty)

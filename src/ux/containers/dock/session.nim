@@ -94,6 +94,17 @@ proc groupDock(dock, to: UXDock, side: DockSide) =
     r0.attach(n0)
   else: discard
 
+# ---------------------
+# Dock Session Snapping
+# ---------------------
+
+proc snapDock0awful(dock: UXDock) =
+  for w in docks0awful(dock):
+    let s = snap(dock, w)
+    # Apply Nearbies Snaps
+    if s.side != dockNothing:
+      dock.apply(s)
+
 # -----------------------
 # Dock Session Supervisor
 # -----------------------
@@ -156,12 +167,17 @@ controller UXDockSession:
 
   # -- Dock Session Callbacks --
   callback cbWatchDock(watch: DockWatch):
-    let target = cast[UXDock](watch.opaque)
+    let 
+      target = cast[UXDock](watch.opaque)
+      reason = watch.reason
+    # Snap Dock When is Moving or Releasing
+    if reason in {dockWatchMove, dockWatchRelease}:
+      target.snapDock0awful()
     # Process Watch Reason
     case watch.reason
     of dockWatchRelease:
       self.groupDock(target, watch.p)
-    of dockWatchMove: 
+    of dockWatchMove:
       self.hintDock(target, watch.p)
     else: discard
 
