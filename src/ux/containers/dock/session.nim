@@ -1,8 +1,7 @@
 import nogui/ux/prelude
 import nogui/builder
 # Import Dock and Group
-import group, snap
-import ../dock
+import dock, group, snap
 
 # -----------------
 # Dock Session Hint

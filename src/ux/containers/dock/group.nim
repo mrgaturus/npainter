@@ -1,6 +1,6 @@
 import nogui/builder
 import nogui/ux/prelude
-import header, snap, ../dock
+import header, snap, dock
 # TODO: unify event and callback queue
 from nogui/gui/widget import arrange
 
