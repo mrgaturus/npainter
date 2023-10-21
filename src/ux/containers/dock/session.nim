@@ -258,7 +258,7 @@ controller UXDockSession:
   proc updateOrients() =
     var 
       weird {.cursor.} = self.weird
-      clipping = false
+      check = false
     let clip = weird.rect
     # FUTURE DIRECTION:
     # make docks/groups be childrens
@@ -271,17 +271,17 @@ controller UXDockSession:
       if weird of UXDockGroup:
         # Update Group Orientation
         let g = cast[UXDockGroup](weird)
+        check = # Check Not Side
+          weird != self.left and 
+          weird != self.right
         g.orient0awful(clip)
-        clipping = # Check Not Side
-          weird != self.right and 
-          weird != self.left
       elif weird of UXDock:
         let d = cast[UXDock](weird)
-        clipping = isNil(d.row)
-      # Clip Position
-      if clipping:
-        let p = weird.clip(self.weird)
-        weird.move(p.x, p.y)
+        check = isNil(d.row)
+      else: check = false
+      # Clip Position respect region
+      if check:
+        weird.clipDock0awful(self.weird)
       # Next Weird
       weird = weird.prev
 
