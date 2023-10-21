@@ -98,12 +98,22 @@ proc groupDock(dock, to: UXDock, side: DockSide) =
 # Dock Session Snapping
 # ---------------------
 
-proc snapDock0awful(dock: UXDock) =
+proc clipDock0awful(widget, clip: GUIWidget) =
+  let head {.cursor.} = widget.first
+  head.metrics.x = widget.metrics.x
+  head.metrics.y = widget.metrics.y
+  let p = head.clip(clip)
+  widget.move(p.x, p.y)
+
+proc snapDock0awful(dock: UXDock, clip: GUIWidget) =
+  # Snap With Nearby Docks
   for w in docks0awful(dock):
     let s = snap(dock, w)
     # Apply Nearbies Snaps
     if s.side != dockNothing:
       dock.apply(s)
+  # Clip Dock When Moving
+  dock.clipDock0awful(clip)
 
 # -----------------------
 # Dock Session Supervisor
@@ -115,6 +125,8 @@ controller UXDockSession:
     # Clipping Session
     {.public, cursor.}:
       weird: GUIWidget
+      # Group Sidebars Sticky
+      [left, right]: UXDockGroup
 
   # -- Dock Session Manipulation --
   proc watch*(dock: UXDock) =
@@ -165,32 +177,89 @@ controller UXDockSession:
       hint.highlight(rect)
     else: hint.close()
 
-  # -- Dock Session Callbacks --
   callback cbWatchDock(watch: DockWatch):
     let 
       target = cast[UXDock](watch.opaque)
       reason = watch.reason
     # Snap Dock When is Moving or Releasing
     if reason in {dockWatchMove, dockWatchRelease}:
-      target.snapDock0awful()
+      target.snapDock0awful(self.weird)
     # Process Watch Reason
-    case watch.reason
+    case reason
     of dockWatchRelease:
       self.groupDock(target, watch.p)
     of dockWatchMove:
       self.hintDock(target, watch.p)
     else: discard
 
+  # -- Group Session Callbacks --
+  proc hintSide(p: DockMove) =
+    var 
+      rect = self.weird.rect
+      check = false
+    # TODO: allow customize margins
+    let
+      thr = getApp().font.height shl 1
+      side = groupSide(rect, p, thr)
+      hint {.cursor.} = self.hint
+    # Show Hint Widget or Close it
+    if side == dockLeft: check = isNil(self.left)
+    elif side == dockRight: check = isNil(self.right)
+    # Show Hint Side
+    if check:
+      rect = groupHint(rect, side, thr)
+      hint.highlight(rect)
+    else: hint.close()
+
+  proc snapSide(group: UXDockGroup, p: DockMove) =
+    # TODO: allow customize margins
+    let 
+      thr = getApp().font.height shl 1
+      side = groupSide(self.weird.rect, p, thr)
+    # Select Which Side Use
+    if side == dockLeft and isNil(self.left):
+      self.left = group
+    elif side == dockRight and isNil(self.right):
+      self.right = group
+    # Perform An Update
+    if side in {dockLeft, dockRight}:
+      push(self.cbUpdate)
+    # Close Hint
+    self.hint.close()
+
+  proc clearSide(group: UXDockGroup) =
+    if group == self.left:
+      self.left = nil
+    elif group == self.right:
+      self.right = nil
+
   callback cbWatchGroup(watch: DockWatch):
     # TODO: see what to do with this
-    let target = cast[UXDockGroup](watch.opaque)
-    # Process Watch Reason
-    if watch.reason == groupWatchMove:
-      target.orient0awful(self.weird.rect)
+    let 
+      target = cast[UXDockGroup](watch.opaque)
+      reason = watch.reason
+      weird {.cursor.} = self.weird
+    # Calculate Orientation
+    target.orient0awful(weird.rect)
+    # Snap With Clipping
+    let p = target.clip(weird)
+    target.move(p.x, p.y)
+    # Hint Sides
+    case reason
+    of groupWatchMove:
+      self.clearSide(target)
+      self.hintSide(watch.p)
+    of groupWatchRelease:
+      self.snapSide(target, watch.p)
+    of groupWatchClose:
+      self.clearSide(target)
+    else: discard
 
   # -- Dock Session Updater --
-  callback cbUpdate:
-    var weird {.cursor.} = self.weird
+  proc updateOrients() =
+    var 
+      weird {.cursor.} = self.weird
+      clipping = false
     let clip = weird.rect
     # FUTURE DIRECTION:
     # make docks/groups be childrens
@@ -204,8 +273,43 @@ controller UXDockSession:
         # Update Group Orientation
         let g = cast[UXDockGroup](weird)
         g.orient0awful(clip)
+        clipping = # Check Not Side
+          weird != self.right and 
+          weird != self.left
+      elif weird of UXDock:
+        let d = cast[UXDock](weird)
+        clipping = isNil(d.row)
+      # Clip Position
+      if clipping:
+        let p = weird.clip(self.weird)
+        weird.move(p.x, p.y)
       # Next Weird
       weird = weird.prev
+
+  proc updateSidebars() =
+    let 
+      clip = addr self.weird.rect
+      left {.cursor.} = self.left
+      right {.cursor.} = self.right
+    # Arrange Left Sidebar
+    if not isNil(left):
+      let m = addr left.metrics
+      m.x = int16 clip.x
+      m.y = int16 clip.y
+      # Update Metrics
+      left.set(wDirty)
+    # Arrange Right Sidebar
+    if not isNil(right):
+      let m = addr right.metrics
+      m.x = int16 clip.x + clip.w - m.w
+      m.y = int16 clip.y
+      # Update Metrics
+      right.set(wDirty)
+
+  callback cbUpdate:
+    # Update Groups respect Clipping
+    self.updateSidebars()
+    self.updateOrients()
 
   # -- Dock Session Constructor --
   new docksession():

@@ -268,3 +268,42 @@ proc apply*(self: GUIWidget, s: DockSnap) =
   m.y = int16 s.y
   # Action Update
   self.set(wDirty)
+
+# ----------------------
+# Dock Snapping Clipping
+# ----------------------
+
+proc clipX(a: GUIMetrics, c: GUIRect): int32 =
+  let
+    x0 = int32 a.x
+    x0w = x0 + a.w
+    half = a.w shr 1
+    # Clipping Points
+    x1 = c.x
+    x1w = c.x + c.w
+  # Clip Left
+  if x0w < x1 + half: x1 - half
+  elif x0 > x1w - half: x1w - half
+  # No Clipped
+  else: x0
+
+proc clipY(a: GUIMetrics, c: GUIRect): int32 =
+  let
+    y0 = int32 a.y
+    h = a.h
+    # Clipping Points
+    y1 = c.y
+    y1h = c.y + c.h
+  # Clip Top
+  if y0 < y1: y1
+  elif y0 > y1h - h: y1h - h
+  # No Clipped
+  else: y0
+
+proc clip*(a, clip: GUIWidget): DockMove =
+  let
+    a0 = a.metrics
+    c0 = clip.rect
+  # Calculate Clipping Positions
+  result.x = clipX(a0, c0)
+  result.y = clipY(a0, c0)

@@ -174,6 +174,8 @@ widget UXDockHeader:
 
   method event(state: ptr GUIState) =
     var p = DockMove(x: state.mx, y: state.my)
+    let checkGrab = self.test(wGrab)
+    # Check Event Status
     if state.kind == evCursorClick:
       # Capture Pivot Point
       self.pivot = p
@@ -193,17 +195,17 @@ widget UXDockHeader:
           push(self.btnFold.cb)
         self.clicks = 0
     # Check if is grabbed or preceded by grabbed
-    elif self.grab:
+    if self.grab:
       # TODO: don't force callback when
       #       unify queue and event is done
-      self.grab = self.test(wGrab)
+      self.grab = checkGrab
       force(self.onmove, addr p)
-    elif self.test(wGrab):
+    elif checkGrab:
       let
         dx = p.x - self.pivot.x
         dy = p.y - self.pivot.y
         dist = dx * dx + dy * dy
       # If Distance Enough Start Moving
       if dist > 64:
-        self.grab = self.test(wGrab)
+        self.grab = checkGrab
         self.clicks = 0

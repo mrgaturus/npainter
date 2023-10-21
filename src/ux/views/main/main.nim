@@ -103,7 +103,8 @@ controller NCMainFrame:
     session.watch group
     self.session = session
     # Create Group
-    group.move(20, 20)
+    session.right = group
+    #group.move(20, 20)
     group.open()
     # Return Main Frame
     mainframe title, mainbody(tools, dummy(), session)

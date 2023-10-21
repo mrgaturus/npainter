@@ -69,7 +69,7 @@ widget UXMainBody:
     result.body = body
     # Register Session
     result.session = s
-    s.weird = result
+    s.weird = body
 
   method draw(ctx: ptr CTXRender) =
     ctx.color getApp().colors.panel
