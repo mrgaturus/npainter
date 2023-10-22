@@ -1,6 +1,8 @@
 from nogui/ux/widgets/menu import UXMenu
 import nogui/ux/prelude
 import header, snap
+# TODO: get rid of this quick dirty cursor when c native plaform is done
+from nogui import setCursor, clearCursor
 # TODO: fold with wHidden and modify w in layout
 
 widget UXDock:
@@ -8,6 +10,8 @@ widget UXDock:
     {.cursor.}:
       head: UXDockHeader
       widget: GUIWidget
+    # Cache Font
+    cache: cstring
     # Dock Manipulation
     {.public.}:
       serial: int32
@@ -147,11 +151,26 @@ widget UXDock:
       m1.y += pad1
       m1.h -= pad1
 
+  proc decideCursor(sides: DockSides): cstring =
+    if sides == {}: nil
+    elif sides < {dockLeft, dockRight}: "size_hor"
+    # Check Verticals
+    elif dockTop in sides:
+      if dockLeft in sides: "size_fdiag"
+      elif dockRight in sides: "size_bdiag"
+      else: "size_ver"
+    elif dockDown in sides:
+      if dockLeft in sides: "size_bdiag"
+      elif dockRight in sides: "size_fdiag"
+      else: "size_ver"
+    else: nil
+
   method event(state: ptr GUIState) =
     let
       x = state.mx
       y = state.my
       kind = state.kind
+      app = getApp()
     if kind == evCursorClick:
       # TODO: allow custom margin
       let pad = getApp().font.height and not 3
@@ -165,6 +184,19 @@ widget UXDock:
     # Clear Pivot Sides
     elif kind == evCursorRelease:
       self.pivot.sides = {}
+    # Check Cursor, Quick and Dirty
+    if (self.flags and wHoverGrab) == wHover:
+      # TODO: allow custom margin
+      let 
+        pad = getApp().font.height and not 3
+        p = resizePivot(self.rect, x, y, pad)
+        name = self.decideCursor(p.sides)
+      # Change Cursor Theme
+      if name != self.cache:
+        if not isNil(name):
+          app.setCursor(name)
+        else: app.clearCursor()
+      self.cache = name
 
   method draw(ctx: ptr CTXRender) =
     let 
@@ -181,3 +213,9 @@ widget UXDock:
     # Draw Background Rect
     ctx.color colors.panel and 0xC0FFFFFF'u32
     ctx.fill rect(rect)
+
+  method handle(kind: GUIHandle) =
+    # Clear X11 Cursor
+    if kind == outHover:
+      getApp().clearCursor()
+      self.cache = nil
