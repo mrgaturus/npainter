@@ -5,6 +5,8 @@ import nogui/ux/widgets/menu
 import nogui/ux/widgets/color
 import nogui/values
 from nogui/pack import icons
+import ../docks/color/[color]
+import ../color
 
 icons "dock", 16:
   test := "test.svg"
@@ -35,7 +37,10 @@ controller NCMainFrame:
     ncmenu: NCMainMenu
     nctools: NCMainTools
     selected: @ int32
-    color: HSVColor
+    color: @ HSVColor
+    # Color Session
+    c: CXColor
+    cw: CXColorDock
     # Dock Session
     session: UXDockSession
 
@@ -68,7 +73,7 @@ controller NCMainFrame:
       dock3 = self.dummyDock(colorwheel0triangle col)
       dock4 {.used.} = self.dummyDock(colorwheel col)
       dock5 {.used.} = self.dummyDock(colorwheel col)
-      dock6 {.used.} = self.dummyDock(colorwheel col)
+      dock6 {.used.} = self.dummyDock(colorwheel0triangle col)
       # Create Frame Group
       row0 = dockrow()
       row1 = dockrow()
@@ -106,6 +111,12 @@ controller NCMainFrame:
     session.right = group
     #group.move(20, 20)
     group.open()
+    # Create Color Session
+    self.c = cxcolor()
+    self.cw = cxcolordock(self.c)
+    self.cw.dock.open()
+    self.cw.dock.move(20, 20)
+    self.cw.dock.resize(200, 200)
     # Return Main Frame
     mainframe title, mainbody(tools, dummy(), session)
 
