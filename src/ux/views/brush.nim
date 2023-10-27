@@ -11,8 +11,11 @@ type
   CXBrushBasic = object
     size*: @ Lerp
     sizeMin*: @ Lerp
+    sizeAmp*: @ Lerp
+    # Opacity Values
     opacity*: @ Lerp
     opacityMin*: @ Lerp
+    opacityAmp*: @ Lerp
   CXBrushCircle = object
     hardness*: @ Lerp
     sharpness*: @ Lerp
@@ -132,8 +135,10 @@ controller CXBrush:
     # -- Initialize Basics
     basic.size = lerp(0, 100).value
     basic.sizeMin = lerp(0, 100).value
+    basic.sizeAmp = lerp(-100, 100).value
     basic.opacity = lerp(0, 100).value
     basic.opacityMin = lerp(0, 100).value
+    basic.opacityAmp = lerp(-100, 100).value
     # -- Initialize Circle
     circle.hardness = lerp(0, 100).value
     circle.sharpness = lerp(0, 100).value

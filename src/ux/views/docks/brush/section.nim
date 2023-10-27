@@ -1,7 +1,7 @@
 import nogui/builder
 import nogui/gui/widget
 import nogui/ux/layouts/[base, box, misc]
-import nogui/ux/widgets/[button, combo, menu]
+import nogui/ux/widgets/[button, combo, menu, label]
 # Import Icons Macro
 import nogui/pack
 
@@ -10,8 +10,8 @@ import nogui/pack
 # ------------------------
 
 icons "dock", 16:
-  fold0 := "fold.svg"
-  fold1 := "visible.svg"
+  fold0 := "visible.svg"
+  fold1 := "fold.svg"
 
 controller CXBrushSection:
   attributes:
@@ -121,6 +121,54 @@ controller CXBrushSection:
     result.model = model
     # Create Section
     result.createSection()
+
+  new cxbrushsection():
+    discard
+
+# ---------------------
+# Brush Section Simpler
+# ---------------------
+
+widget UXButtonCover:
+  new uxbuttoncover(w: GUIWidget, cb: GUICallback):
+    result.add button(CTXIconEmpty, "", cb).opaque()
+    # XXX: for some reason input is found from start to end
+    result.add w
+
+  method update =
+    let 
+      m = addr self.metrics
+      m0 = addr self.first.metrics
+    # Inherit First Min Size
+    m.minW = m0.minW
+    m.minH = m0.minH
+
+  method layout =
+    let
+      m = addr self.metrics
+      m0 = addr self.first.metrics
+      m1 = addr self.last.metrics
+    # Locate Both First and Last
+    m0.w = m.w; m0.h = m.h
+    m1.w = m.w; m1.h = m.h
+
+proc cxbrushsection*(label: string, w: GUIWidget): CXBrushSection =
+  result = cxbrushsection()
+  let
+    cb = result.cbFold
+    button = button(iconFold0, cb)
+  # Create Header
+  let header =
+    horizontal().child:
+      min: button.opaque()
+      label(label, hoLeft, veMiddle)
+  # Create Section Template
+  result.button = button
+  result.section =
+    vertical().child:
+      min: uxbuttoncover(header, cb)
+  # Register Unique Widget
+  result.register(w)
 
 # Export Menu
 export menu, combo

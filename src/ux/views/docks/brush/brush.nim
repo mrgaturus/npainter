@@ -71,6 +71,7 @@ controller CXBrushDock:
     shapeSec: CXBrushSection
     textureSec: CXBrushSection
     blendSec: CXBrushSection
+    extraSec: CXBrushSection
     # Usable Dock
     {.public.}:
       dock: UXDock
@@ -102,7 +103,7 @@ controller CXBrushDock:
         field("Mess"): slider(blotmap.mess)
         field("Scale"): slider(blotmap.scale)
         field("Tone"): slider(blotmap.tone)
-        field(): checkbox("Invert", blotmap.invert)
+        field(): checkbox("Invert Texture", blotmap.invert)
     # Register Bitmap Section
     sec.register:
       form().child:
@@ -136,7 +137,7 @@ controller CXBrushDock:
       form().child:
         field("Intensity"): slider(tex.intensity)
         field("Scale"): slider(tex.scale)
-        field(): checkbox("Invert", tex.invert)
+        field(): checkbox("Invert Texture", tex.invert)
         separator() # Scale Control
         field("Scratch"): slider(tex.scratch)
         field("Min Scratch"): half(tex.minScratch)
@@ -199,6 +200,20 @@ controller CXBrushDock:
     # Store Texture Section
     self.blendSec = sec
 
+  proc createExtraSec =
+    # Load Basics
+    let
+      brush {.cursor.} = self.brush
+      basic = addr brush.shape.basic
+    # Create Extra Section
+    let section =
+      form().child:
+        label("Pressure Curves", hoLeft, veMiddle)
+        field("Size"): slider(basic.sizeAmp)
+        field("Opacity"): slider(basic.opacityAmp)
+    # Store Additional Settings Section
+    self.extraSec = cxbrushsection("Additional Settings", section)
+
   proc createWidget: GUIWidget =
     let
       brush {.cursor.} = self.brush
@@ -207,6 +222,7 @@ controller CXBrushDock:
       shape = self.shapeSec.section
       texture = self.textureSec.section
       blending = self.blendSec.section
+      extra = self.extraSec.section
     # Create Sliders
     margin(4): form().child:
       # Basic Sliders
@@ -219,6 +235,7 @@ controller CXBrushDock:
       shape
       texture
       blending
+      extra
 
   proc createDock =
     let
@@ -232,4 +249,5 @@ controller CXBrushDock:
     result.createShapeSec()
     result.createTextureSec()
     result.createBlendSec()
+    result.createExtraSec()
     result.createDock()
