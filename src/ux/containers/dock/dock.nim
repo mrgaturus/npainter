@@ -113,9 +113,9 @@ widget UXDock:
       m0 = addr self.head.metrics
       m1 = addr self.widget.metrics
       # TODO: allow custom margin
-      pad = getApp().font.asc
+      pad = getApp().font.height
     # Calculate Min Size
-    m.minW = m0.minW + m1.minW + pad
+    m.minW = max(m0.minW, m1.minW) + pad
     m.minH = m0.minH + m1.minH + pad
 
   method layout =

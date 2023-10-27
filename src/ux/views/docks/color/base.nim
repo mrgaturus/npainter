@@ -14,7 +14,7 @@ proc clicked(self: GUIWidget, state: ptr GUIState): bool {.inline.} =
   state.kind == evCursorRelease and (self.flags and wHover) == wHover
 
 icons "dock", 16:
-  dockColor *= "test.svg"
+  dockColor *= "color.svg"
 
 # ----------------------
 # Color Selected Widgets

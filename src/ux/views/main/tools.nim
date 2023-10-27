@@ -1,6 +1,7 @@
 from nogui/builder import controller, child
 from nogui/pack import icons
 # Import Widget and Layout
+import nogui/gui/value
 import nogui/ux/layouts/level
 import nogui/ux/widgets/radio
 # Import Separator
@@ -37,7 +38,7 @@ icons "tools", 24:
 controller NCMainTools:
   attributes:
     # Selected Tool
-    {.value.}: select: int32
+    select: @ int32
 
   new ncMainTools():
     discard
