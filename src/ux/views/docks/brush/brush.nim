@@ -226,12 +226,12 @@ controller CXBrushDock:
     # Create Sliders
     margin(4): form().child:
       # Basic Sliders
-      field("Size"): slider(basic.size)
-      field("Min Size"): half(basic.sizeMin)
-      field("Opacity"): slider(basic.opacity)
-      field("Min Opacity"): half(basic.opacityMin)
+      margin(4): form().child:
+        field("Size"): slider(basic.size)
+        field("Min Size"): half(basic.sizeMin)
+        field("Opacity"): slider(basic.opacity)
+        field("Min Opacity"): half(basic.opacityMin)
       # Folded Customizers
-      separator()
       shape
       texture
       blending

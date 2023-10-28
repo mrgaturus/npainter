@@ -41,11 +41,16 @@ widget UXScrollView:
     # Horizontal Min Size
     m.minW = m0.minW + margin + ms.minW
     m.minH = ms.minH
-    # Update Factor Interval
+    # Update Interval
+    var t: float32
+    let factor = m0.minH - m.h
+    if factor > 0:
+      t = self.offset / float32 factor
+    # Apply Current Position
     v[].interval(float32 m0.minH)
-    let factor = max(m0.minH - m.h, 0)
-    if factor > 0: v[].lerp: 
-      self.offset / float32 factor
+    v[].lerp(t)
+    # Offset Was Consumed
+    self.offset = 0.0
 
   method layout =
     let 
@@ -59,16 +64,17 @@ widget UXScrollView:
     # Adjust Vertical
     block layoutH:
       let 
-        scroll = peek(self.value)
+        v = peek(self.value)
         factor = m0.minH - m.h
       # Set Current Factor Value
       if factor > 0:
         let raw = # Calculate Moved Distance
-          scroll[].toRaw * factor.toFloat
+          v[].toRaw * factor.toFloat
         # Set Current Layout
         self.offset = raw
-        m0.y = - int16(raw)
+        m0.y = - int16(raw + 0.5)
       else: # Hide Scroll
+        v[].lerp(0)
         msw = -msw
         m0.y = 0
       # Set Size
