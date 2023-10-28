@@ -7,7 +7,7 @@ import nogui/ux/widgets
 import nogui/ux/widgets/label
 import nogui/ux/layouts/[form, level, misc]
 # Import Docks and Brushes
-import ../../../containers/dock
+import ../../../containers/[dock, scroll]
 import ../../brush
 # Import Brush Section
 import section
@@ -239,7 +239,7 @@ controller CXBrushDock:
 
   proc createDock =
     let
-      w = self.createWidget()
+      w = scrollview self.createWidget()
       dock = dock("Brush Tool", iconDockBrush, w)
     # Define Dock Attribute
     self.dock = dock
