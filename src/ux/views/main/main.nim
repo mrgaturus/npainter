@@ -5,9 +5,14 @@ import nogui/ux/widgets/menu
 import nogui/ux/widgets/color
 import nogui/values
 from nogui/pack import icons
-import ../docks/color/color
-import ../docks/brush/brush
-import ../[color, brush]
+# Import Controllers
+import ../[color, brush, canvas]
+# Import Docks
+import ../docks/[
+  color/color,
+  brush/brush,
+  navigator/navigator
+]
 
 icons "dock", 16:
   test := "test.svg"
@@ -39,11 +44,14 @@ controller NCMainFrame:
     nctools: NCMainTools
     selected: @ int32
     color: @ HSVColor
-    # Color Session
+    # Controllers
     c: CXColor
     b: CXBrush
+    n: CXCanvas
+    # Docks
     cw: CXColorDock
     bw: CXBrushDock
+    nw: CXNavigatorDock
     # Dock Session
     session: UXDockSession
 
@@ -114,20 +122,27 @@ controller NCMainFrame:
     session.right = group
     #group.move(20, 20)
     group.open()
-    # Create Color Session
+    # Create Color Dock
     self.c = cxcolor()
     self.cw = cxcolordock(self.c)
     session.watch self.cw.dock
     self.cw.dock.open()
     self.cw.dock.move(20, 20)
     self.cw.dock.resize(200, 200)
-    # Create Brush Session
+    # Create Brush Dock
     self.b = cxbrush()
     self.bw = cxbrushdock(self.b)
     session.watch self.bw.dock
     self.bw.dock.open()
     self.bw.dock.move(20, 20)
     self.bw.dock.resize(200, 200)
+    # Create Navigator Dock
+    self.n = cxcanvas()
+    self.nw = cxnavigatordock(self.n)
+    self.nw.dock.open()
+    self.nw.dock.move(20, 20)
+    self.nw.dock.resize(200, 200)
+    session.watch self.nw.dock
     # Return Main Frame
     mainframe title, mainbody(tools, dummy(), session)
 
