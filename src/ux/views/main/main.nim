@@ -11,7 +11,8 @@ import ../[color, brush, canvas]
 import ../docks/[
   color/color,
   brush/brush,
-  navigator/navigator
+  navigator/navigator,
+  layers/layers
 ]
 
 icons "dock", 16:
@@ -52,6 +53,7 @@ controller NCMainFrame:
     cw: CXColorDock
     bw: CXBrushDock
     nw: CXNavigatorDock
+    lw: CXLayersDock
     # Dock Session
     session: UXDockSession
 
@@ -143,6 +145,12 @@ controller NCMainFrame:
     self.nw.dock.move(20, 20)
     self.nw.dock.resize(200, 200)
     session.watch self.nw.dock
+    # Create Layers Dock
+    self.lw = cxlayersdock()
+    self.lw.dock.open()
+    self.lw.dock.move(20, 20)
+    self.lw.dock.resize(200, 200)
+    session.watch self.lw.dock
     # Return Main Frame
     mainframe title, mainbody(tools, dummy(), session)
 
