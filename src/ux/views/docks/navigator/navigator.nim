@@ -1,5 +1,8 @@
 import ../../canvas
 import view
+# Import Value Formatting
+import nogui/[format, values]
+from math import pow, radToDeg
 # Import Builder
 import nogui/pack
 import nogui/ux/prelude
@@ -9,6 +12,23 @@ import nogui/ux/layouts/[box, level, form, misc]
 import nogui/ux/widgets/[button, slider]
 import ../../../containers/dock
 import ../../../widgets/separator
+
+# ----------------
+# Value Formatting
+# ----------------
+
+proc fmtZoom(s: ShallowString, v: Lerp2) =
+  let 
+    f = v.toFloat
+    fs = pow(2.0, f) * 100.0
+  if f >= 0:
+    let i = int32(fs)
+    s.format("%d%%", i)
+  else: s.format("%.1f%%", fs)
+
+proc fmtAngle(s: ShallowString, v: Lerp2) =
+  let deg = radToDeg(v.toFloat)
+  s.format("%.1f°", deg)
 
 # ---------------------
 # Canvas Navigator Dock
@@ -62,12 +82,12 @@ controller CXNavigatorDock:
           button(iconRotateLeft, cb).opaque()
           button(iconRotateRight, cb).opaque()
           # Mirror Control
-          tail: button(iconMirrorVer, cb).opaque
-          tail: button(iconMirrorHor, cb).opaque
+          tail: button(iconMirrorVer, cb).opaque()
+          tail: button(iconMirrorHor, cb).opaque()
       # Canvas Sliders
       min: margin(4): form().child:
-        field("Zoom"): slider(canvas.zoom)
-        field("Angle"): slider(canvas.angle)
+        field("Zoom"): dual0float(canvas.zoom, fmtZoom)
+        field("Angle"): dual0float(canvas.angle, fmtAngle)
 
   proc createDock() =
     let body = self.createWidget()

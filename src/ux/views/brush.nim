@@ -11,11 +11,11 @@ type
   CXBrushBasic = object
     size*: @ Lerp
     sizeMin*: @ Lerp
-    sizeAmp*: @ Lerp
+    sizeAmp*: @ Lerp2
     # Opacity Values
     opacity*: @ Lerp
     opacityMin*: @ Lerp
-    opacityAmp*: @ Lerp
+    opacityAmp*: @ Lerp2
   CXBrushCircle = object
     hardness*: @ Lerp
     sharpness*: @ Lerp
@@ -24,7 +24,7 @@ type
     sharpness*: @ Lerp
     # Blotmap Texture
     mess*: @ Lerp
-    scale*: @ Lerp
+    scale*: @ Lerp2
     tone*: @ Lerp
     # Invert Blotmap
     invert*: @ bool
@@ -39,8 +39,8 @@ type
     angleMess*: @ Lerp
     angleAuto*: @ bool
     # Scale Control
-    aspect*: @ Lerp
-    scale*: @ Lerp
+    aspect*: @ Lerp2
+    scale*: @ Lerp2
     scaleMess*: @ Lerp
   # Shape Controller
   CKBrushShape* = enum
@@ -62,7 +62,7 @@ type
 type
   CXBrushTexture = object
     intensity*: @ Lerp
-    scale*: @ Lerp
+    scale*: @ Lerp2
     invert*: @ bool
     # Scratch
     scratch*: @ Lerp
@@ -132,53 +132,66 @@ controller CXBrush:
       circle = addr shape.circle
       blotmap = addr shape.blotmap
       bitmap = addr shape.bitmap
+    # -- Initialize Lerps
+    let
+      lerpBasic = lerp(0, 100)
+      lerpScale = lerp2(0.1, 1.0, 5)
+      lerpAspect = lerp2(0.0, 1.0)
+      lerpSpacing = lerp(2.5, 50)
+      lerpAngle = lerp(0, 360)
+      lerpAmp = lerp2(0.25, 1.0, 4)
     # -- Initialize Basics
-    basic.size = lerp(0, 100).value
-    basic.sizeMin = lerp(0, 100).value
-    basic.sizeAmp = lerp(-100, 100).value
-    basic.opacity = lerp(0, 100).value
-    basic.opacityMin = lerp(0, 100).value
-    basic.opacityAmp = lerp(-100, 100).value
+    basic.size = lerpBasic.value
+    basic.sizeMin = lerpBasic.value
+    basic.sizeAmp = lerpAmp.value
+    basic.opacity = lerpBasic.value
+    basic.opacityMin = lerpBasic.value
+    basic.opacityAmp = lerpAmp.value
     # -- Initialize Circle
-    circle.hardness = lerp(0, 100).value
-    circle.sharpness = lerp(0, 100).value
+    circle.hardness = lerpBasic.value
+    circle.sharpness = lerpBasic.value
     # -- Initialize Blotmap
-    blotmap.hardness = lerp(0, 100).value
-    blotmap.sharpness = lerp(0, 100).value
-    blotmap.mess = lerp(0, 100).value
-    blotmap.scale = lerp(10, 500).value
-    blotmap.tone = lerp(0, 100).value
+    blotmap.hardness = lerpBasic.value
+    blotmap.sharpness = lerpBasic.value
+    blotmap.mess = lerpBasic.value
+    blotmap.scale = lerpScale.value
+    blotmap.tone = lerpBasic.value
     # -- Initialize Bitmap
-    bitmap.flow = lerp(0, 100).value
-    bitmap.spacing = lerp(2.5, 50).value
-    bitmap.spacingMess = lerp(2.5, 50).value
-    bitmap.angle = lerp(0, 360).value
-    bitmap.angleMess = lerp(0, 100).value
-    bitmap.aspect = lerp(-100, 100).value
-    bitmap.scale = lerp(0, 100).value
-    bitmap.scaleMess = lerp(0, 100).value
+    bitmap.flow = lerpBasic.value
+    bitmap.spacing = lerpSpacing.value
+    bitmap.spacingMess = lerpBasic.value
+    bitmap.angle = lerpAngle.value
+    bitmap.angleMess = lerpBasic.value
+    bitmap.aspect = lerpAspect.value
+    bitmap.scale = lerpScale.value
+    bitmap.scaleMess = lerpBasic.value
 
   proc initTexture =
-    let tex = addr self.texture
-    tex.intensity = lerp(0, 100).value
-    tex.scale = lerp(10, 500).value
+    let 
+      tex = addr self.texture
+      lerpBasic = lerp(0, 100)
+      lerpScale = lerp2(0.1, 1.0, 5)
+    # Basic Texture
+    tex.intensity = lerpBasic.value
+    tex.scale = lerpScale.value
     # Scratch Texture
-    tex.scratch = lerp(0, 100).value
-    tex.minScratch = lerp(0, 100).value
+    tex.scratch = lerpBasic.value
+    tex.minScratch = lerpBasic.value
 
   proc initBlending =
     let 
       blend = addr self.blending
       water = addr blend.water
       blur = addr blend.blur
+      lerpBasic = lerp(0, 100)
     # -- Initialize Watercolor
-    water.blending = lerp(0, 100).value
-    water.dilution = lerp(0, 100).value
-    water.persistence = lerp(0, 100).value
-    water.watering = lerp(0, 100).value
-    water.minimum = lerp(0, 100).value
+    water.blending = lerpBasic.value
+    water.dilution = lerpBasic.value
+    water.persistence = lerpBasic.value
+    water.watering = lerpBasic.value
+    water.minimum = lerpBasic.value
     # -- Initialize Blur
-    blur.size = lerp(0, 100).value
+    blur.size = lerpBasic.value
 
   # -- Constructor --
   new cxbrush():

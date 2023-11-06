@@ -103,7 +103,7 @@ controller CXBrushSection:
   proc createSection =
     let 
       button = button(iconFold0, self.cbFold)
-      combo = combobox(self.model)
+      combo = combobox(self.model).opaque()
     # Set Attributes
     self.button = button
     self.combo = combo

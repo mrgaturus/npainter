@@ -1,16 +1,38 @@
 import nogui/ux/prelude
 import nogui/builder
-import nogui/values
+# Import Value Formatting
+import nogui/[format, values]
 # Import Widgets
 import nogui/pack
 import nogui/ux/widgets
-import nogui/ux/widgets/label
+import nogui/ux/widgets/[label, slider]
 import nogui/ux/layouts/[form, level, misc]
 # Import Docks and Brushes
 import ../../../containers/[dock, scroll]
 import ../../brush
 # Import Brush Section
 import section
+
+# ----------------------
+# Brush Field Formatting
+# ----------------------
+
+proc fmtScale(s: ShallowString, v: Lerp2) =
+  let val = v.toFloat * 100.0
+  if val >= 100.0:
+    s.format("%.0f%%", val)
+  else: s.format("%.1f%%", val)
+
+proc fmtAspect(s: ShallowString, v: Lerp2) =
+  var val = int32(v.toFloat * 200.0)
+  if val == 100:
+    s.format("1:1")
+  elif val > 100:
+    val = 100 - (val - 100)
+    s.format("W:%d", val)
+  else: s.format("%d:H", val)
+
+const fmtAmplify = fmf2"%.2f"
 
 # ------------------
 # Brush Field Helper
@@ -101,7 +123,7 @@ controller CXBrushDock:
         field("Sharpness"): slider(blotmap.sharpness)
         separator() # Blotmap Texture
         field("Mess"): slider(blotmap.mess)
-        field("Scale"): slider(blotmap.scale)
+        field("Scale"): dual0float(blotmap.scale, fmtScale)
         field("Tone"): slider(blotmap.tone)
         field(): checkbox("Invert Texture", blotmap.invert)
     # Register Bitmap Section
@@ -116,8 +138,8 @@ controller CXBrushDock:
         field("Angle"): slider(bitmap.angle)
         field("Mess Angle"): half(bitmap.angleMess)
         separator() # Scale Control
-        field("Aspect"): slider(bitmap.aspect)
-        field("Scale"): slider(bitmap.scale)
+        field("Aspect"): dual0float(bitmap.aspect, fmtAspect)
+        field("Scale"): dual0float(bitmap.scale, fmtScale)
         field("Mess Scale"): half(bitmap.scaleMess)
     # Store Shape Section
     self.shapeSec = sec
@@ -136,7 +158,7 @@ controller CXBrushDock:
     sec.register:
       form().child:
         field("Intensity"): slider(tex.intensity)
-        field("Scale"): slider(tex.scale)
+        field("Scale"): dual0float(tex.scale, fmtScale)
         field(): checkbox("Invert Texture", tex.invert)
         separator() # Scale Control
         field("Scratch"): slider(tex.scratch)
@@ -209,8 +231,8 @@ controller CXBrushDock:
     let section =
       form().child:
         label("Pressure Curves", hoLeft, veMiddle)
-        field("Size"): slider(basic.sizeAmp)
-        field("Opacity"): slider(basic.opacityAmp)
+        field("Size"): dual0float(basic.sizeAmp, fmtAmplify)
+        field("Opacity"): dual0float(basic.opacityAmp, fmtAmplify)
     # Store Additional Settings Section
     self.extraSec = cxbrushsection("Additional Settings", section)
 
