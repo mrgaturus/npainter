@@ -1,22 +1,8 @@
-import menu, tools, ../../containers/[main, dock, dock/group, dock/session]
+import menu, tools, ../../containers/main
 from nogui/builder import widget, controller, child
 import nogui/ux/prelude
-import nogui/ux/widgets/menu
-import nogui/ux/widgets/color
-import nogui/values
-from nogui/pack import icons
 # Import Controllers
-import ../[color, brush, canvas]
-# Import Docks
-import ../docks/[
-  color/color,
-  brush/brush,
-  navigator/navigator,
-  layers/layers
-]
-
-icons "dock", 16:
-  test := "test.svg"
+import ../[docks, state]
 
 widget UXMainDummy:
   attributes:
@@ -39,121 +25,42 @@ widget UXMainDummy:
     ctx.color self.color
     ctx.fill rect(self.rect)
 
+# ---------------------
+# Main Frame Controller
+# ---------------------
+
 controller NCMainFrame:
   attributes:
-    ncmenu: NCMainMenu
-    nctools: NCMainTools
-    selected: @ int32
-    color: @ HSVColor
-    # Controllers
-    c: CXColor
-    b: CXBrush
-    n: CXCanvas
-    # Docks
-    cw: CXColorDock
-    bw: CXBrushDock
-    nw: CXNavigatorDock
-    lw: CXLayersDock
-    # Dock Session
-    session: UXDockSession
+    state: NPainterState
+    # Window Stuff
+    menu: NCMainMenu
+    tools: NCMainTools
+    docks: CXDocks
+    # Main Frame
+    {.public.}:
+      frame: UXMainFrame
 
   callback dummy: 
     discard
 
-  proc dummyDock(w: GUIWidget, open = true): UXDock =
-    result = dock("Color", iconTest, w)
-    result.move(20, 20)
-    result.resize(200, 200)
-    if open: result.open()
-    # Add Dummy Menu
-    result.bindMenu:
-      menu("Color").child:
-        menuseparator("HSV Wheel")
-        menuoption("Wheel Square", self.selected, 0)
-        menuoption("Wheel Triangle", self.selected, 1)
-        menuseparator("HSV Bar")
-        menuoption("Bar Square", self.selected, 2)
-        menuoption("Bar Triangle", self.selected, 3)
-
-  proc createFrame*: UXMainFrame =
+  proc createFrame: UXMainFrame =
     let
-      title = createMenu(self.ncmenu)
-      tools = createToolbar(self.nctools)
-      # Open Some Docks
-      col = addr self.color
-      dock1 = self.dummyDock(colorcube col)
-      dock2 = self.dummyDock(colorcube0triangle col)
-      dock3 = self.dummyDock(colorwheel0triangle col)
-      dock4 {.used.} = self.dummyDock(colorwheel col)
-      dock5 {.used.} = self.dummyDock(colorwheel col)
-      dock6 {.used.} = self.dummyDock(colorwheel0triangle col)
-      # Create Frame Group
-      row0 = dockrow()
-      row1 = dockrow()
-      row2 = dockrow()
-      group = dockgroup(row0)
-      # Create Some Nodes
-      node0 = docknode(dock1)
-      node1 = docknode(dock2)
-      node2 = docknode(dock3)
-      node3 = docknode(dock4)
-      node4 = docknode(dock5)
-      node5 = docknode(dock6)
-      # Session Manager
-      session = docksession()
-    row0.attach(node0)
-    node0.attach(node1)
-    node1.attach(node2)
-    # Second Row Attach
-    row0.attach(row1)
-    row1.attach(node3)
-    # Third Row Attach
-    row1.attach(row2)
-    row2.attach(node4)
-    node4.attach(node5)
-    # Create Session and Store It
-    session.watch dock1
-    session.watch dock2
-    session.watch dock3
-    session.watch dock4
-    session.watch dock5
-    session.watch dock6
-    session.watch group
-    self.session = session
-    # Create Group
-    session.right = group
-    #group.move(20, 20)
-    group.open()
-    # Create Color Dock
-    self.c = cxcolor()
-    self.cw = cxcolordock(self.c)
-    session.watch self.cw.dock
-    self.cw.dock.open()
-    self.cw.dock.move(20, 20)
-    self.cw.dock.resize(200, 200)
-    # Create Brush Dock
-    self.b = cxbrush()
-    self.bw = cxbrushdock(self.b)
-    session.watch self.bw.dock
-    self.bw.dock.open()
-    self.bw.dock.move(20, 20)
-    self.bw.dock.resize(200, 200)
-    # Create Navigator Dock
-    self.n = cxcanvas()
-    self.nw = cxnavigatordock(self.n)
-    self.nw.dock.open()
-    self.nw.dock.move(20, 20)
-    self.nw.dock.resize(200, 200)
-    session.watch self.nw.dock
-    # Create Layers Dock
-    self.lw = cxlayersdock()
-    self.lw.dock.open()
-    self.lw.dock.move(20, 20)
-    self.lw.dock.resize(200, 200)
-    session.watch self.lw.dock
+      title = createMenu(self.menu)
+      tools = createToolbar(self.tools)
+      session = self.docks.session
     # Return Main Frame
     mainframe title, mainbody(tools, dummy(), session)
 
   new ncMainWindow():
-    result.ncmenu = ncMainMenu()
-    result.nctools = ncMainTools()
+    result.state = npainterstate()
+    # Create Main Frame Stuff
+    result.menu = ncMainMenu()
+    result.tools = ncMainTools()
+    # Create Docks
+    let docks = cxdocks(result.state)
+    result.docks = docks
+    # Create Main Frame
+    let frame = result.createFrame()
+    docks.proof0arrange()
+    frame.set(wDirty)
+    result.frame = frame

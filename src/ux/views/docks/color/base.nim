@@ -4,7 +4,7 @@ from nogui/pack import icons
 from nogui/values import toRGB
 import nogui/ux/widgets/color/base
 # Import Color Controller
-import ../../color
+import ../../state/color
 
 # ---------------------
 # Color Drawing Helpers

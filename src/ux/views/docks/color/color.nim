@@ -5,8 +5,8 @@ import nogui/gui/value
 # Import A Dock
 import nogui/ux/widgets/[color, menu]
 import ../../../containers/dock
-# Import Color
-import ../../color
+# Import Color State
+import ../../state/color
 import base
 
 # -----------------

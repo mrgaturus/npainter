@@ -9,7 +9,7 @@ import nogui/ux/widgets/[label, slider]
 import nogui/ux/layouts/[form, level, misc]
 # Import Docks and Brushes
 import ../../../containers/[dock, scroll]
-import ../../brush
+import ../../state/brush
 # Import Brush Section
 import section
 

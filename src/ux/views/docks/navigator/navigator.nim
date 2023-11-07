@@ -1,4 +1,4 @@
-import ../../canvas
+import ../../state/canvas
 import view
 # Import Value Formatting
 import nogui/[format, values]

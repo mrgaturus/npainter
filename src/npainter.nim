@@ -8,10 +8,10 @@ from nogui import createApp, executeApp
 import ux/views/main/main
 
 proc main() =
+  createApp(1280, 720, nil)
   let c = ncMainWindow()
-  createApp(1024, 600, nil)
   # Open Window
-  executeApp(c.createFrame):
+  executeApp(c.frame):
     #glClearColor(0.25, 0.25, 0.25, 1.0)
     glClearColor(0.09019607843137255, 0.10196078431372549, 0.10196078431372549, 1.0)
     glClear(GL_COLOR_BUFFER_BIT or GL_DEPTH_BUFFER_BIT)
