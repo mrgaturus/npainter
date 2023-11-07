@@ -219,3 +219,29 @@ widget UXDock:
     if kind == outHover:
       getApp().clearCursor()
       self.cache = nil
+
+# ---------------------------------------
+# XXX: hacky way to replace a dock
+#      all node awful stuff will be
+#      removed after reworking nogui core
+# ---------------------------------------
+import group
+
+proc replace0awful*(dock, to: UXDock) =
+  # Replace Widget
+  replace(dock.widget, to.widget)
+  # Change Widget
+  dock.widget = to.widget
+  dock.serial = to.serial
+  # Replace Header Data
+  privateAccess(UXDockHeader)
+  let 
+    head {.cursor.} = dock.head
+    head0 {.cursor.} = to.head
+  head.title = head0.title
+  head.icon = head0.icon
+  # Update Widget Node if there is one
+  let node = dock.node
+  if not isNil(node):
+    cast[UXDockNode](node).update()
+  else: dock.set(wDirty)

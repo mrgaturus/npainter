@@ -104,6 +104,10 @@ controller UXDockNode:
     dock.headerUpdate()
     detach(self, self.row)
 
+  # -- Dock Awful Update --
+  proc update* =
+    update(nil, self.row)
+
   # -- Dock Node Callbacks --
   callback cbMove(p: DockMove):
     self.detach()

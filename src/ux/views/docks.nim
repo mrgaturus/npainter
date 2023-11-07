@@ -43,17 +43,16 @@ controller CXToolDock:
     dockBucket: CXBucketDock
     dockDummy: UXDock
     # Dock Array
-    {.cursor.}:
-      lookup: array[CKSelectedDock, UXDock]
+    lookup: array[CKSelectedDock, UXDock]
     # Usable Dock
     {.public.}:
       selected: @ int32
       dock: UXDock
 
   callback cbChange:
-    var 
-      idx = cast[CKSelectedDock](self.selected)
-      found = self.lookup[idx]
+    var
+      idx = CKSelectedDock self.selected.peek[]
+      found {.cursor.} = self.lookup[idx]
     # Replace Current Dock
     replace0awful(self.dock, found)
 
@@ -126,6 +125,9 @@ controller CXDocks:
     session.watch(result.dockNav.dock)
     session.watch(result.dockLayers.dock)
     session.watch(result.dockTool.dock)
+
+  proc selectorTool*: & int32 =
+    addr self.dockTool.selected
 
 # --------------------------------
 # Proof of Concept Default Arrange

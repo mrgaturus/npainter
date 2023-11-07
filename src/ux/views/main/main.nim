@@ -49,18 +49,22 @@ controller NCMainFrame:
       tools = createToolbar(self.tools)
       session = self.docks.session
     # Return Main Frame
-    mainframe title, mainbody(tools, dummy(), session)
+    mainframe title, mainbody(tools, dummy(), session) 
 
   new ncMainWindow():
     result.state = npainterstate()
-    # Create Main Frame Stuff
-    result.menu = ncMainMenu()
-    result.tools = ncMainTools()
-    # Create Docks
+    # Create Frame Docks
     let docks = cxdocks(result.state)
     result.docks = docks
+    # Create Main Frame Stuff
+    result.menu = ncMainMenu()
+    result.tools = ncMainTools(docks.selectorTool)
     # Create Main Frame
     let frame = result.createFrame()
+    result.frame = frame
+
+    # XXX: proof of concept
     docks.proof0arrange()
     frame.set(wDirty)
-    result.frame = frame
+    # XXX: default to brush
+    docks.selectorTool.react[] = ord stBrush

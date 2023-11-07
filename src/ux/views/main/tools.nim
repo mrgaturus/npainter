@@ -6,18 +6,8 @@ import nogui/ux/layouts/level
 import nogui/ux/widgets/radio
 # Import Separator
 from nogui/ux/widgets/menu/base import menuseparator
-
-type
-  NUISelectedTool* = enum
-    stMove, stLasso
-    stSelect, stWand
-    # Painting Tools
-    stBrush, stEraser
-    stFill, stEyedrop
-    # Special Tools
-    stShapes
-    stGradient
-    stText
+# Import Selected Kind Dock
+from ../docks import CKSelectedDock
 
 icons "tools", 24:
   logo *= "circle.svg"
@@ -38,13 +28,13 @@ icons "tools", 24:
 controller NCMainTools:
   attributes:
     # Selected Tool
-    select: @ int32
+    select: & int32
 
-  new ncMainTools():
-    discard
+  new ncMainTools(select: & int32):
+    result.select = select
 
   proc createToolbar*: UXLayoutVLevel =
-    let s = addr self.select
+    let s = self.select
     vlevel().child:
       button(iconMove, s, ord stMove)
       button(iconLasso, s, ord stLasso)
