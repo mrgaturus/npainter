@@ -4,6 +4,8 @@ import nogui/ux/layouts/[base, box, misc]
 import nogui/ux/widgets/[button, combo, menu, label]
 # Import Icons Macro
 import nogui/pack
+# Import Menu Scroll
+import ../../../widgets/menuscroll
 
 # ------------------------
 # Brush Section Controller
@@ -121,6 +123,7 @@ controller CXBrushSection:
     result.model = model
     # Create Section
     result.createSection()
+    model.toScrollMenu(shift = 1)
 
   new cxbrushsection():
     discard

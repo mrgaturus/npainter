@@ -1,4 +1,5 @@
 # TODO: make own nogui/value lerp for scrollbar
+# TODO: create a proper scroll view on nogui/ux
 import nogui/values
 import nogui/gui/value
 # Import Scroll Widget
@@ -13,10 +14,18 @@ widget UXScrollView:
     scroll: UXScroll
     offset: float32
     value: @ Lerp
+    # Remove Margin Hack
+    {.public.}:
+      noMargin: bool
 
   callback cbScroll:
     self.vtable.layout(self)
     self.view.arrange()
+
+  proc margin0awful: int16 =
+    if not self.noMargin:
+      getApp().font.size shr 1
+    else: 0
 
   new scrollview(view: GUIWidget):
     var v = lerp(0, 0); v.lerp(0)
@@ -36,7 +45,7 @@ widget UXScrollView:
       m0 = addr self.view.metrics
       ms = addr self.scroll.metrics
       # TODO: allow customize margin
-      margin = getApp().font.size shr 1
+      margin = self.margin0awful()
       v = peek(self.value)
     # Horizontal Min Size
     m.minW = m0.minW + margin + ms.minW
@@ -58,7 +67,7 @@ widget UXScrollView:
       m0 = addr self.view.metrics
       ms = addr self.scroll.metrics
       # TODO: allow customize margin
-      margin = getApp().font.size shr 1
+      margin = self.margin0awful()
     # Scroll Size
     var msw = ms.minW
     # Adjust Vertical
