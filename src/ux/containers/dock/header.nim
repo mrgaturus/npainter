@@ -140,8 +140,6 @@ widget UXDockHeader:
       # TODO: allow customize margin
       lm = metricsLabel(self.title, self.icon)
       pad = getApp().font.size
-    # TODO: Other Layout for Packed
-    lvl.minW -= pad shr 1
     # Calculate Min Size
     m.minW = lm.w + pad + lvl.minW
     m.minH = max(lm.h, lvl.minH)

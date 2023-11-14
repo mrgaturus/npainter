@@ -1,3 +1,4 @@
+import item, list
 # Import Builder
 import nogui/pack
 import nogui/ux/prelude
@@ -6,8 +7,8 @@ import nogui/values
 # Import Widgets
 import nogui/ux/layouts/[box, level, form, misc, grid]
 import nogui/ux/widgets/[button, check, slider, combo, menu]
-import ../../../containers/dock
-import ../../../widgets/separator
+import ../../../containers/[dock, scroll]
+import ../../../widgets/[separator, menuscroll]
 
 # -----------
 # Layers Dock
@@ -83,6 +84,8 @@ controller CXLayersDock:
         comboitem("Saturation", 22)
         comboitem("Color", 23)
         comboitem("Luminosity", 24)
+    # Scroll Menu Hack
+    toScrollMenu(self.mode)
 
   proc createWidget: GUIWidget =
     let cb = self.cbDummy
@@ -113,6 +116,16 @@ controller CXLayersDock:
         # Misc Buttons
         tail: button(iconUp, cb).opaque()
         tail: button(iconDown, cb).opaque()
+      # Layer Item
+      scrollview(): 
+        layerlist().child:
+          layeritem(0)
+          #layeritem(1)
+          #layeritem(1)
+          #layeritem(2)
+          #layeritem(2)
+          #layeritem(2)
+          #layeritem(1)
 
   proc createDock() =
     let w = self.createWidget()
