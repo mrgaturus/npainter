@@ -7,7 +7,7 @@ import nogui/ux/widgets/radio
 # Import Separator
 from nogui/ux/widgets/menu/base import menuseparator
 # Import Selected Kind Dock
-from ../docks import CKSelectedDock
+from ../state import CKPainterTool
 
 icons "tools", 24:
   logo *= "circle.svg"

@@ -19,19 +19,6 @@ import docks/[
 # Dock Tool Controller
 # --------------------
 
-type
-  CKSelectedDock* = enum
-    # Manipulation Docks
-    stMove, stLasso
-    stSelect, stWand
-    # Painting Tools
-    stBrush, stEraser
-    stFill, stEyedrop
-    # Special Tools
-    stShapes
-    stGradient
-    stText
-
 controller CXToolDock:
   attributes:
     # State Controller
@@ -43,15 +30,14 @@ controller CXToolDock:
     dockBucket: CXBucketDock
     dockDummy: UXDock
     # Dock Array
-    lookup: array[CKSelectedDock, UXDock]
+    lookup: array[CKPainterTool, UXDock]
     # Usable Dock
     {.public.}:
-      selected: @ int32
       dock: UXDock
 
   callback cbChange:
     var
-      idx = CKSelectedDock self.selected.peek[]
+      idx = CKPainterTool self.state.tool.peek[]
       found {.cursor.} = self.lookup[idx]
     # Replace Current Dock
     replace0awful(self.dock, found)
@@ -81,8 +67,10 @@ controller CXToolDock:
     # Initialize Docks
     result.dockBrush = cxbrushdock(state.brush)
     result.dockBucket = cxbucketdock(state.bucket)
-    # Initialize Selected Value Callback
-    result.selected = value(int32 stBrush, result.cbChange)
+    # XXX: docking needs a callback when tool is changed
+    #      eventually more widgets may need react to tool change
+    #      -- possiblity when change tool, also change dispatcher --
+    state.tool = value(int32 stBrush, result.cbChange)
     let dummy = dock("wip tool", CTXIconEmpty, dummy())
     result.dockDummy = dummy
     # XXX: hacky way to change a dock
@@ -125,9 +113,6 @@ controller CXDocks:
     session.watch(result.dockNav.dock)
     session.watch(result.dockLayers.dock)
     session.watch(result.dockTool.dock)
-
-  proc selectorTool*: & int32 =
-    addr self.dockTool.selected
 
 # --------------------------------
 # Proof of Concept Default Arrange
