@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 # Copyright (c) 2023 Cristian Camilo Ruiz <mrgaturus>
 from math import cos, sin
-import ../../omath
+from nogui/values import guiProjection
 
 type
   NCanvasPoint* = tuple[x, y: cfloat]

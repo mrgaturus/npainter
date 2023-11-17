@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 # Copyright (c) 2023 Cristian Camilo Ruiz <mrgaturus>
-from ../../libs/gl import GLuint
+from nogui/libs/gl import GLuint
 
 type
   # Canvas Dirty Region

@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 # Copyright (c) 2023 Cristian Camilo Ruiz <mrgaturus>
-import ../../libs/gl
-import ../../assets
+import nogui/libs/gl
+import nogui/data
 import matrix, culling, grid
 export NCanvasDirty
 
