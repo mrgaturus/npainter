@@ -30,10 +30,18 @@ widget UXMainFrame:
     # Register Title and Body
     result.title = title
     result.body = body
+    # XXX: hacky way to forward event
+    result.flags = wKeyboard
 
   method draw(ctx: ptr CTXRender) =
     ctx.color getApp().colors.panel
     ctx.fill rect(self.title.rect)
+
+  method event(state: ptr GUIState) =
+    # XXX: hacky way to forward event
+    if state.kind in {evKeyDown, evKeyUp}:
+      let body {.cursor.} = self.body
+      body.vtable.event(body, state)
 
   method layout =
     let
@@ -74,6 +82,12 @@ widget UXMainBody:
   method draw(ctx: ptr CTXRender) =
     ctx.color getApp().colors.panel
     ctx.fill rect(self.tools.rect)
+
+  method event(state: ptr GUIState) =
+    # XXX: hacky way to forward event
+    if state.kind in {evKeyDown, evKeyUp}:
+      let body {.cursor.} = self.body
+      body.vtable.event(body, state)
 
   method layout =
     let

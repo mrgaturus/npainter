@@ -2,7 +2,7 @@ import menu, tools, ../../containers/main
 from nogui/builder import widget, controller, child
 import nogui/ux/prelude
 # Import Controllers
-import ../[docks, state]
+import ../[docks, state, dispatch]
 
 widget UXMainDummy:
   attributes:
@@ -31,13 +31,15 @@ widget UXMainDummy:
 
 controller NCMainFrame:
   attributes:
-    state: NPainterState
     # Window Stuff
     menu: NCMainMenu
     tools: NCMainTools
     docks: CXDocks
+    # NPainter Dispatcher
+    dispatch: UXPainterDispatch
     # Main Frame
     {.public.}:
+      state: NPainterState
       frame: UXMainFrame
 
   callback dummy: 
@@ -45,11 +47,13 @@ controller NCMainFrame:
 
   proc createFrame: UXMainFrame =
     let
+      dispatch = npainterdispatch(self.state)
+      # Menu, Toolbar and Dock Session
       title = createMenu(self.menu)
       tools = createToolbar(self.tools)
       session = self.docks.session
     # Return Main Frame
-    mainframe title, mainbody(tools, dummy(), session) 
+    mainframe title, mainbody(tools, dispatch, session) 
 
   new ncMainWindow():
     let state = npainterstate()

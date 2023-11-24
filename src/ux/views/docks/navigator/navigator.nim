@@ -9,7 +9,7 @@ import nogui/ux/prelude
 import nogui/builder
 # Import Widgets
 import nogui/ux/layouts/[box, level, form, misc]
-import nogui/ux/widgets/[button, slider]
+import nogui/ux/widgets/[button, slider, check]
 import ../../../containers/dock
 import ../../../widgets/separator
 
@@ -82,8 +82,8 @@ controller CXNavigatorDock:
           button(iconRotateLeft, cb).opaque()
           button(iconRotateRight, cb).opaque()
           # Mirror Control
-          tail: button(iconMirrorVer, cb).opaque()
-          tail: button(iconMirrorHor, cb).opaque()
+          tail: button(iconMirrorVer, canvas.mirrorY)
+          tail: button(iconMirrorHor, canvas.mirrorX)
       # Canvas Sliders
       min: margin(4): form().child:
         field("Zoom"): dual0float(canvas.zoom, fmtZoom)
