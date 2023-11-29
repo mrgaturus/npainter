@@ -30,6 +30,7 @@ widget UXPainterDispatch:
     self.fnCanvas = state.canvas.cbDispatch
     # Tools Dispatch
     self.fnTools[stBrush] = state.brush.cbDispatch
+    self.fnTools[stFill] = state.bucket.cbDispatch
 
   new npainterdispatch(state: NPainterState):
     # XXX: AuxState is Passed by Copy to Callback

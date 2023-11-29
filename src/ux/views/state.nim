@@ -51,12 +51,17 @@ controller NPainterState:
   proc engine0proof*(w, h: int32) =
     let
       engine = npainterengine(w, h)
+      color {.cursor.} = self.color
+      # Engine Tools
       brush {.cursor.} = self.brush
+      bucket {.cursor.} = self.bucket
     # Apply Engine To Objects
     self.engine = engine
     self.canvas.engine = engine
     brush.engine = engine
-    brush.color = self.color
+    brush.color = color
+    bucket.engine = engine
+    bucket.color = color
     # Default Brush Values
     proof0default(brush)
 
