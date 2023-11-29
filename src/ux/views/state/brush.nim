@@ -220,7 +220,7 @@ controller CXBrush:
     tex1.fract = toRaw tex0.intensity.peek[]
     tex1.scale = toRaw tex0.scale.peek[]
     tex1.invert = tex0.invert.peek[]
-    tex1.enabled = tex1.fract > 0.0
+    tex1.enabled = tex0.enabled.peek[] and tex1.fract > 0.0
     # Configure Texture Scratch
     tex1.scratch = toRaw tex0.scratch.peek[]
     tex1.p_scratch = toRaw tex0.minScratch.peek[]
@@ -237,6 +237,7 @@ controller CXBrush:
     avg1.dilution = toRaw avg0.dilution.peek[]
     avg1.persistence = toRaw avg0.persistence.peek[]
     avg1.watering = toRaw avg0.watering.peek[]
+    avg1.coloring = avg0.colouring.peek[]
     # Configure Average Pressure
     avg1.p_blending = avg0.pBlending.peek[]
     avg1.p_dilution = avg0.pDilution.peek[]
@@ -272,7 +273,6 @@ controller CXBrush:
     let brush = addr self.engine.brush
     # Configure Basics
     self.prepareBasics()
-    self.prepareColor()
     # Configure Shape
     case self.shape.kind
     of ckShapeCircle: self.prepareCircle()
@@ -290,7 +290,8 @@ controller CXBrush:
     of ckBlendMarker: self.prepareMarker()
     of ckBlendBlur: self.prepareBlur()
     of ckBlendSmudge: brush.blend = bnSmudge
-    # Prepare Brush Rendering
+    # Prepare Brush Dispatch
+    self.prepareColor()
     brush[].prepare()
 
   # -- Callbacks --
@@ -350,14 +351,15 @@ controller CXBrush:
       bitmap = addr shape.bitmap
     # Initialize Lerps
     let
-      lerpBasic = lerp(0, 1000)
+      lerpSize = lerp(0, 1000)
+      lerpBasic = lerp(0, 100)
       lerpScale = lerp2(0.1, 1.0, 5)
       lerpAspect = lerp2(0.0, 1.0)
       lerpSpacing = lerp(2.5, 50)
       lerpAngle = lerp(0, 360)
       lerpAmp = lerp2(0.25, 1.0, 4)
     # Initialize Basics
-    basic.size = lerpBasic.value
+    basic.size = lerpSize.value
     basic.sizeMin = lerpBasic.value
     basic.sizeAmp = lerpAmp.value
     basic.opacity = lerpBasic.value
@@ -415,3 +417,65 @@ controller CXBrush:
     result.initShape()
     result.initTexture()
     result.initBlending()
+
+# -------------------------------
+# Proof of Concept Default Values
+# TODO: create brush presets
+# -------------------------------
+
+proc proof0basic(basic: ptr CXBrushBasic) =
+  # Default Size
+  lorp basic.size.peek[], 10
+  lerp basic.sizeMin.peek[], 0.2
+  lerp basic.sizeAmp.peek[], 0.5
+  # Default Opacity
+  lerp basic.opacity.peek[], 1.0
+  lerp basic.opacityMin.peek[], 1.0
+  lerp basic.opacityAmp.peek[], 0.5
+
+proc proof0shapes(shape: ptr CXBrushShape) =
+  let
+    circle = addr shape.circle
+    blot = addr shape.blotmap
+    bitmap = addr shape.bitmap
+  # Default Circle Values
+  lerp circle.hardness.peek[], 1.0
+  lerp circle.sharpness.peek[], 0.5
+  # Default Blotmap Values
+  lerp blot.hardness.peek[], 1.0
+  lerp blot.sharpness.peek[], 0.5
+  lerp blot.mess.peek[], 0.75
+  lerp blot.scale.peek[], 0.5
+  lerp blot.tone.peek[], 0.5
+  # Default Bitmap Values
+  bitmap.flowAuto.peek[] = true
+  bitmap.angleAuto.peek[] = true
+  lerp bitmap.flow.peek[], 1.0
+  lorp bitmap.spacing.peek[], 4.0
+  lerp bitmap.aspect.peek[], 0.5
+  lerp bitmap.scale.peek[], 0.5
+
+proc proof0texture(tex: ptr CXBrushTexture) =
+  lerp tex.intensity.peek[], 0.75
+  lerp tex.scale.peek[], 0.5
+  lerp tex.scratch.peek[], 0.25
+
+proc proof0water(water: ptr CXBrushWater) =
+  lerp water.blending.peek[], 0.75
+  lerp water.persistence.peek[], 0.25
+  lerp water.watering.peek[], 0.25
+  # Activate Switching
+  water.pBlending.peek[] = true
+  water.pWatering.peek[] = true
+  water.colouring.peek[] = true
+
+proc proof0default*(brush: CXBrush) =
+  let 
+    shape = addr brush.shape
+    blend = addr brush.blending
+  proof0basic(addr shape.basic)
+  proof0shapes(shape)
+  proof0texture(addr brush.texture)
+  proof0water(addr blend.water)
+  # Configure Blur Amount
+  lorp blend.blur.size.peek[], 20

@@ -49,12 +49,16 @@ controller NPainterState:
     result.bucket = cxbucket()
 
   proc engine0proof*(w, h: int32) =
-    let engine = npainterengine(w, h)
+    let
+      engine = npainterengine(w, h)
+      brush {.cursor.} = self.brush
     # Apply Engine To Objects
     self.engine = engine
     self.canvas.engine = engine
-    self.brush.engine = engine
-    self.brush.color = self.color
+    brush.engine = engine
+    brush.color = self.color
+    # Default Brush Values
+    proof0default(brush)
 
 # ---------------
 # State Exporting
