@@ -53,6 +53,8 @@ controller NPainterState:
     # Apply Engine To Objects
     self.engine = engine
     self.canvas.engine = engine
+    self.brush.engine = engine
+    self.brush.color = self.color
 
 # ---------------
 # State Exporting

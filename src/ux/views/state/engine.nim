@@ -24,6 +24,7 @@ type
     busy*: ptr bool
     first*: bool
     # Cursor Event
+    click0*: uint
     x0*, y0*: float32
     x*, y*: float32
     pressure*: float32
@@ -58,6 +59,8 @@ controller NPainterEngine:
     canvas: NCanvasProof
     # Multi-threading
     pool: NThreadPool
+    # XXX: Proof Textures
+    [tex0, tex1, tex2]: NTexture
 
   # TODO: bind canvas to tools at engine side
   proc bindBrush0proof =
@@ -118,6 +121,11 @@ controller NPainterEngine:
     result.bindAffine0proof()
     # Initialize Multi-Threading
     result.pool = newThreadPool(6)
+    result.brush.pipe.pool = result.pool
+    # XXX: demo textures meanwhile a picker is done
+    result.tex0 = newPNGTexture("tex0.png")
+    result.tex1 = newPNGTexture("tex1.png")
+    result.tex2 = newPNGTexture("tex2.png")
 
   # -- Foreign Renderer --
   proc renderGL*() =
@@ -136,4 +144,5 @@ export
   brush,
   texture,
   binary,
-  canvas
+  canvas,
+  spmc

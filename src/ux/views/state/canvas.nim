@@ -24,7 +24,7 @@ controller CXCanvas:
       # Mirror Buttons
       mirrorX: @ bool
       mirrorY: @ bool
-    # Access to Engine
+    # TODO: Move this to a dispatch widget
     {.public, cursor.}:
       engine: NPainterEngine
     # TODO: move this to engine side??

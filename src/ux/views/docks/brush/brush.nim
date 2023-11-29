@@ -98,6 +98,13 @@ controller CXBrushDock:
     {.public.}:
       dock: UXDock
 
+  callback cbChangeProof:
+    privateAccess(CXBrushSection)
+    let brush {.cursor.} = self.brush
+    brush.shape.kind = CKBrushShape(self.shapeSec.index)
+    brush.blending.kind = CKBrushBlending(self.blendSec.index)
+    brush.texture.enabled.peek[] = self.textureSec.index > 0
+
   proc createShapeSec =
     let m = # Create Combomodel
       menu("brush#shape").child:
@@ -143,6 +150,7 @@ controller CXBrushDock:
         field("Mess Scale"): half(bitmap.scaleMess)
     # Store Shape Section
     self.shapeSec = sec
+    sec.onchange = self.cbChangeProof
 
   proc createTextureSec =
     let m = # Create Combomodel
@@ -165,6 +173,7 @@ controller CXBrushDock:
         field("Min Scratch"): half(tex.minScratch)
     # Store Texture Section
     self.textureSec = sec
+    sec.onchange = self.cbChangeProof
 
   proc createBlendSec =
     let m = # Create Combomodel
@@ -221,6 +230,7 @@ controller CXBrushDock:
     sec.registerEmpty()
     # Store Texture Section
     self.blendSec = sec
+    sec.onchange = self.cbChangeProof
 
   proc createExtraSec =
     # Load Basics

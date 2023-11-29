@@ -28,6 +28,8 @@ widget UXPainterDispatch:
   proc register(state: NPainterState) =
     # Canvas Dispatch
     self.fnCanvas = state.canvas.cbDispatch
+    # Tools Dispatch
+    self.fnTools[stBrush] = state.brush.cbDispatch
 
   new npainterdispatch(state: NPainterState):
     # XXX: AuxState is Passed by Copy to Callback
@@ -48,6 +50,7 @@ widget UXPainterDispatch:
     let first = state.kind == evCursorClick
     result.first = first
     if first:
+      result.click0 = state.key
       result.x0 = state.px
       result.y0 = state.py
       result.mods = state.mods
