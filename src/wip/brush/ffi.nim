@@ -212,9 +212,9 @@ proc scaling*(bitmap: var NBrushBitmap; size, aspect: cfloat): cfloat =
   # Ajust Aspect Ratio
   var sx, sy = scale
   if aspect > 0.0:
-    sx *= aspect
+    sx *= 1.0 - aspect
   elif aspect < 0.0:
-    sy *= -aspect
+    sy *= 1.0 + aspect
   # Replace Scaling
   bitmap.sx = sx
   bitmap.sy = sy

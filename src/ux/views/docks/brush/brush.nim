@@ -146,7 +146,7 @@ controller CXBrushDock:
         field("Mess Angle"): half(bitmap.angleMess)
         separator() # Scale Control
         field("Aspect"): dual0float(bitmap.aspect, fmtAspect)
-        field("Scale"): dual0float(bitmap.scale, fmtScale)
+        field("Scale"): slider(bitmap.scale)
         field("Mess Scale"): half(bitmap.scaleMess)
     # Store Shape Section
     self.shapeSec = sec

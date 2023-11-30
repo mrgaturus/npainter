@@ -42,7 +42,7 @@ type
     angleAuto*: @ bool
     # Scale Control
     aspect*: @ Lerp2
-    scale*: @ Lerp2
+    scale*: @ Lerp
     scaleMess*: @ Lerp
   # Shape Controller
   CKBrushShape* = enum
@@ -180,7 +180,7 @@ controller CXBrush:
     blot1.sharp = toRaw blot0.sharpness.peek[]
     # Configure Blotmap Texture
     blot1.fract = toRaw blot0.mess.peek[]
-    blot1.scale = toRaw blot0.scale.peek[]
+    blot1.scale = toFloat blot0.scale.peek[]
     blot1.tone = toRaw blot0.tone.peek[]
     blot1.invert = blot0.invert.peek[]
     # Configure Shape Mode
@@ -218,7 +218,7 @@ controller CXBrush:
       tex1 = addr brush.texture
     # Configure Texture
     tex1.fract = toRaw tex0.intensity.peek[]
-    tex1.scale = toRaw tex0.scale.peek[]
+    tex1.scale = toFloat tex0.scale.peek[]
     tex1.invert = tex0.invert.peek[]
     tex1.enabled = tex0.enabled.peek[] and tex1.fract > 0.0
     # Configure Texture Scratch
@@ -381,7 +381,7 @@ controller CXBrush:
     bitmap.angle = lerpAngle.value
     bitmap.angleMess = lerpBasic.value
     bitmap.aspect = lerpAspect.value
-    bitmap.scale = lerpScale.value
+    bitmap.scale = lerpBasic.value
     bitmap.scaleMess = lerpBasic.value
 
   proc initTexture =
@@ -453,7 +453,7 @@ proc proof0shapes(shape: ptr CXBrushShape) =
   lerp bitmap.flow.peek[], 1.0
   lorp bitmap.spacing.peek[], 4.0
   lerp bitmap.aspect.peek[], 0.5
-  lerp bitmap.scale.peek[], 0.5
+  lerp bitmap.scale.peek[], 1.0
 
 proc proof0texture(tex: ptr CXBrushTexture) =
   lerp tex.intensity.peek[], 0.75
