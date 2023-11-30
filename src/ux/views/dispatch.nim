@@ -1,12 +1,41 @@
-from nogui import windowSize
+import nogui, state
 import nogui/ux/prelude
-import state
 
-# ------------------------------------------
+# ---------------------------------------------------------
+# XXX: XPM Cursor Hack for Default Cursors
+# TODO: remove this when native platforms on nogui are done
+# ---------------------------------------------------------
+import nogui/gui/window
+import x11/[x, xlib]
+# AzPainter Opaque Cursor
+type AzCursor = distinct pointer
+
+{.passL: "-lX11".}
+{.compile: "mlk_x11_cursor.c".}
+proc azpainter_x11_cursor(dsp: PDisplay, xid: Window, cursor: AzCursor): Cursor {.cdecl, importc.}
+# Alternative to codegenDecl
+{.emit: "extern const char az_cursor_draw[];".}
+{.emit: "extern const char az_cursor_rotate[];".}
+let az_cursor_draw {.nodecl, importc.}: AzCursor
+
+proc createAzCursor(buffer: AzCursor): Cursor =
+  # Hacky Access to X11 Symbols
+  let app = getApp()
+  privateAccess(type app[])
+  privateAccess(GUIWindow)
+  # Lookup Display and Window
+  let
+    win = getApp().window
+    dsp = win.display
+    xid = win.xID
+  # Create AzPainter Cursor
+  azpainter_x11_cursor(dsp, xid, buffer)
+
+# ----------------------------------------------
 # NPainter Engine Dispatcher Widget
 # XXX: proof of concept
 #      i have plans for high-end shortcut editor
-# ------------------------------------------
+# ----------------------------------------------
 type AUXCallback = GUICallbackEX[AuxState]
 
 widget UXPainterDispatch:
@@ -21,8 +50,10 @@ widget UXPainterDispatch:
     #      - Also allow deferring a callback after polling events/callbacks
     busy: bool
     aux: AuxState
+    hold: AUXCallback
     # Canvas Activation
     canvasKey: bool
+    drawCursor: Cursor
 
   # -- Dispatcher Constructor --
   proc register(state: NPainterState) =
@@ -39,6 +70,8 @@ widget UXPainterDispatch:
     # Register States
     result.state = state
     result.register(state)
+    # Create Draw Cursor
+    result.drawCursor = createAzCursor(az_cursor_draw)
 
   # -- Dispatcher Event --
   proc prepareAux(state: ptr GUIState): ptr AuxState =
@@ -82,6 +115,11 @@ widget UXPainterDispatch:
     var fn = self.fnTools[tool]
     if self.canvasAux(state):
       fn = self.fnCanvas
+    # Hold Callback
+    if aux.first:
+      self.hold = fn
+    elif self.test(wGrab):
+      fn = self.hold
     # Dispatch Event
     force(fn, aux)
 
@@ -98,4 +136,8 @@ widget UXPainterDispatch:
 
   # -- Dispatcher Cursor Clearing --
   method handle(kind: GUIHandle) =
-    discard
+    let app = getApp()
+    if kind == inHover:
+      app.setCursorCustom(self.drawCursor)
+    elif kind == outHover:
+      app.clearCursor()
