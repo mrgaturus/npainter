@@ -45,6 +45,7 @@ widget UXPainterDispatch:
     {.public.}:
       fnTools: array[CKPainterTool, AUXCallback]
       fnCanvas: AUXCallback
+      fnClear: GUICallback
     # XXX: hacky way to avoid flooding engine events
     #      - This will be solved unifying event/callback queue
     #      - Also allow deferring a callback after polling events/callbacks
@@ -59,6 +60,7 @@ widget UXPainterDispatch:
   proc register(state: NPainterState) =
     # Canvas Dispatch
     self.fnCanvas = state.canvas.cbDispatch
+    self.fnClear = state.canvas.cbClear0proof
     # Tools Dispatch
     self.fnTools[stBrush] = state.brush.cbDispatch
     self.fnTools[stFill] = state.bucket.cbDispatch
@@ -120,6 +122,10 @@ widget UXPainterDispatch:
       self.hold = fn
     elif self.test(wGrab):
       fn = self.hold
+    # TODO: callback-based hotkeys
+    elif state.kind == evKeyDown and state.key == 65535:
+      force(self.fnClear)
+      return
     # Dispatch Event
     force(fn, aux)
 

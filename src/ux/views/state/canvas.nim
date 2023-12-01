@@ -30,6 +30,9 @@ controller CXCanvas:
     # TODO: move this to engine side??
     prev: NCanvasAffine
 
+  callback cbClear0proof:
+    self.engine.canvas.clear()
+
   proc affine: ptr NCanvasAffine {.inline.} =
     self.engine.canvas.affine()
 
