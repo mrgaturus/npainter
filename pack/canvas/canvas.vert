@@ -26,6 +26,6 @@ void main() {
   // UV Position
   nTexPos = vTexPos + oUV;
   // Vertex Projected XY Position With Offset
-  vec3 vPosModel = ubo.model * vec3(vPos + oPos, 1.0);
+  vec3 vPosModel = ubo.model * vec3(vPos + oPos + 1.0, 1.0);
   gl_Position = ubo.pro * vec4(vPosModel.xy, 0.0, 1.0);
 }

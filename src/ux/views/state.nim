@@ -1,5 +1,6 @@
 import nogui/builder
 import nogui/gui/value
+from nogui/values import lerp
 # Import State Objects
 import ./state/[
   color,
@@ -62,6 +63,10 @@ controller NPainterState:
     brush.color = color
     bucket.engine = engine
     bucket.color = color
+    # Locate Canvas to Center
+    self.canvas.x.peek[] = cfloat(engine.canvas.ctx.w) * 0.5
+    self.canvas.y.peek[] = cfloat(engine.canvas.ctx.h) * 0.5
+    lerp self.canvas.zoom.peek[], 0.475
     # Default Brush Values
     proof0default(brush)
 

@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 # Copyright (c) 2023 Cristian Camilo Ruiz <mrgaturus>
-from math import cos, sin
+from math import cos, sin, floor
 from nogui/values import guiProjection
 
 type
@@ -91,17 +91,31 @@ proc inverse(a: var NCanvasAffine) =
   m[7] = 0.0 
   m[8] = 1.0
 
-# ----------------------------
-# Canvas Transform Calculation
-# ----------------------------
+# ------------------------------
+# Canvas Affine Matrix Configure
+# ------------------------------
+
+proc perfect(a: var NCanvasAffine) =
+  let
+    zoom = a.zoom
+    x = a.x / zoom
+    y = a.y / zoom
+  # Floor Position
+  a.x = floor(x) * zoom
+  a.y = floor(y) * zoom
 
 proc calculate*(a: var NCanvasAffine) =
+  a.perfect()
   # Calculate Model
   a.affine()
   a.inverse()
   # Calculate Projection
   guiProjection(addr a.projection, 
     cfloat a.vw, cfloat a.vh)
+
+# ----------------------------
+# Canvas Affine Matrix Mapping
+# ----------------------------
 
 proc forward*(a: NCanvasAffine; x, y: cfloat): NCanvasPoint =
   let m = unsafeAddr a.model0
