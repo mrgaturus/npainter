@@ -129,8 +129,8 @@ proc brush_smudge_blend(render: ptr NBrushRender)
 # ----------------------------
 
 proc basic*(circle: var NBrushCircle, x, y, size: cfloat) =
-  circle.x = x
-  circle.y = y
+  circle.x = x - 0.5
+  circle.y = y - 0.5
   # Change Circle Size
   circle.size = size
 
