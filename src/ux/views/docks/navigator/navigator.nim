@@ -65,7 +65,6 @@ controller CXNavigatorDock:
     let
       canvas {.cursor.} = self.canvas
       view = navigatorview()
-      cb = self.cbDummy
     # Store View
     self.view = view
     vertical().child:
@@ -74,13 +73,13 @@ controller CXNavigatorDock:
       min: horizontal().child:
         level().child:
           # Zoom Control
-          button(iconZoomFit, cb).opaque()
-          button(iconZoomPlus, cb).opaque()
-          button(iconZoomMinus, cb).opaque()
+          button(iconZoomFit, canvas.cbZoomReset).opaque()
+          button(iconZoomPlus, canvas.cbZoomInc).opaque()
+          button(iconZoomMinus, canvas.cbZoomDec).opaque()
           vseparator() # Angle Control
-          button(iconRotateReset, cb).opaque()
-          button(iconRotateLeft, cb).opaque()
-          button(iconRotateRight, cb).opaque()
+          button(iconRotateReset, canvas.cbAngleReset).opaque()
+          button(iconRotateLeft, canvas.cbAngleDec).opaque()
+          button(iconRotateRight, canvas.cbAngleInc).opaque()
           # Mirror Control
           tail: button(iconMirrorVer, canvas.mirrorY)
           tail: button(iconMirrorHor, canvas.mirrorX)

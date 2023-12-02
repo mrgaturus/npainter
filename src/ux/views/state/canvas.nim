@@ -45,14 +45,16 @@ controller CXCanvas:
       x = self.x.peek[]
       y = self.y.peek[]
       # We need only care about horizontal mirror
-      mirror = self.mirrorX.peek[]
+      mirrorX = self.mirrorX.peek[]
+      mirrorY = self.mirrorY.peek[]
     # Update Affine Matrix
     m.zoom = pow(2.0, -zoom)
     m.angle = -angle
     m.x = x
     m.y = y
-    # Apply Mirror
-    m.mirror = mirror
+    # Apply Horizontal and Vertical Mirror
+    m.mirror = mirrorX xor mirrorY
+    if mirrorY: m.angle += PI
     # Update Canvas
     update(self.engine.canvas)
 
@@ -137,14 +139,49 @@ controller CXCanvas:
     # Update Canvas
     self.update()
 
-  # -- Canvas Updating --
-  callback cbUpdate:
+  # -- Step Dispatchers Buttons --
+  proc stepZoom(s: float32) =
+    let 
+      zoom = peek(self.zoom)
+      t = zoom[].toRaw + s
+    zoom[].lerp(t)
     self.update()
 
+  proc stepAngle(s: float32) =
+    let
+      angle = peek(self.angle)
+      t = angle[].toRaw + s
+    angle[].lerp(t - t.floor)
+    self.update()
+
+  proc reset(value: & Lerp2) =
+    value.peek[].lerp(0.5)
+    self.update()
+
+  # TODO: allow customize step size
+  callback cbZoomReset: self.reset(self.zoom)
+  callback cbZoomInc: self.stepZoom(0.03125)
+  callback cbZoomDec: self.stepZoom(-0.03125)
+  # TODO: allow customize step size
+  callback cbAngleReset: self.reset(self.angle)
+  callback cbAngleInc: self.stepAngle(0.03125)
+  callback cbAngleDec: self.stepAngle(-0.03125)
+
   callback cbMirror:
+    let 
+      angle = peek(self.angle)
+      t = 1.0 - angle[].toRaw
+    # Invert Angle
+    angle[].lerp(t)
+    self.update()
+
+  callback cbUpdate:
     self.update()
 
   # -- Canvas State Constructor --
   new cxcanvas():
     result.zoom = value(lerp2(-5, 5), result.cbUpdate)
     result.angle = value(lerp2(-PI, PI), result.cbUpdate)
+    # Mirror Updating
+    result.mirrorX.head.cb = result.cbMirror
+    result.mirrorY.head.cb = result.cbMirror
