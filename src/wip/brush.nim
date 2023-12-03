@@ -219,7 +219,7 @@ proc prepare*(path: var NBrushStroke) =
       tex0 = addr path.pipe.tex0
       blot = addr path.mask.blot
       # Calculate Scale Interpolation
-      scale = 0.1 + (5.0 - 0.1) * blot.scale
+      scale = blot.scale
       mip = raw(blot.texture, scale)
     # Configure Texture Buffer
     tex0.image(mip.w, mip.h, mip.buffer)
@@ -271,7 +271,7 @@ proc prepare*(path: var NBrushStroke) =
       tex0 = addr path.texture
       tex1 = addr path.pipe.tex1
       # Calculate Scale Interpolation
-      scale = 0.1 + (5.0 - 0.1) * tex0.scale
+      scale = tex0.scale
       mip = raw(tex0.texture, scale)
     # Configure Texture Buffer
     tex1.image(mip.w, mip.h, mip.buffer)

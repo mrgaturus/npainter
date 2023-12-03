@@ -2,7 +2,7 @@
 # Copyright (c) 2021 Cristian Camilo Ruiz <mrgaturus>
 from bitops import fast_log2
 # Import Multithreading
-import ../../spmc
+import nogui/spmc
 include ffi
 
 # ------------------------------

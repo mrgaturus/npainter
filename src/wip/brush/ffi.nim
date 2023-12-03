@@ -129,8 +129,8 @@ proc brush_smudge_blend(render: ptr NBrushRender)
 # ----------------------------
 
 proc basic*(circle: var NBrushCircle, x, y, size: cfloat) =
-  circle.x = x
-  circle.y = y
+  circle.x = x - 0.5
+  circle.y = y - 0.5
   # Change Circle Size
   circle.size = size
 
@@ -212,9 +212,9 @@ proc scaling*(bitmap: var NBrushBitmap; size, aspect: cfloat): cfloat =
   # Ajust Aspect Ratio
   var sx, sy = scale
   if aspect > 0.0:
-    sx *= aspect
+    sx *= 1.0 - aspect
   elif aspect < 0.0:
-    sy *= -aspect
+    sy *= 1.0 + aspect
   # Replace Scaling
   bitmap.sx = sx
   bitmap.sy = sy
