@@ -213,7 +213,7 @@ void floodfill_dual(floodfill_t* flood) {
   w = flood->w;
   h = flood->h;
 
-  printf("starting x: %d, y: %d\n", x, y);
+  //printf("starting x: %d, y: %d\n", x, y);
 
   scanline_t scan;
   // Load Mask Buffer
@@ -241,12 +241,12 @@ void floodfill_dual(floodfill_t* flood) {
     scan.x = *(--scan.stack);
 
     if (scan.x < 0 || scan.x >= w) {
-      printf("error x: %d\n", scan.x);
+      //printf("error x: %d\n", scan.x);
       continue;
     }
 
     if (scan.y < 0 || scan.y >= h) {
-      printf("error y: %d\n", scan.y);
+      //printf("error y: %d\n", scan.y);
       continue;
     }
 

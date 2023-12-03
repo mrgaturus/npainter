@@ -71,8 +71,8 @@ void brush_smudge_first(brush_render_t* render) {
   int x2 = x1 + render->w;
   int y2 = y1 + render->h;
   // Canvas Dimensions
-  const w = render->canvas->w;
-  const h = render->canvas->h;
+  const int w = render->canvas->w;
+  const int h = render->canvas->h;
 
   const brush_smudge_t* s = (brush_smudge_t*) render->opaque;
   // Load Position Delta
