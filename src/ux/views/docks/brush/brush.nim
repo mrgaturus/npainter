@@ -240,6 +240,8 @@ controller CXBrushDock:
     # Create Extra Section
     let section =
       form().child:
+        field("Stabilizer"): slider(basic.stabilizer)
+        separator() # Pressure Curves
         label("Pressure Curves", hoLeft, veMiddle)
         field("Size"): dual0float(basic.sizeAmp, fmtAmplify)
         field("Opacity"): dual0float(basic.opacityAmp, fmtAmplify)

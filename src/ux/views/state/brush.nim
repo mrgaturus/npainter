@@ -4,6 +4,7 @@ import nogui/values
 # Import NPainter Engine
 import engine, color
 import ../../../wip/canvas/matrix
+import ../../../wip/brush/stabilizer
 
 # ----------------------
 # Brush Shape Controller
@@ -18,6 +19,8 @@ type
     opacity*: @ Lerp
     opacityMin*: @ Lerp
     opacityAmp*: @ Lerp2
+    # Stabilizer
+    stabilizer*: @ Lerp
   CXBrushCircle = object
     hardness*: @ Lerp
     sharpness*: @ Lerp
@@ -127,6 +130,8 @@ controller CXBrush:
     {.public, cursor.}:
       engine: NPainterEngine
       color: CXColor
+    # XXX: proof of concept stabilizer
+    stabilizer: NBrushStabilizer
 
   # -- Basic State -> Engine --
   proc prepareBasics() =
@@ -143,6 +148,8 @@ controller CXBrush:
     # Configure Basics Dynamics
     b1.amp_size = toFloat b0.sizeAmp.peek[]
     b1.amp_alpha = toFloat b0.opacityAmp.peek[]
+    # Configure Stabilizer
+    reset(self.stabilizer, toInt b0.stabilizer.peek[])
 
   proc prepareColor() =
     let
@@ -331,14 +338,35 @@ controller CXBrush:
   callback cbDispatch(e: AuxState):
     if e.first:
       self.prepareDispatch()
-    elif (e.flags and wGrab) == wGrab and e.click0 == LeftButton:
+      e.pressure = 0.0
+    # Start Dragging Brush
+    if (e.flags and wGrab) == wGrab and e.click0 == LeftButton:
       let
         engine {.cursor.} = self.engine
         affine = engine.canvas.affine
         p = affine[].forward(e.x, e.y)
+        press = e.pressure
       # Push Point to Path
-      point(engine.brush, p.x, p.y, e.pressure, 0.0)
-      if e.guard(): # XXX: this hacky guard avoids event flooding
+      if self.stabilizer.capacity > 0:
+        let ps = self.stabilizer.smooth(p.x, p.y, press, 0.0)
+        point(engine.brush, ps.x, ps.y, ps.press, 0.0)
+      else: point(engine.brush, p.x, p.y, press, 0.0)
+      # XXX: this hacky guard avoids event flooding
+      if e.guard():
+        push(self.cbDispathStroke, e[])
+    # XXX: hacky way to endpoint stabilizer
+    elif e.kind == evCursorRelease and e.click0 == LeftButton:
+      let
+        engine {.cursor.} = self.engine
+        affine = engine.canvas.affine
+        p = affine[].forward(e.x, e.y)
+        cap = self.stabilizer.capacity
+      # Push Point to Path
+      for _ in 0 ..< cap:
+        let ps = self.stabilizer.smooth(p.x, p.y, e.pressure, 0.0)
+        point(engine.brush, ps.x, ps.y, ps.press, 0.0)
+      # XXX: this hacky guard avoids event flooding
+      if e.guard():
         push(self.cbDispathStroke, e[])
 
   # -- Initializers --
@@ -358,6 +386,7 @@ controller CXBrush:
       lerpSpacing = lerp(2.5, 50)
       lerpAngle = lerp(0, 360)
       lerpAmp = lerp2(0.25, 1.0, 4)
+      lerpStabilizer = lerp(0, 64)
     # Initialize Basics
     basic.size = lerpSize.value
     basic.sizeMin = lerpBasic.value
@@ -365,6 +394,7 @@ controller CXBrush:
     basic.opacity = lerpBasic.value
     basic.opacityMin = lerpBasic.value
     basic.opacityAmp = lerpAmp.value
+    basic.stabilizer = lerpStabilizer.value
     # Initialize Circle
     circle.hardness = lerpBasic.value
     circle.sharpness = lerpBasic.value
@@ -432,6 +462,8 @@ proc proof0basic(basic: ptr CXBrushBasic) =
   lerp basic.opacity.peek[], 1.0
   lerp basic.opacityMin.peek[], 1.0
   lerp basic.opacityAmp.peek[], 0.5
+  # Default Stabilizer
+  lorp basic.stabilizer.peek[], 4
 
 proc proof0shapes(shape: ptr CXBrushShape) =
   let

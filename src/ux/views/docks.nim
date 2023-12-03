@@ -132,7 +132,7 @@ proc proof0arrange*(docks: CXDocks) =
       group = dockgroup(row)
     # Resize Docks
     d0.resize(230, 220)
-    d1.resize(230, 320)
+    d1.resize(230, 350)
     # Watch Group to Session
     session.left = group
     session.watch(group)
