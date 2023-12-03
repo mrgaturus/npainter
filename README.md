@@ -1,12 +1,16 @@
-# NPainter
-fast and simple digital painting software (work in progress, still planning)
+# 🎨 NPainter
+fast and simple digital painting software, work in progress
 
 ![Proof of Concept](https://raw.githubusercontent.com/mrgaturus/npainter/master/proof.png)
 
 ## Building
-- For now, Only works on Linux/X11/XWayland.
-- Arch Linux or Manjaro is Recommended.
+- Only works on Linux X11/XWayland. Other Platforms are Work in Progress
 - Requires [Nim Programming Language](https://nim-lang.org/) for Compiling.
+- Requires Addtional Developing Packages
+  - Ubuntu, Debian: `libfreetype-dev, libegl-dev`
+  - Fedora: `freetype-devel, libglvnd-devel`:
+- Requires GCC 10+:
+  - Clang can be used appending `--cc:clang` to nimble command
 ```sh
 # Building Debug Binary
 $ nimble build
@@ -25,27 +29,33 @@ $ ./npainter
   - OpenGL 3.3 Accelerated Canvas
 
 ## Work in Progress Features
+  - Intuitive and Professional UI/UX
   * Tiled Layering
     - Raster Layers
     - Mask/Stencil Layers
     - Folder Layers
     - Fundamental Blending Modes
     - Clipping Group & Alpha Lock
-  - Intuitive and Similar UI/UX
-  - Transform Tool (Standard, Mesh, Liquify)
+  - Selection Tools
+  - Transform Tool 
+    - Perspective
+    - Mesh
+    - Liquify
   - Infinite Undo using Compressed Files
-  - Basic and Useful Filters
-  - Windows and Mac Versions
+  - Fundamental Filters
+  - Windows and Mac Support
 
 ## Very Future Features
-  * Semi-Vector Layer
+  * Lineart Vector Layer
     - Catmull
     - Bezier
-  - Frame by Frame Animation
+  * Frame by Frame Animation
+  * On-canvas Text Tool
+  * Android Support
 
 ## Avoided Features
   - Maximum Color Accuracy
+  - Maximum Optimization possible
   - Very Realistic Brushes
   - 1:1 Features with Similar Software
   - AI Filters and Cryptocurrency
-  - Animated GUI
