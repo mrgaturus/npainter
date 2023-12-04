@@ -3,7 +3,7 @@ fast and simple digital painting software, work in progress
 
 ![Proof of Concept](https://raw.githubusercontent.com/mrgaturus/npainter/master/proof.png)
 
-## Building
+## 🛠️ Building
 - Only works on Linux X11/XWayland. Other Platforms are Work in Progress
 - Requires [Nim Programming Language](https://nim-lang.org/) for Compiling.
 - Requires Addtional Developing Packages
@@ -16,19 +16,21 @@ fast and simple digital painting software, work in progress
 $ nimble build
 # Building Fast Binary
 $ nimble build -d:danger
+# Pack Icons (using GUI tool)
+$ nopack
 
 # Running Program
 $ ./npainter
 ```
 
-## Current Features
+## ⚙️ Features
   - Graphics Tablet Pressure using XInput2
   - Fast Enough Rendering using SSE4.1
   - Anti-Aliased and Amazing Brush Engine
   - Anti-Aliased Bucket Fill + Gap Closing
   - OpenGL 3.3 Accelerated Canvas
 
-## Work in Progress Features
+## 🚧 Work in Progress Features
   - Intuitive and Professional UI/UX
   * Tiled Layering
     - Raster Layers
@@ -45,7 +47,7 @@ $ ./npainter
   - Fundamental Filters
   - Windows and Mac Support
 
-## Very Future Features
+### 🕙 Long-term Planned Features
   * Lineart Vector Layer
     - Catmull
     - Bezier
@@ -53,9 +55,9 @@ $ ./npainter
   * On-canvas Text Tool
   * Android Support
 
-## Avoided Features
+### ❌ Not-Planned Features
   - Maximum Color Accuracy
-  - Maximum Optimization possible
+  - The Fastest Painting Software ever
   - Very Realistic Brushes
   - 1:1 Features with Similar Software
   - AI Filters and Cryptocurrency
