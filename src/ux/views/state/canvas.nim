@@ -7,6 +7,7 @@ import nogui/values
 import nogui/gui/event
 from nogui import getApp, windowSize
 import ../../../wip/canvas/matrix
+import ../../../wip/demo/undo
 # Import PI for Angle
 from math import 
   log2, pow, `mod`,
@@ -32,6 +33,7 @@ controller CXCanvas:
 
   callback cbClear0proof:
     self.engine.canvas.clear()
+    snapshot(self.engine.undo)
 
   proc affine: ptr NCanvasAffine {.inline.} =
     self.engine.canvas.affine()

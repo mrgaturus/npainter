@@ -5,6 +5,7 @@ import nogui/values
 import engine, color
 import ../../../wip/canvas/matrix
 import ../../../wip/brush/stabilizer
+import ../../../wip/demo/undo
 
 # ----------------------
 # Brush Shape Controller
@@ -334,9 +335,17 @@ controller CXBrush:
     aabb.y1 = high(int32); aabb.y2 = 0
     # Release Anti Flooding
     e.release()
+    echo "Dispatched"
+
+  callback cbDispatchEnd(e: AuxState):
+    # Perform Undo Snapshot
+    force(self.cbDispathStroke, e)
+    snapshot(self.engine.undo)
+    echo "Undo Applied --"
 
   callback cbDispatch(e: AuxState):
     if e.first:
+      echo "Start --"
       self.prepareDispatch()
       e.pressure = 0.0
     # Start Dragging Brush
@@ -366,8 +375,8 @@ controller CXBrush:
         let ps = self.stabilizer.smooth(p.x, p.y, e.pressure, 0.0)
         point(engine.brush, ps.x, ps.y, ps.press, 0.0)
       # XXX: this hacky guard avoids event flooding
-      if e.guard():
-        push(self.cbDispathStroke, e[])
+      #if e.guard():
+      push(self.cbDispatchEnd, e[])
 
   # -- Initializers --
   proc initShape =

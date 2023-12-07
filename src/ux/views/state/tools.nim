@@ -4,6 +4,7 @@ import nogui/builder
 import nogui/values
 import engine, color
 import ../../../wip/canvas/matrix
+import ../../../wip/demo/undo
 
 # ----------------------
 # Bucket Tool Controller
@@ -45,9 +46,10 @@ controller CXBucket:
   callback cbDispatch(e: AuxState):
     if not e.first: return
     let
-      canvas = addr self.engine.canvas
+      engine {.cursor.} = self.engine
+      canvas = addr engine.canvas
       ctx = addr canvas.ctx
-      fill = addr self.engine.bucket
+      fill = addr engine.bucket
       # Map Current Position
       affine = canvas[].affine
       p = affine[].forward(e.x, e.y)
@@ -67,6 +69,7 @@ controller CXBucket:
     # Update Render Region
     canvas[].mark(0, 0, ctx.w, ctx.h)
     canvas[].clean()
+    engine.undo.snapshot()
 
   new cxbucket():
     let lerpBasic = lerp(0, 100)

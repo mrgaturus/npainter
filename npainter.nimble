@@ -10,5 +10,6 @@ bin           = @["npainter"]
 # Dependencies
 requires "nim >= 2.0.0"
 requires "nimPNG"
+requires "supersnappy"
 # nogui import
 requires "https://github.com/mrgaturus/nogui#head"

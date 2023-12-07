@@ -126,6 +126,14 @@ widget UXPainterDispatch:
     elif state.kind == evKeyDown and state.key == 65535:
       force(self.fnClear)
       return
+    # XXX: proof undo
+    elif state.kind == evKeyDown and state.key == 122 and state.mods == 4:
+      undo(self.state.engine.undo)
+      return
+    # XXX: proof redo
+    elif state.kind == evKeyDown and state.key == 121 and state.mods == 4:
+      redo(self.state.engine.undo)
+      return
     # Dispatch Event
     force(fn, aux)
 

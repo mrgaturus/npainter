@@ -2,6 +2,7 @@ import nogui/builder
 # Import NPainter Engine
 import ../../../wip/[brush, texture, binary, canvas]
 from ../../../wip/canvas/context import composed
+import ../../../wip/demo/undo
 # Import Multithreading
 import nogui/spmc
 # TODO: move to engine side
@@ -57,6 +58,8 @@ controller NPainterEngine:
     brush: NBrushStroke
     bucket: NBucketProof
     canvas: NCanvasProof
+    # XXX: Proof Undo
+    undo: NDemoHistory
     # Multi-threading
     pool: NThreadPool
     # XXX: Proof Textures
@@ -119,6 +122,7 @@ controller NPainterEngine:
     result.bindBrush0proof()
     result.bindBucket0proof()
     result.bindAffine0proof()
+    result.undo.canvas = addr result.canvas
     # Initialize Multi-Threading
     result.pool = newThreadPool(6)
     result.brush.pipe.pool = result.pool
@@ -145,4 +149,5 @@ export
   texture,
   binary,
   canvas,
+  undo,
   spmc
