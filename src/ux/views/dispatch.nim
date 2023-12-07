@@ -1,5 +1,6 @@
 import nogui, state
 import nogui/ux/prelude
+import ../../wip/demo/save
 
 # ---------------------------------------------------------
 # XXX: XPM Cursor Hack for Default Cursors
@@ -126,14 +127,17 @@ widget UXPainterDispatch:
     elif state.kind == evKeyDown and state.key == 65535:
       force(self.fnClear)
       return
-    # XXX: proof undo
+    # XXX: proof undo CTRL + Z
     elif state.kind == evKeyDown and state.key == 122 and state.mods == 4:
       undo(self.state.engine.undo)
       return
-    # XXX: proof redo
+    # XXX: proof redo CTRL + Y
     elif state.kind == evKeyDown and state.key == 121 and state.mods == 4:
       redo(self.state.engine.undo)
       return
+    # XXX: proof save CTRL + S
+    elif state.kind == evKeyDown and state.key == 115 and state.mods == 4:
+      savePNG(self.state.engine.canvas.ctx)
     # Dispatch Event
     force(fn, aux)
 
