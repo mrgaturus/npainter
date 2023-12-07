@@ -8,11 +8,12 @@ import ../canvas/context
 # --------------------
 
 proc savePNG*(ctx: var NCanvasContext) =
-  echo "i'm here"
   # Load File Location
-  let loc = $ tinyfd_saveFileDialog("Save PNG", "~/", aFilterPatterns = "*.png")
+  let loc0 = tinyfd_saveFileDialog("Save PNG", "~/", aFilterPatterns = "*.png")
+  if isNil(loc0): return
   # Convert Buffer to Uint8 and Store
-  block uint8buffer:
+  let loc = $ loc0
+  if loc.len > 0:
     let 
       l = ctx.w * ctx.h * 4
       buffer0 = cast[ptr UncheckedArray[uint16]](ctx.composed (0))
