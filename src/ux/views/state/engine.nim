@@ -127,9 +127,9 @@ controller NPainterEngine:
     result.pool = newThreadPool(6)
     result.brush.pipe.pool = result.pool
     # XXX: demo textures meanwhile a picker is done
-    result.tex0 = newPNGTexture("tex0.png")
-    result.tex1 = newPNGTexture("tex1.png")
-    result.tex2 = newPNGTexture("tex2.png")
+    result.tex0 = newPNGTexture("tex/tex0.png")
+    result.tex1 = newPNGTexture("tex/tex1.png")
+    result.tex2 = newPNGTexture("tex/tex2.png")
 
   # -- Foreign Renderer --
   proc renderGL*() =
