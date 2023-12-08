@@ -1,6 +1,8 @@
 import nogui, state
 import nogui/ux/prelude
-import ../../wip/demo/save
+import nogui/values
+import ../../wip/demo/[eye, save]
+import ../../wip/canvas/matrix
 
 # ---------------------------------------------------------
 # XXX: XPM Cursor Hack for Default Cursors
@@ -114,11 +116,20 @@ widget UXPainterDispatch:
       id = peek(self.state.tool)
       tool = CKPainterTool id[]
       aux = self.prepareAux(state)
+    # XXX: Trap Eyedropper
+    if state.kind == evCursorClick and state.key == RightButton and aux.first:
+      let
+        engine {.cursor.} = self.state.engine
+        affine = engine.canvas.affine
+        p = affine[].forward(state.px, state.py)
+      self.state.color.color.react[] = lookupColor(engine.canvas.ctx, cint p.x, cint p.y).toHSV
+      return
     # Lookup Dispatcher
     var fn = self.fnTools[tool]
     if self.canvasAux(state):
       fn = self.fnCanvas
     # Hold Callback
+    # XXX: proof eyedropper
     if aux.first:
       self.hold = fn
     elif self.test(wGrab):
