@@ -3,16 +3,14 @@
 from nogui/libs/gl import GLuint
 
 type
-  # Canvas Dirty Region
-  NCanvasDirty* = tuple[x, y, w, h: cint]
-  NCanvasAligned = tuple[x0, y0, x1, y1: uint8]
   # Canvas Texture Tile
+  NCanvasDirty* = tuple[x, y, w, h: cint]
   NCanvasSample = array[4, GLuint]
   NCanvasTile* = object
     texture*: GLuint
+    tx*, ty*: uint8
     # Dirty Region
-    x0*, y0*: uint8
-    x1*, y1*: uint8
+    dx, dy: uint8
   NCanvasBatch = object
     tile*: ptr NCanvasTile
     sample*: ptr NCanvasSample
@@ -51,61 +49,60 @@ proc createCanvasGrid*(w256, h256: cint): NCanvasGrid =
   result.aux = cast[NCanvasTiles](addr result.buffer[half])
   result.cache = cast[NCanvasSamples](addr result.buffer[chunk])
 
-# ------------------------
-# Canvas Tile Dirty Region
-# ------------------------
+# ----------------------
+# Canvas Tile Dirty Mark
+# ----------------------
 
 func clean*(tile: ptr NCanvasTile) =
-  tile.x0 = 0xFF; tile.y0 = 0xFF
-  tile.x1 = 0x00; tile.y1 = 0x00
+  tile.dx = 0x08
+  tile.dy = 0x08
 
 func whole*(tile: ptr NCanvasTile) =
-  tile.x0 = 0x00; tile.y0 = 0x00
-  tile.x1 = 0x80; tile.y1 = 0x80
+  tile.dx = 0x80
+  tile.dy = 0x80
 
-func align(dirty: NCanvasDirty): NCanvasAligned =
+func mark*(tile: ptr NCanvasTile, x, y: cint) =
+  let
+    x32 = cast[uint8](x shr 5 and 0x7)
+    y32 = cast[uint8](y shr 5 and 0x7)
+    # Dirty Region
+    dx = tile.dx
+    dy = tile.dy
   var
-    x0 = dirty.x
-    y0 = dirty.y
-    x1 = x0 + dirty.w
-    y1 = y0 + dirty.h
-  # Clamp Values
-  x0 = clamp(x0, 0, 256)
-  y0 = clamp(y0, 0, 256)
-  x1 = clamp(x1, 0, 256) + 1
-  y1 = clamp(y1, 0, 256) + 1
-  # Return Values
-  result.x0 = cast[uint8](x0 shr 1)
-  result.y0 = cast[uint8](y0 shr 1)
-  result.x1 = cast[uint8](x1 shr 1)
-  result.y1 = cast[uint8](y1 shr 1)
+    x0 = dx and 0xF
+    y0 = dy and 0xF
+    x1 = dx shr 4
+    y1 = dy shr 4
+  # Expand Dirty Region
+  x0 = min(x0, x32)
+  y0 = min(y0, y32)
+  x1 = max(x1, x32 + 1)
+  y1 = max(y1, y32 + 1)
+  # Pack Dirty Region
+  tile.dx = x0 or (x1 shl 4)
+  tile.dy = y0 or (y1 shl 4)
 
-func mark*(tile: ptr NCanvasTile, dirty: NCanvasDirty) =
-  let (x0, y0, x1, y1) = dirty.align()
-  # Extends Region
-  tile.x0 = min(tile.x0, x0)
-  tile.y0 = min(tile.y0, y0)
-  tile.x1 = max(tile.x1, x1)
-  tile.y1 = max(tile.y1, y1)
+# -----------------------
+# Canvas Tile Dirty Check
+# -----------------------
 
 func dirty*(tile: ptr NCanvasTile): bool {.inline.} =
-  tile.x0 < tile.x1 and tile.y0 < tile.y1
+  (tile.dx or tile.dy) != 0x08
 
 func invalid*(tile: ptr NCanvasTile): bool {.inline.} =
-  ((tile.x0 or tile.x1) and (tile.y0 or tile.y1)) == 0xFF
+  (tile.dx or tile.dy) == 0xFF
 
 func region*(tile: ptr NCanvasTile): NCanvasDirty =
   let
-    x0 = cast[cint](tile.x0) shl 1
-    y0 = cast[cint](tile.y0) shl 1
-    x1 = cast[cint](tile.x1) shl 1
-    y1 = cast[cint](tile.y1) shl 1
-  # Aligned Region
-  if tile.texture > 0:
-    result.x = x0
-    result.y = y0
-    result.w = x1 - x0
-    result.h = y1 - y0
+    dx = cast[cint](tile.dx)
+    dy = cast[cint](tile.dy)
+  # Check if is Actually Dirty
+  if tile.dirty and tile.texture > 0:
+    result.x = dx and 0xF
+    result.y = dy and 0xF
+    # Dirty Dimensions
+    result.w = (dx shr 4) - result.x
+    result.h = (dy shr 4) - result.y
 
 # -------------------
 # Canvas Grid Manager
@@ -125,13 +122,6 @@ proc clear*(grid: var NCanvasGrid) =
   grid.count = 0
   grid.unused = 0
 
-proc lookup*(grid: var NCanvasGrid; tx, ty: cint): ptr NCanvasTile =
-  let 
-    tiles = grid.tiles
-    stride = grid.w
-  # Return Located Tile
-  addr tiles[ty * stride + tx]
-
 proc activate*(grid: var NCanvasGrid, tx, ty: cint) =
   if grid.count == 0:
     let
@@ -141,21 +131,15 @@ proc activate*(grid: var NCanvasGrid, tx, ty: cint) =
       # Located Tile
       tile = addr grid.tiles[idx]
       prev = addr grid.aux[idx]
-    var
-      x0 = cast[uint8](tx)
-      y0 = cast[uint8](ty)
     # Set Tile Position
-    tile.x0 = x0
-    tile.y0 = y0
+    tile.tx = cast[uint8](tx)
+    tile.ty = cast[uint8](ty)
     # Check Tile Texture
     if prev.texture > 0:
       tile.texture = prev.texture
     else:
-      x0 = not x0
-      y0 = not y0
-    # Set Tile Invalid
-    tile.x1 = x0
-    tile.y1 = y0
+      tile.dx = 0xFF
+      tile.dy = 0xFF
 
 proc recycle*(grid: var NCanvasGrid) =
   let
@@ -210,11 +194,11 @@ proc prepare*(grid: var NCanvasGrid) =
 proc sample(grid: var NCanvasGrid; tx, ty: cint): GLuint =
   let 
     tiles = grid.tiles
-    stride = grid.w
-    rows = grid.h
-  # Avoid Bound Errors
-  if tx >= 0 and ty >= 0 and tx < stride and ty < rows:
-    let idx = ty * stride + tx
+    w = grid.w
+    h = grid.h
+  # Check if is inside grid
+  if tx >= 0 and ty >= 0 and tx < w and ty < h:
+    let idx = ty * w + tx
     result = tiles[idx].texture
 
 proc sample*(grid: var NCanvasGrid; dummy: GLuint; tx, ty: cint): NCanvasSample =
@@ -229,50 +213,30 @@ proc sample*(grid: var NCanvasGrid; dummy: GLuint; tx, ty: cint): NCanvasSample 
   for tex in mitems(result):
     if tex == 0: tex = dummy
 
-# --------------------
-# Canvas Dirty Manager
-# --------------------
+# -----------------
+# Canvas Grid Dirty
+# -----------------
 
-proc mark32*(grid: var NCanvasGrid; x32, y32: cint) =
-  let
-    tx = x32 shr 3
-    ty = x32 shr 3
-    # Dirty Region
-    x0 = (x32 and not 0x7) shl 5
-    y0 = (y32 and not 0x7) shl 5
-    x1 = x0 + 32
-    y1 = y0 + 32
-    # Create Dirty Region
-    dirty = (x0, y0, x1, y1)
-    tile = grid.lookup(tx, ty)
-  # Invalidate Tile
-  if tile.texture > 0:
-    tile.mark(dirty)
-
-proc mark*(grid: var NCanvasGrid; dirty: sink NCanvasDirty) =
-  let
-    tx0 = dirty.x shr 8
-    ty0 = dirty.y shr 8
-    tx1 = (dirty.x + dirty.w + 255) shr 8
-    ty1 = (dirty.y + dirty.h + 255) shr 8
-  # Locate Dirty
-  dirty.x -= tx0 shl 8
-  dirty.y -= ty0 shl 8
-  # Iterate Each Vertical
-  for y in ty0 ..< ty1:
-    var dirty0 = dirty
-    # Iterate Each Horizontal
-    for x in tx0 ..< tx1:
-      let tile = grid.lookup(x, y)
-      if tile.texture > 0:
-        tile.mark(dirty0)
-      # Step Region X
-      dirty0.x -= 256
-    # Step Region Y
-    dirty.y -= 256
+proc mark*(grid: var NCanvasGrid, x, y: cint): bool =
+  let 
+    tiles = grid.tiles
+    w = grid.w
+    h = grid.h
+    # Tiled Dimensions
+    tx = x shr 8
+    ty = y shr 8
+  # Check if inside grid and tile is active
+  if tx >= 0 and ty >= 0 and tx < w and ty < h:
+    let
+      idx = ty * w + tx
+      tile = addr tiles[idx]
+    # Mark Tile and Return
+    result = tile.texture > 0
+    if result:
+      tile.mark(x, y)
 
 # ----------------
-# Canvas Iterators
+# Canvas Grid Iterators
 # ----------------
 
 iterator garbage*(grid: var NCanvasGrid): GLuint =
