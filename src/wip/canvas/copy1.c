@@ -55,18 +55,19 @@ void canvas_copy_white(canvas_copy_t* copy) {
   y0 = (copy->y256 << 8) + copy->y;
   x1 = x0 + copy->w;
   y1 = y0 + copy->h;
-  // Clamp Copy Region
-  canvas_copy_align(copy, &x1, &y1);
+  // Copy Source Buffer
+  canvas_src_t* src = copy->src;
+  canvas_src_clamp(src, &x1, &y1);
 
   int s_src, s_dst;
   unsigned char *src, *src_y;
   unsigned char *dst, *dst_y;
   // Copy Strides
-  s_src = copy->s0 << 2;
+  s_src = src->s0 << 2;
   s_dst = copy->w << 2;
   // Copy Buffer Pointers
-  src_y = copy->buffer0;
-  dst_y = copy->buffer1;
+  src_y = src->buffer;
+  dst_y = copy->buffer;
   src_y += y0 * s_src + (x0 << 2);
 
   // SIMD Registers
@@ -113,18 +114,19 @@ void canvas_copy_color(canvas_copy_t* copy) {
   y0 = (copy->y256 << 8) + copy->y;
   x1 = x0 + copy->w;
   y1 = y0 + copy->h;
-  // Clamp Copy Region
-  canvas_copy_align(copy, &x1, &y1);
+  // Copy Source Buffer
+  canvas_src_t* src = copy->src;
+  canvas_src_clamp(src, &x1, &y1);
 
   int s_src, s_dst;
   unsigned char *src, *src_y;
   unsigned char *dst, *dst_y;
   // Copy Strides
-  s_src = copy->s0 << 2;
+  s_src = src->s0 << 2;
   s_dst = copy->w << 2;
   // Copy Buffer Pointers
-  src_y = copy->buffer0;
-  dst_y = copy->buffer1;
+  src_y = src->buffer;
+  dst_y = copy->buffer;
   src_y += y0 * s_src + (x0 << 2);
 
   // SIMD Registers
@@ -165,10 +167,87 @@ void canvas_copy_color(canvas_copy_t* copy) {
 // Canvas Stream + Pattern Background
 // ----------------------------------
 
-void canvas_copy_checker(canvas_copy_t* copy) {
+void canvas_gen_checker(canvas_bg_t* bg) {
+  int shift = bg->shift;
+  int size = 2 << shift;
+  int mask = 1 << shift;
+  // Checker Colors
+  unsigned int color0 = bg->color0;
+  unsigned int color1 = bg->color1;
+  // Checker Buffer
+  unsigned int* buffer = bg->buffer;
 
+  // Fill Checker Pattern
+  for (int y = 0; y < size; y++) {
+    for (int x = 0; x < size; x++) {
+      // Decide Fill Color
+      int check = (x & mask) ^ (y & mask);
+      *(buffer) = check ? color0 : color1;
+      // Next Pixel
+      buffer++;
+    }
+  }
 }
 
-void canvas_gen_checker(canvas_bg_t* bg) {
+void canvas_copy_checker(canvas_copy_t* copy) {
+  int x0, y0, x1, y1;
+  // Locate Copy Region
+  x0 = (copy->x256 << 8) + copy->x;
+  y0 = (copy->y256 << 8) + copy->y;
+  x1 = x0 + copy->w;
+  y1 = y0 + copy->h;
+  // Copy Source Buffer
+  canvas_src_t* src = copy->src;
+  canvas_src_clamp(src, &x1, &y1);
 
+  int s_src, s_dst;
+  unsigned char *src, *src_y;
+  unsigned char *dst, *dst_y;
+  // Copy Strides
+  s_src = src->s0 << 2;
+  s_dst = copy->w << 2;
+  // Copy Buffer Pointers
+  src_y = src->buffer;
+  dst_y = copy->buffer;
+  src_y += y0 * s_src + (x0 << 2);
+
+  // SIMD Registers
+  __m128i xmm0, xmm1;
+  __m128i color0, color1;
+  // Checker Pattern Buffer
+  unsigned int *bg_x, *bg_y;
+  unsigned int *bg = copy->bg->buffer;
+  // Checker Pattern Size
+  int size = 2 << copy->bg->shift;
+  int repeat = size - 1;
+
+  for (int y = y0; y < y1; y++) {
+    src = src_y;
+    dst = dst_y;
+
+    for (int x = x0; x < x1; x += 8) {
+      bg_x = bg_y + (x & repeat);
+      // Load Source and Pattern Pixels
+      xmm0 = _mm_load_si128((__m128i*) src);
+      xmm1 = _mm_load_si128((__m128i*) src + 1);
+      color0 = _mm_load_si128((__m128i*) bg_x);
+      color1 = _mm_load_si128((__m128i*) bg_x + 1);
+      // Blend to White Pixel
+      xmm0 = canvas_pixel_blend(xmm0, color0);
+      xmm1 = canvas_pixel_blend(xmm1, color1);
+      // Stream to PBO Buffer
+      _mm_stream_si128((__m128i*) dst, xmm0);
+      _mm_stream_si128((__m128i*) dst + 1, xmm1);
+
+      // Next Pixels
+      src += 32;
+      dst += 32;
+    }
+
+    // Next Lane
+    src_y += s_src;
+    dst_y += s_dst;
+    // Next Pattern Lane
+    bg_y = bg + (y & repeat) * size;
+  }
 }

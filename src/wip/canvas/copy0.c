@@ -13,18 +13,19 @@ void canvas_copy_stream(canvas_copy_t* copy) {
   y0 = (copy->y256 << 8) + copy->y;
   x1 = x0 + copy->w;
   y1 = y0 + copy->h;
-  // Clamp Copy Region
-  canvas_copy_align(copy, &x1, &y1);
+  // Copy Source Buffer
+  canvas_src_t* src = copy->src;
+  canvas_src_clamp(src, &x1, &y1);
 
   int s_src, s_dst;
   unsigned char *src, *src_y;
   unsigned char *dst, *dst_y;
   // Copy Strides
-  s_src = copy->s0 << 2;
+  s_src = src->s0 << 2;
   s_dst = copy->w << 2;
   // Copy Buffer Pointers
-  src_y = copy->buffer0;
-  dst_y = copy->buffer1;
+  src_y = src->buffer;
+  dst_y = copy->buffer;
   src_y += y0 * s_src + (x0 << 2);
 
   __m128i xmm0, xmm1, xmm2, xmm3;
@@ -73,11 +74,13 @@ void canvas_copy_stream(canvas_copy_t* copy) {
 
 void canvas_copy_padding(canvas_copy_t* copy) {
   int x0, y0, x1, y1, x2, y2;
-  // Locate Padding Regions
+  // Copy Region Start
   x0 = (copy->x256 << 8) + copy->x;
   y0 = (copy->y256 << 8) + copy->y;
-  x1 = copy->w0 - x0;
-  y1 = copy->h0 - y0;
+  // Copy Clamping Mid
+  x1 = copy->src->w0 - x0;
+  y1 = copy->src->h0 - y0;
+  // Copy Region End
   x2 = x0 + copy->w;
   y2 = y0 + copy->h;
   // Clamp Padding Region
@@ -90,7 +93,7 @@ void canvas_copy_padding(canvas_copy_t* copy) {
   stride = copy->w << 2;
   offset = (x1 - x0) << 2;
   // Padding Buffer Pointer
-  dst_y = copy->buffer1;
+  dst_y = copy->buffer;
   dst_y += copy->x * stride + (copy->y << 2);
   // Zero SIMD Streaming
   const __m128i zeros = _mm_setzero_si128();
