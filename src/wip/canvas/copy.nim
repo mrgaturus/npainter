@@ -57,26 +57,27 @@ proc color1*(bg: var NCanvasBG, r, g, b: cuint) =
 # Canvas Background Pattern
 # -------------------------
 
-proc pattern*(bg: var NCanvasBG, shift: cint) =
-  let
-    size = 2 shl shift
-    bytes = size * size * sizeof(cuint)
-  # Deallocate Previous Buffer
-  if not isNil(bg.buffer):
-    dealloc(bg.buffer)
-  # Allocate Checker Buffer
-  bg.buffer = alloc(bytes)
-  bg.shift = shift
-  # Generate Checker Buffer
-  canvas_gen_checker(addr bg)
-
-proc clear*(bg: var NCanvasBG) =
+proc destroy*(bg: var NCanvasBG) =
   # Deallocate Previous Buffer
   if not isNil(bg.buffer):
     dealloc(bg.buffer)
   # Remove Shift
   bg.shift = 0
   bg.buffer = nil
+
+proc pattern*(bg: var NCanvasBG, shift: cint) =
+  let
+    size = 2 shl shift
+    bytes = size * size * sizeof(cuint)
+  # Deallocate Previous
+  bg.destroy()
+  if shift < 2:
+    return
+  # Allocate Checker Buffer
+  bg.buffer = alloc(bytes)
+  bg.shift = shift
+  # Generate Checker Buffer
+  canvas_gen_checker(addr bg)
 
 # --------------------
 # Canvas Copy Dispatch
@@ -87,7 +88,7 @@ proc stream*(copy: var NCanvasCopy) =
     bg = copy.bg
     cp = addr copy
   # Stream + Background
-  if bg.shift > 1:
+  if bg.shift >= 2:
     canvas_copy_checker(cp)
   elif bg.color0 == high(cuint):
     canvas_copy_white(cp)

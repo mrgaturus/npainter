@@ -89,12 +89,12 @@ void canvas_copy_padding(canvas_copy_t* copy) {
 
   int lane, stride, offset;
   unsigned char *dst, *dst_y;
-  // Padding Strides
+  // Padding Buffer Strides
   stride = copy->w << 2;
   offset = (x1 - x0) << 2;
   // Padding Buffer Pointer
   dst_y = copy->buffer;
-  dst_y += copy->x * stride + (copy->y << 2);
+  
   // Zero SIMD Streaming
   const __m128i zeros = _mm_setzero_si128();
 

@@ -2,16 +2,21 @@
 # Copyright (c) 2023 Cristian Camilo Ruiz <mrgaturus>
 import nogui/libs/gl
 import nogui/data
-import matrix, culling, grid
-export NCanvasDirty
+import copy, matrix, culling, grid
+# Export Grid Manipulation
+export NCanvasDirty, NCanvasTile
 
 type
+  NCanvasData* = object
+    bg*: NCanvasBG
+    src*: NCanvasSrc
+  # Canvas Render Buffers
   NCanvasVertex = tuple[x, y, u, v: cushort]
   NCanvasPBOBuffer = ptr UncheckedArray[byte]
   NCanvasPBOMap* = object
-    tile: ptr NCanvasTile
-    x256*, y256*: cint
-    # Chunk Mapping
+    tile*: ptr NCanvasTile
+    data*: ptr NCanvasData
+    # PBO Chunk Mapping
     offset, bytes*: GLint
     chunk*: pointer
   NCanvasRenderer* = object
@@ -26,11 +31,11 @@ type
   # Canvas Viewport
   NCanvasViewport* = object
     renderer*: ptr NCanvasRenderer
+    data*: ptr NCanvasData
+    # Viewport Affine
     affine*: NCanvasAffine
     cull: NCanvasCulling
-    # Canvas Image Size
-    w, h: cint
-    # Tile Geometry
+    # Viewport Grid
     vao, vbo, ubo: GLuint
     grid: NCanvasGrid
 
@@ -110,9 +115,6 @@ proc createCanvasViewport*(ctx: var NCanvasRenderer; w, h: cint): NCanvasViewpor
       w256 = (w + 255) shr 8
       h256 = (h + 255) shr 8
     result.grid = createCanvasGrid(w256, h256)
-  # Viewport Size
-  result.w = w
-  result.h = h
 
 # --------------------------
 # Canvas Render Tile Usables
@@ -202,7 +204,8 @@ proc locatePositions(view: var NCanvasViewport) =
 # Canvas Render Tile Mapping
 # --------------------------
 
-proc gather*(ctx: var NCanvasRenderer, tile: ptr NCanvasTile) =
+proc map*(view: var NCanvasViewport, tile: ptr NCanvasTile) =
+  let ctx = view.renderer
   var m: NCanvasPBOMap
   # Ensure a Dirty Region
   if tile.invalid:
@@ -210,13 +213,12 @@ proc gather*(ctx: var NCanvasRenderer, tile: ptr NCanvasTile) =
   let
     r = tile.region()
     bytes = r.w * r.h * 4
-  # Define Dirty Region
+  # Define Chunk Size
   m.tile = tile
   m.offset = ctx.bytes
   m.bytes = bytes
-  # Gather Tile Position
-  m.x256 = cast[cint](tile.tx)
-  m.y256 = cast[cint](tile.ty)
+  # Define Data Source
+  m.data = view.data
   # Gather to Renderer Maps
   ctx.maps.add(m)
   ctx.bytes += bytes
@@ -255,27 +257,24 @@ proc unmap*(ctx: var NCanvasRenderer) =
   newSeq(ctx.maps, 0)
   ctx.bytes = 0
 
-# -------------------------------
-# Canvas Render Tile Manipulation
-# -------------------------------
+# ------------------------
+# Canvas Render View Tiles
+# ------------------------
 
 proc mark*(view: var NCanvasViewport; x, y: cint): bool {.inline.} =
   view.grid.mark(x, y)
 
 iterator tiles*(view: var NCanvasViewport): ptr NCanvasTile =
-  for tile in view.grid.tiles:
+  for tile in view.grid.tiles():
     yield tile
 
-# ------------------------------
-# Canvas Render PBO Manipulation
-# ------------------------------
+# ---------------------
+# Canvas Render Mappers
+# ---------------------
 
-iterator maps*(render: var NCanvasRenderer): var NCanvasPBOMap =
+iterator maps*(render: var NCanvasRenderer): ptr NCanvasPBOMap =
   for map in mitems(render.maps):
-    yield map
-
-proc region*(pbo: NCanvasPBOMap): NCanvasDirty {.inline.} =
-  pbo.tile.region()
+    yield map.addr
 
 # ----------------------
 # Canvas Render Commands
