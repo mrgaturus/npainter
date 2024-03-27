@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 # Copyright (c) 2023 Cristian Camilo Ruiz <mrgaturus>
-from matrix import NCanvasPoint, NCanvasAffine, forward
+from matrix import NCanvasPoint, NCanvasAffine, map
 import grid
 
 type
@@ -65,17 +65,22 @@ proc bounds(quad: NCanvasQuad, w, h: cint): NCanvasBounds =
   result.y1 = clamp(result.y1, 0, h)
 
 proc prepare*(cull: var NCanvasCulling, m: NCanvasAffine) =
-  let 
-    # Canvas Dimensions
+  let
+    m0 = addr m.lod.model0
+    shift = m.lod.level
+    # Viewport Dimensions
     w = cfloat(m.vw)
     h = cfloat(m.vh)
+    # Canvas Dimensions
+    cw = (m.cw shr shift) - 1
+    ch = (m.ch shr shift) - 1
   var 
     p: NCanvasQuad
   # Define Points
-  p[0] = m.forward(0, 0)
-  p[1] = m.forward(w, 0)
-  p[2] = m.forward(w, h)
-  p[3] = m.forward(0, h)
+  p[0] = m0[].map(0, 0)
+  p[1] = m0[].map(w, 0)
+  p[2] = m0[].map(w, h)
+  p[3] = m0[].map(0, h)
   # Check Mirror
   if m.mirror:
     swap(p[0], p[3])
@@ -91,7 +96,7 @@ proc prepare*(cull: var NCanvasCulling, m: NCanvasAffine) =
   cull.trivial[2] = trivial(cull.edges[2])
   cull.trivial[3] = trivial(cull.edges[3])
   # Calculate Bounding Box
-  cull.bounds = p.bounds(m.cw - 1, m.ch - 1)
+  cull.bounds = p.bounds(cw, ch)
 
 # -------------------
 # Canvas Culling Step

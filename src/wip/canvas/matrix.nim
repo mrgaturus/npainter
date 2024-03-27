@@ -1,12 +1,18 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 # Copyright (c) 2023 Cristian Camilo Ruiz <mrgaturus>
-from math import cos, sin, floor
+from math import cos, sin, floor, log2
 from nogui/values import guiProjection
 
 type
   NCanvasPoint* = tuple[x, y: cfloat]
   NCanvasMatrix* = array[9, cfloat]
   NCanvasProjection* = array[16, cfloat]
+  # Canvas Affine Matrices
+  NCanvasLOD = object
+    model0*, model1*: NCanvasMatrix
+    # LOD Level Adjust
+    level*: cint
+    zoom*: cfloat
   NCanvasAffine* = object
     mirror*: bool
     x*, y*: cfloat
@@ -15,8 +21,10 @@ type
     cw*, ch*: cint
     vw*, vh*: cint
     # Matrix Calculation
-    projection*: NCanvasProjection
+    pro*: NCanvasProjection
     model0*, model1*: NCanvasMatrix
+    # LOD Calculation
+    lod*: NCanvasLOD
 
 # -------------------------------
 # Canvas Affine Matrix Calculator
@@ -91,6 +99,32 @@ proc inverse(a: var NCanvasAffine) =
   m[7] = 0.0 
   m[8] = 1.0
 
+# ------------------------
+# Canvas Affine Matrix LOD
+# ------------------------
+
+proc scale(m: NCanvasMatrix, factor: cfloat): NCanvasMatrix =
+  var idx: cint
+  result = m
+  # Apply Factor to Matrix
+  while idx < 6:
+    result[idx] *= factor
+    inc(idx)
+
+proc reduce(a: var NCanvasAffine) =
+  let
+    lod = addr a.lod
+    zoom = a.zoom
+    # Calculate LOD Factor
+    shift = clamp(cint log2 zoom, 0, 5)
+    factor = cfloat(1 shl shift)
+  # Apply Factor to Both Matrices
+  lod.model0 = scale(a.model0, factor)
+  lod.model1 = scale(a.model1, 1.0 / factor)
+  # Store LOD Shift
+  lod.level = shift
+  lod.zoom = zoom / factor
+
 # ------------------------------
 # Canvas Affine Matrix Configure
 # ------------------------------
@@ -109,20 +143,21 @@ proc calculate*(a: var NCanvasAffine) =
   # Calculate Model
   a.affine()
   a.inverse()
+  a.reduce()
   # Calculate Projection
-  guiProjection(addr a.projection, 
+  guiProjection(addr a.pro, 
     cfloat a.vw, cfloat a.vh)
 
-# ----------------------------
-# Canvas Affine Matrix Mapping
-# ----------------------------
+# --------------------
+# Canvas Affine Matrix
+# --------------------
+
+proc map*(m: NCanvasMatrix; x, y: cfloat): NCanvasPoint =
+  result.x = x * m[0] + y * m[1] + m[2]
+  result.y = x * m[3] + y * m[4] + m[5]
 
 proc forward*(a: NCanvasAffine; x, y: cfloat): NCanvasPoint =
-  let m = unsafeAddr a.model0
-  result.x = x * m[0] + y * m[1] + m[2]
-  result.y = x * m[3] + y * m[4] + m[5]
+  a.model0.map(x, y)
 
 proc inverse*(a: NCanvasAffine; x, y: cfloat): NCanvasPoint =
-  let m = unsafeAddr a.model1
-  result.x = x * m[0] + y * m[1] + m[2]
-  result.y = x * m[3] + y * m[4] + m[5]
+  a.model1.map(x, y)

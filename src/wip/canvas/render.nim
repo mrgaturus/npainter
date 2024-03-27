@@ -281,18 +281,20 @@ iterator maps*(render: var NCanvasRenderer): ptr NCanvasPBOMap =
 # ----------------------
 
 proc transform(view: var NCanvasViewport) =
-  let affine = addr view.affine
+  let
+    affine = addr view.affine
+    lod = addr affine.lod
   # Calculate Matrices
   affine[].calculate()
   # Copy Matrices as std140 said
   glBindBuffer(GL_UNIFORM_BUFFER, view.ubo)
   let ubo = cast[ptr UncheckedArray[byte]](
     glMapBuffer(GL_UNIFORM_BUFFER, GL_WRITE_ONLY))
-  copyMem(addr ubo[0], addr affine.zoom, 4)
-  copyMem(addr ubo[16], addr affine.model1[0], 12)
-  copyMem(addr ubo[32], addr affine.model1[3], 12)
-  copyMem(addr ubo[48], addr affine.model1[6], 12)
-  copyMem(addr ubo[64], addr affine.projection[0], 64)
+  copyMem(addr ubo[0], addr lod.zoom, 4)
+  copyMem(addr ubo[16], addr lod.model1[0], 12)
+  copyMem(addr ubo[32], addr lod.model1[3], 12)
+  copyMem(addr ubo[48], addr lod.model1[6], 12)
+  copyMem(addr ubo[64], addr affine.pro[0], 64)
   discard glUnmapBuffer(GL_UNIFORM_BUFFER)
   glBindBuffer(GL_UNIFORM_BUFFER, 0)
 
