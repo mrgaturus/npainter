@@ -3,8 +3,9 @@
 import nogui/libs/gl
 import nogui/data
 import copy, matrix, culling, grid
-# Export Grid Manipulation
+# Export Tile Manipulation
 export NCanvasDirty, NCanvasTile
+export clean, whole, mark, region
 
 type
   NCanvasData* = object
@@ -235,6 +236,26 @@ proc map*(ctx: var NCanvasRenderer) =
   for m in mitems(ctx.maps):
     m.chunk = addr chunk[m.offset]
 
+proc stream*(map: ptr NCanvasPBOMap) =
+  let
+    tile = map.tile
+    r = tile.region()
+  # Prepare Canvas Copy
+  var copy = NCanvasCopy(
+    x256: cint(tile.tx) shl 8,
+    y256: cint(tile.ty) shl 8,
+    # Copy Region
+    x: r.x, y: r.y,
+    w: r.w, h: r.h,
+    # Copy Source
+    bg: addr map.data.bg,
+    src: addr map.data.src,
+    # Copy Buffer
+    buffer: map.chunk
+  )
+  # Dispatch Copy
+  copy.stream()
+
 proc unmap*(ctx: var NCanvasRenderer) =
   # Close Buffer Map
   discard glUnmapBuffer(GL_PIXEL_UNPACK_BUFFER)
@@ -257,20 +278,13 @@ proc unmap*(ctx: var NCanvasRenderer) =
   newSeq(ctx.maps, 0)
   ctx.bytes = 0
 
-# ------------------------
-# Canvas Render View Tiles
-# ------------------------
-
-proc mark*(view: var NCanvasViewport; x, y: cint): bool {.inline.} =
-  view.grid.mark(x, y)
+# -----------------------
+# Canvas Render Iterators
+# -----------------------
 
 iterator tiles*(view: var NCanvasViewport): ptr NCanvasTile =
   for tile in view.grid.tiles():
     yield tile
-
-# ---------------------
-# Canvas Render Mappers
-# ---------------------
 
 iterator maps*(render: var NCanvasRenderer): ptr NCanvasPBOMap =
   for map in mitems(render.maps):

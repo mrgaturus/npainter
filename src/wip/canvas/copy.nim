@@ -20,8 +20,8 @@ type
     x256*, y256*: cint
     x*, y*, w*, h*: cint
     # Canvas Data
-    bg*: NCanvasBG
-    src*: NCanvasSrc
+    bg*: ptr NCanvasBG
+    src*: ptr NCanvasSrc
     # Canvas PBO Buffer
     buffer*: pointer
 

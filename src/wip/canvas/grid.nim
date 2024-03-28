@@ -213,31 +213,9 @@ proc sample*(grid: var NCanvasGrid; dummy: GLuint; tx, ty: cint): NCanvasSample 
   for tex in mitems(result):
     if tex == 0: tex = dummy
 
-# -----------------
-# Canvas Grid Dirty
-# -----------------
-
-proc mark*(grid: var NCanvasGrid, x, y: cint): bool =
-  let 
-    tiles = grid.tiles
-    w = grid.w
-    h = grid.h
-    # Tiled Dimensions
-    tx = x shr 8
-    ty = y shr 8
-  # Check if inside grid and tile is active
-  if tx >= 0 and ty >= 0 and tx < w and ty < h:
-    let
-      idx = ty * w + tx
-      tile = addr tiles[idx]
-    # Mark Tile and Return
-    result = tile.texture > 0
-    if result:
-      tile.mark(x, y)
-
-# ----------------
+# ---------------------
 # Canvas Grid Iterators
-# ----------------
+# ---------------------
 
 iterator garbage*(grid: var NCanvasGrid): GLuint =
   let 

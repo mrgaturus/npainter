@@ -140,8 +140,6 @@ proc mark*(x, y, w, h: cint): NImageMark =
 
 proc expand*(m: var NImageMark, x, y, w, h: cint) =
   let
-    x0 = x
-    y0 = y
     x1 = x + w
     y1 = y + h
   # First Mark Clipping
@@ -149,10 +147,24 @@ proc expand*(m: var NImageMark, x, y, w, h: cint) =
     m = mark(x, y, w, h)
     return
   # Expand Mark Clipping
-  m.x0 = min(m.x0, x0)
-  m.y0 = min(m.y0, y0)
+  m.x0 = min(m.x0, x)
+  m.y0 = min(m.y0, y)
   m.x1 = max(m.x1, x1)
   m.y1 = max(m.y1, y1)
+
+proc intersect*(m: var NImageMark, x, y, w, h: cint) =
+  let
+    x1 = x + w
+    y1 = y + h
+  # First Mark Clipping
+  if m.x0 >= m.x1 or m.y0 >= m.y1:
+    m = mark(x, y, w, h)
+    return
+  # Expand Mark Clipping
+  m.x0 = max(m.x0, x)
+  m.y0 = max(m.y0, y)
+  m.x1 = min(m.x1, x1)
+  m.y1 = min(m.y1, y1)
 
 proc complete*(m: var NImageMark) =
   m.x0 = 0
