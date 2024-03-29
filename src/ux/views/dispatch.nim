@@ -121,9 +121,9 @@ widget UXPainterDispatch:
     elif self.test(wGrab):
       fn = self.hold
     # TODO: callback-based hotkeys
-    #elif state.kind == evKeyDown and state.key == 65535:
-    #  force(self.fnClear)
-    #  return
+    elif state.kind == evKeyDown and state.key == 65535:
+      force(self.state.layers.cbClearLayer)
+      return
     # Dispatch Event
     force(fn, aux)
 
