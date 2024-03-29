@@ -90,7 +90,7 @@ func dirty*(tile: ptr NCanvasTile): bool {.inline.} =
   (tile.dx or tile.dy) != 0x08
 
 func invalid*(tile: ptr NCanvasTile): bool {.inline.} =
-  (tile.dx or tile.dy) == 0xFF
+  (tile.dx or tile.dy) > 0x88
 
 func region*(tile: ptr NCanvasTile): NCanvasDirty =
   let

@@ -33,10 +33,10 @@ static inline __m128i canvas_pixel_blend(__m128i src, __m128i dst) {
   // s + d - d * sa
   alpha0 = _mm_mulhi_epu16(alpha0, xmm1);
   alpha1 = _mm_mulhi_epu16(alpha1, xmm3);
-  xmm1 = _mm_subs_epi16(xmm1, alpha0);
-  xmm3 = _mm_subs_epi16(xmm3, alpha1);
-  xmm0 = _mm_adds_epi16(xmm0, xmm1);
-  xmm2 = _mm_adds_epi16(xmm2, xmm3);
+  xmm1 = _mm_subs_epu16(xmm1, alpha0);
+  xmm3 = _mm_subs_epu16(xmm3, alpha1);
+  xmm0 = _mm_adds_epu16(xmm0, xmm1);
+  xmm2 = _mm_adds_epu16(xmm2, xmm3);
 
   // Pack Pixels to 8 Bit
   xmm0 = _mm_srli_epi16(xmm0, 8);

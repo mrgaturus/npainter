@@ -41,9 +41,8 @@ static void canvas_src_clamp(canvas_src_t* src, int* x, int* y) {
   // Clip Positions to Real Bounding
   cx = (cx < src->w0) ? cx : src->w0;
   cy = (cy < src->h0) ? cy : src->h0;
-  // Align Lane to 32
-  if (cx & 0x1F)
-    cx = (cx | 0x1F) + 1;
+  // Align Lane to 32 Bounding
+  cx = (cx + 0x1F) & ~0x1F;
 
   // Replace to Clipped
   *x = cx;
