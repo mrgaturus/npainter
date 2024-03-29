@@ -98,17 +98,19 @@ proc packScope(state: ptr NCompositorState) =
   let 
     lod = state.mipmap
     ctx = state.chunk.com.ctx
-    # Prepare Buffer Combine
-    dst = ctx[].mapFlat(0).chunk()
     src = state.scope.buffer
-    co0 = combine(src, dst)
+  # Configure Buffer Combine
+  var dst = ctx[].mapFlat(lod).chunk()
+  dst.w = dst.w shl lod
+  dst.h = dst.h shl lod
+  var co0 = combine(src, dst)
   # Pack all if is fully dirty
   if state.full():
     combine_pack(addr co0)
     return
   # Pack Partially
   for tx, ty in state.scan():
-    let co = co0.pack32(tx, ty, lod)
+    var co = co0.pack32(tx, ty, lod)
     combine_pack(addr co)
 
 # --------------------------

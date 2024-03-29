@@ -36,10 +36,16 @@ proc createImageContext*(w, h: cint): NImageContext =
   result.h32 = h32
   result.s32 = w32 * bpp
   # Allocate Flat Buffers
-  var size = int(result.s32) * h32
+  var
+    s0 = int(result.s32)
+    s1 = int(h32)
   for i in 0 ..< 6:
-    result.flat[i] = alloc(size)
-    size = max(size shr 2, 4096)
+    result.flat[i] = alloc(s0 * s1)
+    # Reduce Mipmap Size
+    s0 = s0 shr 1
+    s1 = s1 shr 1
+    # Align to 32 Boundarie
+    s0 = (s0 + 0x1F) and not 0x1F
 
 proc destroy*(ctx: var NImageContext) =
   # Dealloc Auxiliars
@@ -56,12 +62,12 @@ proc destroy*(ctx: var NImageContext) =
 proc mapFlat*(ctx: var NImageContext, level = 0): NImageMap =
   let
     i = clamp(level, 0, 5)
-    s32 = ctx.s32 shr i shr i
+    s32 = ctx.s32 shr i
   # Reduce Buffer Size
   result.w = max(ctx.w32 shr i, 1)
   result.h = max(ctx.h32 shr i, 1)
   # Configure Buffer Atributtes
-  result.stride = max(s32, 128)
+  result.stride = (s32 + 0x1F) and not 0x1F
   result.bpp = sizeof(uint8) shl 2
   result.buffer = ctx.flat[i]
 
