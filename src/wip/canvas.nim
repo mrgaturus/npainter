@@ -14,8 +14,8 @@ type
     stamp*: uint64
     w*, h*, bpp*: cint
     # Background Colors
-    r0*, b0*, g0*, a0: uint8
-    r1*, b1*, g1*, a1: uint8
+    r0*, g0*, b0*, a0: uint8
+    r1*, g1*, b1*, a1: uint8
     # Background Pattern Size
     checker*: cint
   NCanvasImage* = ptr object
@@ -95,14 +95,19 @@ proc background*(canvas: NCanvasImage) =
 
 proc source(canvas: NCanvasImage, level: cint) =
   let
+    # Clamp Mipmap Level
+    lvl = clamp(level, 0, 5)
+    # Source Buffers
     ctx = addr canvas.image.ctx
     src = addr canvas.data.src
-    map = ctx[].mapFlat(level)
+    map = ctx[].mapFlat(lvl)
   # Map Source to View Data
-  src.w0 = ctx.w shr level
-  src.h0 = ctx.h shr level
+  src.w0 = ctx.w shr lvl
+  src.h0 = ctx.h shr lvl
   src.s0 = map.stride
   src.buffer = map.buffer
+  # Change Compositor Mipmap
+  canvas.image.com.mipmap = lvl
 
 # --------------------
 # Canvas Image Staging
@@ -113,10 +118,10 @@ proc mark(image: NImage, tile: ptr NCanvasTile, level: cint) =
     status = addr image.status
     com = addr image.com
     clip0 = status.clip
-    # LOD Levels
+    # LOD Levels Bits
     size = cint(256 shl level)
-    shift = cint(5 shr level)
-    mask = not uint8(1 shl level)
+    shift = cint(5 - level)
+    mask = uint8(1 shl level)
     # Tile Position and Level
     x = cint(tile.tx) * size
     y = cint(tile.ty) * size
@@ -131,7 +136,7 @@ proc mark(image: NImage, tile: ptr NCanvasTile, level: cint) =
     com[].mark(tx, ty)
     tile.mark(tx shl shift, ty shl shift)
     # Remove Dirty Mark
-    c.check[] = c.check[] and mask
+    c.check[] = c.check[] or mask
   # Restore Clipping
   status.clip = clip0
 
@@ -169,9 +174,11 @@ proc transform*(canvas: NCanvasImage) =
     level = lod.level
   # Apply Transform
   view[].update()
+  # Prepare Canvas Source
+  canvas.source(lod.level)
+  canvas.image.status.clip = mark(0, 0, 0, 0)
   # React to LOD Changes
   if level != lod.level:
-    canvas.source(level)
     for tile in view[].tiles:
       tile.whole()
   # Update Canvas
