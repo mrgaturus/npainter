@@ -56,17 +56,17 @@ void canvas_copy_white(canvas_copy_t* copy) {
   x1 = x0 + copy->w;
   y1 = y0 + copy->h;
   // Copy Source Buffer
-  canvas_src_t* src = copy->src;
-  canvas_src_clamp(src, &x1, &y1);
+  canvas_src_t* src0 = copy->src;
+  canvas_src_clamp(src0, &x1, &y1);
 
   int s_src, s_dst;
   unsigned char *src, *src_y;
   unsigned char *dst, *dst_y;
   // Copy Strides
-  s_src = src->s0 << 2;
+  s_src = src0->s0;
   s_dst = copy->w << 2;
   // Copy Buffer Pointers
-  src_y = src->buffer;
+  src_y = src0->buffer;
   dst_y = copy->buffer;
   src_y += y0 * s_src + (x0 << 2);
 
@@ -115,17 +115,17 @@ void canvas_copy_color(canvas_copy_t* copy) {
   x1 = x0 + copy->w;
   y1 = y0 + copy->h;
   // Copy Source Buffer
-  canvas_src_t* src = copy->src;
-  canvas_src_clamp(src, &x1, &y1);
+  canvas_src_t* src0 = copy->src;
+  canvas_src_clamp(src0, &x1, &y1);
 
   int s_src, s_dst;
   unsigned char *src, *src_y;
   unsigned char *dst, *dst_y;
   // Copy Strides
-  s_src = src->s0 << 2;
+  s_src = src0->s0;
   s_dst = copy->w << 2;
   // Copy Buffer Pointers
-  src_y = src->buffer;
+  src_y = src0->buffer;
   dst_y = copy->buffer;
   src_y += y0 * s_src + (x0 << 2);
 
@@ -197,17 +197,17 @@ void canvas_copy_checker(canvas_copy_t* copy) {
   x1 = x0 + copy->w;
   y1 = y0 + copy->h;
   // Copy Source Buffer
-  canvas_src_t* src = copy->src;
-  canvas_src_clamp(src, &x1, &y1);
-
+  canvas_src_t* src0 = copy->src;
+  canvas_src_clamp(src0, &x1, &y1);
+  
   int s_src, s_dst;
   unsigned char *src, *src_y;
   unsigned char *dst, *dst_y;
   // Copy Strides
-  s_src = src->s0 << 2;
+  s_src = src0->s0;
   s_dst = copy->w << 2;
   // Copy Buffer Pointers
-  src_y = src->buffer;
+  src_y = src0->buffer;
   dst_y = copy->buffer;
   src_y += y0 * s_src + (x0 << 2);
 
@@ -224,6 +224,8 @@ void canvas_copy_checker(canvas_copy_t* copy) {
   for (int y = y0; y < y1; y++) {
     src = src_y;
     dst = dst_y;
+    // Warp Pattern Vertically
+    bg_y = bg + (y & repeat) * size;
 
     for (int x = x0; x < x1; x += 8) {
       bg_x = bg_y + (x & repeat);
@@ -247,7 +249,5 @@ void canvas_copy_checker(canvas_copy_t* copy) {
     // Next Lane
     src_y += s_src;
     dst_y += s_dst;
-    // Next Pattern Lane
-    bg_y = bg + (y & repeat) * size;
   }
 }

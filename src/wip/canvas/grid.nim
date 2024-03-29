@@ -98,11 +98,11 @@ func region*(tile: ptr NCanvasTile): NCanvasDirty =
     dy = cast[cint](tile.dy)
   # Check if is Actually Dirty
   if tile.dirty and tile.texture > 0:
-    result.x = dx and 0xF
-    result.y = dy and 0xF
-    # Dirty Dimensions
-    result.w = (dx shr 4) - result.x
-    result.h = (dy shr 4) - result.y
+    result.x = (dx and 0xF) shl 5
+    result.y = (dy and 0xF) shl 5
+    # Dirty 32x32 Dimensions
+    result.w = (dx shr 4) shl 5 - result.x
+    result.h = (dy shr 4) shl 5 - result.y
 
 # -------------------
 # Canvas Grid Manager
@@ -136,7 +136,7 @@ proc activate*(grid: var NCanvasGrid, tx, ty: cint) =
     tile.ty = cast[uint8](ty)
     # Check Tile Texture
     if prev.texture > 0:
-      tile.texture = prev.texture
+      tile[] = prev[]
     else:
       tile.dx = 0xFF
       tile.dy = 0xFF

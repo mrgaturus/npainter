@@ -209,7 +209,8 @@ proc map*(view: var NCanvasViewport, tile: ptr NCanvasTile) =
   let ctx = view.renderer
   var m: NCanvasPBOMap
   # Ensure a Dirty Region
-  if tile.invalid:
+  if not tile.dirty: return
+  elif tile.invalid:
     tile.whole()
   let
     r = tile.region()
@@ -242,8 +243,8 @@ proc stream*(map: ptr NCanvasPBOMap) =
     r = tile.region()
   # Prepare Canvas Copy
   var copy = NCanvasCopy(
-    x256: cint(tile.tx) shl 8,
-    y256: cint(tile.ty) shl 8,
+    x256: cint(tile.tx),
+    y256: cint(tile.ty),
     # Copy Region
     x: r.x, y: r.y,
     w: r.w, h: r.h,
