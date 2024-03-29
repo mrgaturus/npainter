@@ -171,7 +171,7 @@ iterator scan(p: ptr NProxyBlock): tuple[tx, ty: cint] =
 # Image Proxy Streaming
 # ---------------------
 
-proc update*(p: ptr NProxyBlock) =
+proc update(p: ptr NProxyBlock) =
   let
     stream = p.stream
     tiles = stream.tiles
@@ -193,7 +193,7 @@ proc update*(p: ptr NProxyBlock) =
   # Remove Dirty
   p.dirty = 0
 
-proc store*(p: ptr NProxyBlock) =
+proc store(p: ptr NProxyBlock) =
   let
     stream = p.stream
     tiles = stream.tiles
