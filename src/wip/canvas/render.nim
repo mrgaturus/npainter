@@ -335,10 +335,13 @@ proc active(idx, tex: GLuint) =
   glBindTexture(GL_TEXTURE_2D, tex)
 
 proc render*(view: var NCanvasViewport) =
+  let
+    ctx = view.renderer
+    idx = cint(view.affine.zoom <= 1.0)
+  # Current Vertex
   var cursor: cint
-  let ctx = view.renderer
   # Bind Program and VAO
-  glUseProgram(ctx.program[1])
+  glUseProgram(ctx.program[idx])
   glBindVertexArray(view.vao)
   glBindBufferBase(GL_UNIFORM_BUFFER, 0, view.ubo)
   # Render Each Tile
