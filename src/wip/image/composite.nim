@@ -221,7 +221,7 @@ proc elevate(stack: var NCompositorStack, step: NCompositorStep) =
       # No Scope
       return
     # Optimize First Layer of Scope when is not Passthrough
-    elif isNil(layer.next) and last.cmd != cmScopePass:
+    elif isNil(layer.next) and last.cmd notin {cmScopePass, cmScopeRoot}:
       scope.mode = bmPassthrough
   # Create Passthrough Scope
   if scope.mode == bmPassthrough:
