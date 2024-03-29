@@ -1,7 +1,8 @@
 import nogui/builder
 # Import NPainter Engine
 import ../../../wip/[brush, texture, binary, canvas]
-from ../../../wip/canvas/context import composed
+import ../../../wip/image/[layer, context, proxy]
+from ../../../wip/image import createLayer, selectLayer
 # Import Multithreading
 import nogui/spmc
 # TODO: move to engine side
@@ -56,68 +57,116 @@ controller NPainterEngine:
     # Engine Objects
     brush: NBrushStroke
     bucket: NBucketProof
-    canvas: NCanvasProof
-    # Multi-threading
+    canvas: NCanvasImage
+    # Canvas Manager
+    man: NCanvasManager
     pool: NThreadPool
     # XXX: Proof Textures
     [tex0, tex1, tex2]: NTexture
 
-  # TODO: bind canvas to tools at engine side
-  proc bindBrush0proof =
+  # TODO: prepare proxy at engine side
+  proc proxyBrush0proof*: ptr NImageProxy =
+    const bpp = cint(sizeof cushort)
+    # Prepare Proxy
+    let canvas = self.canvas
+    result = addr canvas.image.proxy
+    result[].prepare(pmBlit)
+    # Prepare Brush Engine
     let
-      ctx = addr self.canvas.ctx
-      canvas = addr self.brush.pipe.canvas
-    # Set Canvas Dimensions
-    canvas.w = ctx.w
-    canvas.h = ctx.h
-    # Set Canvas Stride
-    canvas.stride = canvas.w
-    # Working Buffers
-    canvas.dst = cast[ptr cshort](ctx[].composed 0)
-    canvas.buffer0 = cast[ptr cshort](addr ctx.buffer0[0])
-    canvas.buffer1 = cast[ptr cshort](addr ctx.buffer1[0])
+      ctx = addr canvas.image.ctx
+      target = addr self.brush.pipe.canvas
+      # Buffer Mappings
+      mapColor = ctx[].mapAux(bpp * 4)
+      mapShape = ctx[].mapAux(bpp)
+    # Target Dimensions
+    target.w = ctx.w
+    target.h = ctx.h
+    # Target Buffer Stride
+    target.stride = result.map.stride shr 3
+    # Target Buffer Pointers
+    target.dst = cast[ptr cshort](result.map.buffer)
+    target.buffer0 = cast[ptr cshort](mapColor.buffer)
+    target.buffer1 = cast[ptr cshort](mapShape.buffer)
     # Clear Brush Engine
     self.brush.clear()
 
-  # TODO: bind canvas to tools at engine side
-  proc bindBucket0proof =
+  proc proxyBucket0proof*: ptr NImageProxy =
+    const bpp = cint(sizeof cushort)
+    # Prepare Proxy
+    let canvas = self.canvas
+    result = addr canvas.image.proxy
+    result[].prepare(pmBlit)
+    # Prepare Bucket Tool
     let
-      ctx = addr self.canvas.ctx
-      composed = cast[ptr cshort](ctx[].composed 0)
-      buffer0 = cast[ptr cshort](addr ctx.buffer0[0])
-      buffer1 = cast[ptr cshort](addr ctx.buffer1[0])
+      ctx = addr canvas.image.ctx
+      mapColor = ctx[].mapAux(bpp * 4)
+      mapShape = ctx[].mapAux(bpp * 4)
     # Configure Bucket Tool
     self.bucket = configure(
-      composed,
-      buffer0, 
-      buffer1, 
+      result.map.buffer,
+      # Auxiliar Buffers
+      mapColor.buffer,
+      mapShape.buffer,
       ctx.w, ctx.h
     )
+    # We need mark all buffer
+    result[].mark(0, 0, ctx.w, ctx.h)
+    result[].stream()
 
-  # TODO: init affine at engine side
+  proc bindBackground0proof(checker: cint) =
+    let info = addr self.canvas.info
+    # Primary Color
+    info.r0 = 255
+    info.g0 = 255
+    info.b0 = 255
+    # Secondary Color
+    info.r1 = 225
+    info.g1 = 225
+    info.b1 = 225
+    # Update Background
+    info.checker = 4
+    self.canvas.background()
+
   proc bindAffine0proof =
     # Initialize View Transform
     let
-      ctx = addr self.canvas.ctx
+      canvas = self.canvas
+      ctx = addr canvas.image.ctx
       w = ctx.w
       h = ctx.h
-      a = self.canvas.affine()
+      a = canvas.affine
     # Configure Affine Transform
     a.cw = w
     a.ch = h
     a.x = float32(w) * 0.5
     a.y = float32(h) * 0.5
-    a.zoom = 1.0
+    a.zoom = 0.5
     a.angle = 0.0
     # Update Canvas
-    self.canvas.update()
+    canvas.transform()
 
-  # -- NPainter Constructor --
-  new npainterengine(proof_W, proof_H: cint):
-    result.canvas = createCanvasProof(proof_W, proof_H)
-    # Proof of Concept Initializers
-    result.bindBrush0proof()
-    result.bindBucket0proof()
+  proc bindLayer0proof =
+    let
+      canvas = self.canvas
+      img = canvas.image
+      layer = img.createLayer(lkColor)
+    # Change Layer Properties
+    layer.props.flags.incl(lpVisible)
+    layer.props.opacity = 1.0
+    # Select Current Layer
+    img.root.attachInside(layer)
+    img.selectLayer(layer)
+
+  proc clearProxy*() =
+    clearAux(self.canvas.image.ctx)
+
+  # -- NPainter Constructor - proof of concept --
+  new npainterengine(proof_W, proof_H: cint, checker = 0'i32):
+    result.man = createCanvasManager()
+    result.canvas = result.man.createCanvas(proof_W, proof_H)
+    # Proof of Concept Affine Transform
+    result.bindLayer0proof()
+    result.bindBackground0proof(checker)
     result.bindAffine0proof()
     # Initialize Multi-Threading
     result.pool = newThreadPool(6)

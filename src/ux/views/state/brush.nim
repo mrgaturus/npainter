@@ -3,6 +3,8 @@ import nogui/builder
 import nogui/values
 # Import NPainter Engine
 import engine, color
+from ../../../wip/image/proxy import
+  NImageProxy, commit
 import ../../../wip/canvas/matrix
 import ../../../wip/brush/stabilizer
 
@@ -132,6 +134,8 @@ controller CXBrush:
       color: CXColor
     # XXX: proof of concept stabilizer
     stabilizer: NBrushStabilizer
+    proxy: ptr NImageProxy
+    finalized: bool
 
   # -- Basic State -> Engine --
   proc prepareBasics() =
@@ -278,6 +282,10 @@ controller CXBrush:
   # -- Dispatch Preparing --
   proc prepareDispatch() =
     let brush = addr self.engine.brush
+    # Prepare Brush Proxy
+    self.proxy = self.engine.proxyBrush0proof()
+    brush.proxy = self.proxy
+    self.finalized = false
     # Configure Basics
     self.prepareBasics()
     # Configure Shape
@@ -309,31 +317,17 @@ controller CXBrush:
     let
       engine {.cursor.} = self.engine
       brush = addr engine.brush
+      canvas = addr engine.canvas
     # Dispath Stroke Path
     engine.pool.start()
     brush[].dispatch()
+    canvas[].update()
     engine.pool.stop()
-    # TODO: move this to canvas side
-    let
-      canvas = addr engine.canvas
-      ctx = addr engine.canvas.ctx
-      aabb = addr brush.aabb
-    # Clamp to Canvas
-    aabb.x1 = max(0, aabb.x1)
-    aabb.y1 = max(0, aabb.y1)
-    aabb.x2 = min(ctx.w, aabb.x2)
-    aabb.y2 = min(ctx.h, aabb.y2)
-    # Copy To Buffer
-    canvas[].mark(
-      aabb.x1, aabb.y1, 
-      aabb.x2 - aabb.x1,
-      aabb.y2 - aabb.y1)
-    canvas[].clean()
-    # Reset Dirty Region
-    aabb.x1 = high(int32); aabb.x2 = 0
-    aabb.y1 = high(int32); aabb.y2 = 0
     # Release Anti Flooding
     e.release()
+    if self.finalized:
+      self.proxy[].commit()
+      self.engine.clearProxy()
 
   callback cbDispatch(e: AuxState):
     if e.first:
@@ -365,6 +359,7 @@ controller CXBrush:
       for _ in 0 ..< cap:
         let ps = self.stabilizer.smooth(p.x, p.y, e.pressure, 0.0)
         point(engine.brush, ps.x, ps.y, ps.press, 0.0)
+      self.finalized = true
       # XXX: this hacky guard avoids event flooding
       if e.guard():
         push(self.cbDispathStroke, e[])

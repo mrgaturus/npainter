@@ -4,6 +4,7 @@ import nogui/builder
 import nogui/values
 import engine, color
 import ../../../wip/canvas/matrix
+from ../../../wip/image/proxy import commit
 
 # ----------------------
 # Bucket Tool Controller
@@ -46,7 +47,7 @@ controller CXBucket:
     if not e.first: return
     let
       canvas = addr self.engine.canvas
-      ctx = addr canvas.ctx
+      proxy = self.engine.proxyBucket0proof()
       fill = addr self.engine.bucket
       # Map Current Position
       affine = canvas[].affine
@@ -65,8 +66,10 @@ controller CXBucket:
     else: fill[].similar(x, y)
     fill[].blend()
     # Update Render Region
-    canvas[].mark(0, 0, ctx.w, ctx.h)
-    canvas[].clean()
+    canvas[].update()
+    proxy[].commit()
+    # Clear Proxy
+    self.engine.clearProxy()
 
   new cxbucket():
     let lerpBasic = lerp(0, 100)

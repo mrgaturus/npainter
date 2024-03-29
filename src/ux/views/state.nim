@@ -1,6 +1,6 @@
 import nogui/builder
 import nogui/gui/value
-from nogui/values import lerp
+from nogui/values import lerp, lorp
 # Import State Objects
 import ./state/[
   color,
@@ -49,9 +49,9 @@ controller NPainterState:
     result.brush = cxbrush()
     result.bucket = cxbucket()
 
-  proc engine0proof*(w, h: int32) =
+  proc engine0proof*(w, h: int32, checker = 0'i32) =
     let
-      engine = npainterengine(w, h)
+      engine = npainterengine(w, h, checker)
       color {.cursor.} = self.color
       # Engine Tools
       brush {.cursor.} = self.brush
@@ -64,9 +64,9 @@ controller NPainterState:
     bucket.engine = engine
     bucket.color = color
     # Locate Canvas to Center
-    self.canvas.x.peek[] = cfloat(engine.canvas.ctx.w) * 0.5
-    self.canvas.y.peek[] = cfloat(engine.canvas.ctx.h) * 0.5
-    lerp self.canvas.zoom.peek[], 0.475
+    self.canvas.x.peek[] = cfloat(engine.canvas.image.ctx.w) * 0.5
+    self.canvas.y.peek[] = cfloat(engine.canvas.image.ctx.h) * 0.5
+    lorp self.canvas.zoom.peek[], -1.0
     # Default Brush Values
     proof0default(brush)
 
