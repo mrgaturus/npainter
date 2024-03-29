@@ -1,14 +1,15 @@
-import item, list
+import list
 # Import Builder
 import nogui/pack
 import nogui/ux/prelude
 import nogui/builder
-import nogui/values
 # Import Widgets
 import nogui/ux/layouts/[box, level, form, misc, grid]
 import nogui/ux/widgets/[button, check, slider, combo, menu]
 import ../../../containers/[dock, scroll]
 import ../../../widgets/[separator, menuscroll]
+# Import Layer State
+import ../../state/layers
 
 # -----------
 # Layers Dock
@@ -36,17 +37,25 @@ icons "dock/layers", 16:
 
 controller CXLayersDock:
   attributes:
-    # Dummies Mode
+    # Combomodel
+    layers: CXLayers
+    list: UXLayerList
     mode: ComboModel
-    opacity: @ Lerp
-    # Dummies Flags
-    clipping: @ bool
-    protect: @ bool
-    lock: @ bool
-    wand: @ bool
     # Usable Dock
     {.public.}:
       dock: UXDock
+
+  callback cbUpdate:
+    let m = peek(self.layers.mode)[]
+    self.mode.select(ord m)
+
+  callback cbChangeMode:
+    let m = react(self.layers.mode)
+    m[] = NBlendMode(self.mode.selected.value)
+    echo "Selected Value:", self.mode.selected.value
+
+  callback cbStructure:
+    self.list.reloadProofLayerList()
 
   callback cbDummy:
     discard
@@ -54,41 +63,47 @@ controller CXLayersDock:
   proc createCombo() =
     self.mode = 
       combomodel(): menu("").child:
-        comboitem("Normal", 0)
+        comboitem("Normal", ord bmNormal)
         menuseparator("Dark")
-        comboitem("Multiply", 1)
-        comboitem("Darken", 2)
-        comboitem("Color Burn", 3)
-        comboitem("Linear Burn", 4)
-        comboitem("Darker Color", 5)
+        comboitem("Multiply", ord bmMultiply)
+        comboitem("Darken", ord bmDarken)
+        comboitem("Color Burn", ord bmColorBurn)
+        comboitem("Linear Burn", ord bmLinearBurn)
+        comboitem("Darker Color", ord bmDarkerColor)
         menuseparator("Light")
-        comboitem("Screen", 6)
-        comboitem("Lighten", 7)
-        comboitem("Color Dodge", 8)
-        comboitem("Linear Dodge", 9)
-        comboitem("Lighter Color", 10)
+        comboitem("Screen", ord bmScreen)
+        comboitem("Lighten", ord bmLighten)
+        comboitem("Color Dodge", ord bmColorDodge)
+        comboitem("Linear Dodge", ord bmLinearDodge)
+        comboitem("Lighter Color", ord bmLighterColor)
         menuseparator("Contrast")
-        comboitem("Overlay", 11)
-        comboitem("Soft Light", 12)
-        comboitem("Hard Light", 13)
-        comboitem("Vivid Light", 14)
-        comboitem("Linear Light", 15)
-        comboitem("Pin Light", 16)
+        comboitem("Overlay", ord bmOverlay)
+        comboitem("Soft Light", ord bmSoftLight)
+        comboitem("Hard Light", ord bmHardLight)
+        comboitem("Vivid Light", ord bmVividLight)
+        comboitem("Linear Light", ord bmLinearLight)
+        comboitem("Pin Light", ord bmPinLight)
         menuseparator("Comprare")
-        comboitem("Difference", 17)
-        comboitem("Exclusion", 18)
-        comboitem("Substract", 19)
-        comboitem("Divide", 20)
+        comboitem("Difference", ord bmDifference)
+        comboitem("Exclusion", ord bmExclusion)
+        comboitem("Substract", ord bmSubstract)
+        comboitem("Divide", ord bmDivide)
         menuseparator("Composite")
-        comboitem("Hue", 21)
-        comboitem("Saturation", 22)
-        comboitem("Color", 23)
-        comboitem("Luminosity", 24)
+        comboitem("Hue", ord bmHue)
+        comboitem("Saturation", ord bmSaturation)
+        comboitem("Color", ord bmColor)
+        comboitem("Luminosity", ord bmLuminosity)
     # Scroll Menu Hack
+    self.mode.onchange = self.cbChangeMode
     toScrollMenu(self.mode)
 
   proc createWidget: GUIWidget =
-    let cb = self.cbDummy
+    let
+      cb = self.cbDummy
+      la = self.layers
+    # Create Layer List
+    self.list = layerlist(self.layers)
+    self.list.reloadProofLayerList()
     # Create Layouts
     vertical().child:
       # Layer Quick Properties
@@ -96,42 +111,39 @@ controller CXLayersDock:
         vertical().child:
           form().child:
             field("Blending"): combobox(self.mode)
-            field("Opacity"): slider(self.opacity)
+            field("Opacity"): slider(la.opacity)
           grid(2, 2).child:
-            cell(0, 0): button("Protect Alpha", iconAlpha, self.protect)
-            cell(0, 1): button("Clipping", iconClipping, self.clipping)
-            cell(1, 0): button("Wand Target", iconWand, self.wand)
-            cell(1, 1): button("Lock", iconLock, self.lock)
+            cell(0, 0): button("Protect Alpha", iconAlpha, la.protect)
+            cell(0, 1): button("Clipping", iconClipping, la.clipping)
+            cell(1, 0): button("Wand Target", iconWand, la.wand)
+            cell(1, 1): button("Lock", iconLock, la.lock)
       # Layer Control
       min: level().child:
         # Layer Creation
-        button(iconAddLayer, cb).opaque()
+        button(iconAddLayer, la.cbCreateLayer).opaque()
         button(iconAddMask, cb).opaque()
         button(iconAddFolder, cb).opaque()
         vseparator() # Layer Manipulation
-        button(iconDelete, cb).opaque()
+        button(iconDelete, la.cbRemoveLayer).opaque()
         button(iconDuplicate, cb).opaque()
         button(iconMerge, cb).opaque()
-        button(iconClear, cb).opaque()
+        button(iconClear, la.cbClearLayer).opaque()
         # Misc Buttons
         tail: button(iconUp, cb).opaque()
         tail: button(iconDown, cb).opaque()
       # Layer Item
-      scrollview(): 
-        layerlist().child:
-          layeritem(0)
-          #layeritem(1)
-          #layeritem(1)
-          #layeritem(2)
-          #layeritem(2)
-          #layeritem(2)
-          #layeritem(1)
+      scrollview():
+        self.list
 
   proc createDock() =
     let w = self.createWidget()
     self.dock = dock("Layers", iconLayers, w)
 
-  new cxlayersdock():
-    result.opacity = value lerp(0, 100)
+  new cxlayersdock(layers: CXLayers):
+    result.layers = layers
+    # Create Docks
     result.createCombo()
     result.createDock()
+    # Configure Callbacks
+    result.layers.onselect = result.cbUpdate
+    result.layers.onstructure = result.cbStructure

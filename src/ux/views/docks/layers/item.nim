@@ -4,6 +4,7 @@ import nogui/pack
 import nogui/ux/prelude
 import nogui/ux/widgets/button
 import nogui/ux/layouts/[box, level, misc]
+import ../../state/layers
 
 # -------------------
 # Layer Nesting Level
@@ -36,10 +37,15 @@ widget UXLayerLevel:
 
 widget UXLayerThumb:
   attributes:
+    # This is a proof of concept
+    layers: CXLayers
+    layer: NLayer
     size: & int32
 
-  new layerthumb():
-    discard
+  new layerthumb(layers: CXLayers, layer: NLayer):
+    result.layers = layers
+    result.layer = layer
+    result.flags = wMouse
 
   method update =
     let
@@ -49,6 +55,11 @@ widget UXLayerThumb:
     # Thumbnail Min Size
     m.minW = s
     m.minH = s
+
+  method event(state: ptr GUIState) =
+    # This is patetic XD
+    if state.kind == evCursorClick:
+      self.layers.select(self.layer)
 
   method draw(ctx: ptr CTXRender) =
     ctx.color 0xFFFFFFFF'u32
@@ -90,6 +101,9 @@ widget UXLayerItem:
   attributes:
     # Button Manipulation
     [btnShow, btnProps]: UXIconButton
+    # XXX: proof of concept linking
+    {.cursor.}:
+      thumb: UXLayerThumb
     # TODO: link to a layer controller
     {.public.}:
       level: @ int32
@@ -100,8 +114,9 @@ widget UXLayerItem:
   callback cbProps:
     discard
 
-  new layeritem(lvl: int32):
-    let 
+  new layeritem(layers: CXLayers, layer: NLayer, lvl: int32):
+    let
+      thumb = layerthumb(layers, layer)
       btnShow = button(iconVisible, result.cbVisible)
       btnProps = button(iconProps, result.cbProps)
     # Create Layer Layout
@@ -114,7 +129,7 @@ widget UXLayerItem:
         # Widget Info
         margin(4):
           horizontal().child:
-            min: layerthumb()
+            min: thumb
             layertext()
     # Button Props
     result.add btnProps.opaque()
@@ -122,6 +137,8 @@ widget UXLayerItem:
     result.btnShow = btnShow
     result.btnProps = btnProps
     result.level = value(lvl)
+    # XXX: this is a proof of concept
+    result.thumb = thumb
 
   method update =
     let
@@ -154,7 +171,7 @@ widget UXLayerItem:
     # Adjust Rect to Button Position
     r.x = r0.x
     # Draw Rect
-    if self.level.peek[] == 0:
+    if self.thumb.layer == self.thumb.layers.selected:
       ctx.color self.itemColor()
     else: ctx.color self.opaqueColor()
     ctx.fill rect(r)

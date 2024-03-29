@@ -7,7 +7,8 @@ import ./state/[
   canvas,
   brush,
   tools,
-  engine
+  engine,
+  layers
 ]
 
 # -------------------------
@@ -34,6 +35,7 @@ type
 controller NPainterState:
   attributes: {.public.}:
     engine: NPainterEngine
+    layers: CXLayers
     tool: @ int32 # <- CKPainterTool
     # Common State
     color: CXColor
@@ -48,6 +50,7 @@ controller NPainterState:
     # Tools State
     result.brush = cxbrush()
     result.bucket = cxbucket()
+    # Proof of Concept Layers
 
   proc engine0proof*(w, h: int32, checker = 0'i32) =
     let
@@ -63,6 +66,8 @@ controller NPainterState:
     brush.color = color
     bucket.engine = engine
     bucket.color = color
+    # Create Proof of Concept Layer
+    self.layers = cxlayers(engine.canvas)
     # Locate Canvas to Center
     self.canvas.x.peek[] = cfloat(engine.canvas.image.ctx.w) * 0.5
     self.canvas.y.peek[] = cfloat(engine.canvas.image.ctx.h) * 0.5

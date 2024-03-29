@@ -1,7 +1,7 @@
 import nogui/builder
 # Import NPainter Engine
 import ../../../wip/[brush, texture, binary, canvas]
-import ../../../wip/image/[layer, context, proxy]
+import ../../../wip/image/[context, proxy]
 from ../../../wip/image import createLayer, selectLayer
 # Import Multithreading
 import nogui/spmc
@@ -145,18 +145,6 @@ controller NPainterEngine:
     # Update Canvas
     canvas.transform()
 
-  proc bindLayer0proof =
-    let
-      canvas = self.canvas
-      img = canvas.image
-      layer = img.createLayer(lkColor)
-    # Change Layer Properties
-    layer.props.flags.incl(lpVisible)
-    layer.props.opacity = 1.0
-    # Select Current Layer
-    img.root.attachInside(layer)
-    img.selectLayer(layer)
-
   proc clearProxy*() =
     clearAux(self.canvas.image.ctx)
 
@@ -165,7 +153,6 @@ controller NPainterEngine:
     result.man = createCanvasManager()
     result.canvas = result.man.createCanvas(proof_W, proof_H)
     # Proof of Concept Affine Transform
-    result.bindLayer0proof()
     result.bindBackground0proof(checker)
     result.bindAffine0proof()
     # Initialize Multi-Threading

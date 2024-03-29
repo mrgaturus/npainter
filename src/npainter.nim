@@ -16,10 +16,9 @@ folders:
 
 proc main() =
   createApp(1280, 720, nil)
-  let c = ncMainWindow()
-  # Create Proof Engine
-  c.state.engine0proof(1920, 1080)
-  let engine = c.state.engine
+  let
+    c = cxnpainter0proof(1920, 1080)
+    engine = c.state.engine
   # Open Window
   executeApp(c.frame):
     #glClearColor(0.25, 0.25, 0.25, 1.0)
