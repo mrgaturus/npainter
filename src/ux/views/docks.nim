@@ -106,7 +106,7 @@ controller CXDocks:
     # Initialize Docks
     result.dockColor = cxcolordock(state.color)
     result.dockNav = cxnavigatordock(state.canvas)
-    result.dockLayers = cxlayersdock()
+    result.dockLayers = cxlayersdock(state.layers)
     result.dockTool = cxtooldock(state, session)
     # Session Watch Docks
     session.watch(result.dockColor.dock)

@@ -1,12 +1,44 @@
 import nogui/ux/prelude
+import ../../state/layers
+import item
+# XXX: this is a proof of concept
 
 # -----------------
 # Layer List Layout
 # -----------------
 
 widget UXLayerList:
-  new layerlist():
-    discard
+  attributes: {.cursor.}:
+    layers: CXLayers
+
+  new layerlist(layers: CXLayers):
+    result.layers = layers
+
+  proc clear() =
+    # XXX: this is awful
+    # ARC / ORC torture XD
+    for w in forward(self.first):
+      w.parent = nil
+    self.first = nil
+    self.last = nil
+
+  proc reloadProofLayerList* =
+    let
+      root = self.layers.root
+      layers = self.layers
+    self.clear()
+    # Create Layer items
+    var layer = root.first
+    while not isNil(layer):
+      self.add layeritem(layers, layer, 0)
+      layer = layer.next
+    # Set Layer Dirty
+    self.set(wDirty)
+    echo "Reloaded"
+
+  # -----------------
+  # Useful Methods XD
+  # -----------------
 
   method update =
     var h: int16

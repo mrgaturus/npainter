@@ -2,6 +2,7 @@
 # Copyright (c) 2021 Cristian Camilo Ruiz <mrgaturus>
 import texture
 import brush/pipe
+import image/proxy
 # Import Math
 from math import 
   floor, ceil,
@@ -144,7 +145,7 @@ type
     # --TEMPORALY PUBLIC--
     # Brush Engine Pipeline
     pipe*: NBrushPipeline
-    aabb*: NStrokeRegion
+    proxy*: ptr NImageProxy
 
 # ----------------------
 # BRUSH STROKE PREPARING
@@ -154,11 +155,6 @@ proc clear*(path: var NBrushStroke) =
   # Reset Path
   path.prev_t = 0.0
   setLen(path.points, 0)
-  # Region Shortcut
-  let aabb = addr path.aabb
-  # Reset Dirty Region -TEMPORAL-
-  aabb.x1 = high(int32); aabb.x2 = 0
-  aabb.y1 = high(int32); aabb.y2 = 0
 
 proc color*(path: var NBrushStroke, r, g, b: cint, glass: bool) =
   if not glass:
@@ -328,13 +324,9 @@ proc region(x, y, size, angle: cfloat): NStrokeRegion =
   result.x2 = ceil(x + w).cint
   result.y2 = ceil(y + h).cint
 
-proc dirty(path: var NBrushStroke, region: NStrokeRegion) =
-  let aabb = addr path.aabb
-  # Sum Dirty AABB Region
-  aabb.x1 = min(region.x1, aabb.x1)
-  aabb.x2 = max(region.x2, aabb.x2)
-  aabb.y1 = min(region.y1, aabb.y1)
-  aabb.y2 = max(region.y2, aabb.y2)
+proc discover(path: var NBrushStroke, r: NStrokeRegion) =
+  path.proxy[].mark(r.x1, r.y1, r.x2 - r.x1, r.y2 - r.y1)
+  path.proxy[].stream()
 
 # --------------------------------------
 # BRUSH STROKE PER SHAPE RENDERING PROCS
@@ -453,8 +445,8 @@ proc prepare_stage0(path: var NBrushStroke, dyn: ptr NStrokeGeneric) =
     # Set Previous Position
     b.x = x; b.y = y
   else: discard
-  # Expand Dirty AABB
-  path.dirty(r)
+  # Discover Brush Region
+  path.discover(r)
 
 proc prepare_stage1(path: var NBrushStroke, press: cfloat): bool =
   result = true

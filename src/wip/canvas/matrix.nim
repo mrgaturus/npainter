@@ -1,12 +1,18 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 # Copyright (c) 2023 Cristian Camilo Ruiz <mrgaturus>
-from math import cos, sin, floor
+from math import cos, sin, floor, log2
 from nogui/values import guiProjection
 
 type
   NCanvasPoint* = tuple[x, y: cfloat]
   NCanvasMatrix* = array[9, cfloat]
   NCanvasProjection* = array[16, cfloat]
+  # Canvas Affine Matrices
+  NCanvasLOD = object
+    model0*, model1*: NCanvasMatrix
+    # LOD Level Adjust
+    level*: cint
+    zoom*: cfloat
   NCanvasAffine* = object
     mirror*: bool
     x*, y*: cfloat
@@ -15,18 +21,18 @@ type
     cw*, ch*: cint
     vw*, vh*: cint
     # Matrix Calculation
-    projection*: NCanvasProjection
+    pro*: NCanvasProjection
     model0*, model1*: NCanvasMatrix
+    # LOD Calculation
+    lod*: NCanvasLOD
 
 # -------------------------------
 # Canvas Affine Matrix Calculator
 # -------------------------------
 
 # <- [Translate][Rotate][Scale][Translate Center] <-
-proc affine(a: var NCanvasAffine) =
+proc affine(m: var NCanvasMatrix, a: var NCanvasAffine) =
   let
-    m = addr a.model0
-    # Center Position
     cx = -cfloat(a.vw shr 1)
     cy = -cfloat(a.vh shr 1)
     # Scale and Rotation
@@ -52,9 +58,8 @@ proc affine(a: var NCanvasAffine) =
   m[8] = 1.0
   
 # -> [Translate][Rotate][Scale][Translate Center] ->
-proc inverse(a: var NCanvasAffine) =
+proc inverse(m: var NCanvasMatrix, a: var NCanvasAffine) =
   let
-    m = addr a.model1
     # Center Position
     cx = -cfloat(a.vw shr 1)
     cy = -cfloat(a.vh shr 1)
@@ -104,25 +109,57 @@ proc perfect(a: var NCanvasAffine) =
   a.x = floor(x) * zoom
   a.y = floor(y) * zoom
 
+proc mipmap(a: var NCanvasAffine) =
+  let
+    lod = addr a.lod
+    # Backup Zoom and Position
+    zoom = a.zoom
+    x = a.x
+    y = a.y
+    # Calculate LOD Factor
+    shift = clamp(cint log2 zoom, 0, 5)
+    factor = 1.0 / cfloat(1 shl shift)
+  # Store LOD Shift
+  lod.level = shift
+  lod.zoom = zoom * factor
+  # Copy Affine when Original
+  if shift == 0:
+    lod.model0 = a.model0
+    lod.model1 = a.model1
+    return
+  # Apply LOD Factor
+  a.zoom = zoom * factor
+  a.x = x * factor
+  a.y = y * factor
+  # Calculate LOD Matrices
+  affine(lod.model0, a)
+  inverse(lod.model1, a)
+  # Restore Affine
+  a.zoom = zoom
+  a.x = x
+  a.y = y
+
 proc calculate*(a: var NCanvasAffine) =
   a.perfect()
   # Calculate Model
-  a.affine()
-  a.inverse()
+  affine(a.model0, a)
+  inverse(a.model1, a)
+  # Calculate LOD Model
+  a.mipmap()
   # Calculate Projection
-  guiProjection(addr a.projection, 
+  guiProjection(addr a.pro, 
     cfloat a.vw, cfloat a.vh)
 
-# ----------------------------
-# Canvas Affine Matrix Mapping
-# ----------------------------
+# --------------------
+# Canvas Affine Matrix
+# --------------------
+
+proc map*(m: NCanvasMatrix; x, y: cfloat): NCanvasPoint =
+  result.x = x * m[0] + y * m[1] + m[2]
+  result.y = x * m[3] + y * m[4] + m[5]
 
 proc forward*(a: NCanvasAffine; x, y: cfloat): NCanvasPoint =
-  let m = unsafeAddr a.model0
-  result.x = x * m[0] + y * m[1] + m[2]
-  result.y = x * m[3] + y * m[4] + m[5]
+  a.model0.map(x, y)
 
 proc inverse*(a: NCanvasAffine; x, y: cfloat): NCanvasPoint =
-  let m = unsafeAddr a.model1
-  result.x = x * m[0] + y * m[1] + m[2]
-  result.y = x * m[3] + y * m[4] + m[5]
+  a.model1.map(x, y)

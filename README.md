@@ -16,48 +16,49 @@ fast and simple digital painting software, work in progress
 $ nimble build
 # Building Fast Binary
 $ nimble build -d:danger
-# Pack Icons (using GUI tool)
-$ nopack
+# Generate Assets (using GUI tool)
+$ ~/.nimble/bin/nopack
 
 # Running Program
 $ ./npainter
 ```
 
-## ⚙️ Features
-  - Graphics Tablet Pressure using XInput2
-  - Fast Enough Rendering using SSE4.1
-  - Anti-Aliased and Amazing Brush Engine
-  - Anti-Aliased Bucket Fill + Gap Closing
-  - OpenGL 3.3 Accelerated Canvas
+## ⚙️ Roadmap Features
+  - [x] Pen Pressure Support
+  - [x] Multithreading and SIMD Optimization
+  - [x] Anti-Aliased and Amazing Brush Engine
+  - [x] Anti-Aliased Bucket Fill + Gap Closing
+  - [x] GPU Accelerated Canvas
+  - [x] Tiled Layering
+    - [x] Raster Layers
+    - [ ] Mask/Stencil Layers
+    - [x] Folder Layers
+    - [x] Fundamental Blending Modes
+    - [x] Clipping Group & Alpha Lock
+  - [ ] Intuitive and Professional UI/UX
+  - [ ] Transform Tool
+    - [ ] Perspective
+    - [ ] Mesh
+    - [ ] Liquify
+  - [ ] Selection Tools
+  - [ ] Infinite Undo using Compressed Files
+  - [ ] Fundamental Filters
+  - [ ] Multi Platform Support
+    - [x] Linux/X11
+    - [ ] Windows
+    - [ ] macOS
 
-## 🚧 Work in Progress Features
-  - Intuitive and Professional UI/UX
-  * Tiled Layering
-    - Raster Layers
-    - Mask/Stencil Layers
-    - Folder Layers
-    - Fundamental Blending Modes
-    - Clipping Group & Alpha Lock
-  - Selection Tools
-  - Transform Tool 
-    - Perspective
-    - Mesh
-    - Liquify
-  - Infinite Undo using Compressed Files
-  - Fundamental Filters
-  - Windows and Mac Support
-
-### 🕙 Long-term Planned Features
-  * Lineart Vector Layer
+### 🕙 Planned Features
+  * Vector Layer
     - Catmull
     - Bezier
   * Frame by Frame Animation
   * On-canvas Text Tool
-  * Android Support
+  * Android and iPad
 
 ### ❌ Not-Planned Features
   - Maximum Color Accuracy
   - The Fastest Painting Software ever
   - Very Realistic Brushes
   - 1:1 Features with Similar Software
-  - AI Filters and Cryptocurrency
+  - AI, Machine Learning and Cryptocurrency

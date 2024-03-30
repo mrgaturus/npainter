@@ -64,9 +64,9 @@ vec4 supersample_pixel(vec2 uv) {
 void main() {
   vec4 pixel = supersample_pixel(nTexPos);
   // Calculate Antialiasing Border
-  float factor = 256.0 / ubo.scale;
-  vec2 border = 1.0 + min(nTexPos, 0.0) * factor;
-  factor = border.x * border.y;
+  vec2 border = (nTexPos * 256.0 - 0.5) / ubo.scale;
+  border = 1.0 + min(border, 0.0);
   // Apply Antialiasing Border
-  gl_FragColor = pixel * factor;
+  float alpha = border.x * border.y;
+  gl_FragColor = pixel * alpha;
 }

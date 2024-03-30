@@ -2,16 +2,22 @@
 # Copyright (c) 2023 Cristian Camilo Ruiz <mrgaturus>
 import nogui/libs/gl
 import nogui/data
-import matrix, culling, grid
-export NCanvasDirty
+import copy, matrix, culling, grid
+# Export Tile Manipulation
+export NCanvasDirty, NCanvasTile
+export clean, whole, mark, region
 
 type
+  NCanvasData* = object
+    bg*: NCanvasBG
+    src*: NCanvasSrc
+  # Canvas Render Buffers
   NCanvasVertex = tuple[x, y, u, v: cushort]
   NCanvasPBOBuffer = ptr UncheckedArray[byte]
-  NCanvasPBOMap* = ref object
-    tile: ptr NCanvasTile
-    x256*, y256*: cint
-    # Chunk Mapping
+  NCanvasPBOMap* = object
+    tile*: ptr NCanvasTile
+    data*: ptr NCanvasData
+    # PBO Chunk Mapping
     offset, bytes*: GLint
     chunk*: pointer
   NCanvasRenderer* = object
@@ -22,15 +28,15 @@ type
     usables: seq[GLuint]
     # OpenGL Mappers
     bytes: GLint
-    mappers: seq[NCanvasPBOMap]
+    maps: seq[NCanvasPBOMap]
   # Canvas Viewport
   NCanvasViewport* = object
     renderer*: ptr NCanvasRenderer
+    data*: ptr NCanvasData
+    # Viewport Affine
     affine*: NCanvasAffine
     cull: NCanvasCulling
-    # Canvas Image Size
-    w, h: cint
-    # Tile Geometry
+    # Viewport Grid
     vao, vbo, ubo: GLuint
     grid: NCanvasGrid
 
@@ -110,9 +116,6 @@ proc createCanvasViewport*(ctx: var NCanvasRenderer; w, h: cint): NCanvasViewpor
       w256 = (w + 255) shr 8
       h256 = (h + 255) shr 8
     result.grid = createCanvasGrid(w256, h256)
-  # Viewport Size
-  result.w = w
-  result.h = h
 
 # --------------------------
 # Canvas Render Tile Usables
@@ -153,10 +156,10 @@ proc locateSamples(view: var NCanvasViewport) =
   # Locate Four Samples
   for batch in batches(view.grid):
     let
-      x0 = cast[cint](batch.tile.x0)
-      y0 = cast[cint](batch.tile.y0)
+      x = cast[cint](batch.tile.tx)
+      y = cast[cint](batch.tile.ty)
     # Locate Four Samples
-    batch.sample[] = view.grid.sample(dummy, x0, y0)
+    batch.sample[] = view.grid.sample(dummy, x, y)
 
 proc locatePositions(view: var NCanvasViewport) =
   let 
@@ -180,8 +183,8 @@ proc locatePositions(view: var NCanvasViewport) =
   # Locate Each Batch
   for batch in batches(view.grid):
     # Calculate Tile Positions
-    x256 = cast[cushort](batch.tile.x0) shl 8
-    y256 = cast[cushort](batch.tile.y0) shl 8
+    x256 = cast[cushort](batch.tile.tx) shl 8
+    y256 = cast[cushort](batch.tile.ty) shl 8
     x512 = x256 + 256
     y512 = y256 + 256
     # Upload Position
@@ -202,66 +205,63 @@ proc locatePositions(view: var NCanvasViewport) =
 # Canvas Render Tile Mapping
 # --------------------------
 
-proc map*(view: var NCanvasViewport; invalid: ptr NCanvasTile): NCanvasPBOMap =
-  let 
-    ctx = view.renderer
-    offset = ctx.bytes
-  const bytes = 256 * 256 * 4
-  # Allocate Tile Map
-  new result
-  # Define Dirty Region
-  result.tile = invalid
-  result.offset = offset
-  result.bytes = bytes
-  # Check Really Invalid
-  assert invalid.invalid, "tile not invalid"
-  result.x256 = cast[cint](invalid.x0)
-  result.y256 = cast[cint](invalid.y0)
-  # Dirty All Tile
-  invalid.whole()
-  # Add Dirty Region to Mappers
-  ctx.mappers.add(result)
-  ctx.bytes += bytes
-
-proc map*(view: var NCanvasViewport; x256, y256: cint): NCanvasPBOMap =
-  # Define Tile Map
+proc map*(view: var NCanvasViewport, tile: ptr NCanvasTile) =
+  let ctx = view.renderer
+  var m: NCanvasPBOMap
+  # Ensure a Dirty Region
+  if not tile.dirty: return
+  elif tile.invalid:
+    tile.whole()
   let
-    ctx = view.renderer
-    tile = view.grid.lookup(x256, y256)
-    # Tile Regions
-    region = tile.region()
-    offset = ctx.bytes
-    # Tile Buffer Copy Size
-    bytes = region.w * region.h * 4
-  # Allocate Tile Map
-  new result
-  # Define Dirty Position
-  result.x256 = x256
-  result.y256 = y256
-  # Define Dirty Chunk
-  result.tile = tile
-  result.offset = offset
-  result.bytes = bytes
-  # Add Dirty Region to Mappers
-  ctx.mappers.add(result)
+    r = tile.region()
+    bytes = r.w * r.h * 4
+  # Define Chunk Size
+  m.tile = tile
+  m.offset = ctx.bytes
+  m.bytes = bytes
+  # Define Data Source
+  m.data = view.data
+  # Gather to Renderer Maps
+  ctx.maps.add(m)
   ctx.bytes += bytes
 
 proc map*(ctx: var NCanvasRenderer) =
   let bytes = ctx.bytes
-  # Create New PBO, And Map Each Segment
+  # Create New PBO
   glBindBuffer(GL_PIXEL_UNPACK_BUFFER, ctx.pbo)
   glBufferData(GL_PIXEL_UNPACK_BUFFER, bytes, nil, GL_STREAM_COPY)
   var chunk = cast[NCanvasPBOBuffer](
     glMapBufferRange(GL_PIXEL_UNPACK_BUFFER, 0, bytes,
     GL_MAP_WRITE_BIT or GL_MAP_UNSYNCHRONIZED_BIT))
-  for m in ctx.mappers:
+  # Asign PBO Chunks to Mappers
+  for m in mitems(ctx.maps):
     m.chunk = addr chunk[m.offset]
+
+proc stream*(map: ptr NCanvasPBOMap) =
+  let
+    tile = map.tile
+    r = tile.region()
+  # Prepare Canvas Copy
+  var copy = NCanvasCopy(
+    x256: cint(tile.tx),
+    y256: cint(tile.ty),
+    # Copy Region
+    x: r.x, y: r.y,
+    w: r.w, h: r.h,
+    # Copy Source
+    bg: addr map.data.bg,
+    src: addr map.data.src,
+    # Copy Buffer
+    buffer: map.chunk
+  )
+  # Dispatch Copy
+  copy.stream()
 
 proc unmap*(ctx: var NCanvasRenderer) =
   # Close Buffer Map
   discard glUnmapBuffer(GL_PIXEL_UNPACK_BUFFER)
   # Upload Each Texture
-  for m in ctx.mappers:
+  for m in ctx.maps:
     let
       tile = m.tile
       r = tile.region()
@@ -276,42 +276,40 @@ proc unmap*(ctx: var NCanvasRenderer) =
   glBindTexture(GL_TEXTURE_2D, 0)
   glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0)
   # Clear Mappers
-  newSeq(ctx.mappers, 0)
+  newSeq(ctx.maps, 0)
   ctx.bytes = 0
 
 # -----------------------
-# Canvas Viewport Helpers
+# Canvas Render Iterators
 # -----------------------
 
 iterator tiles*(view: var NCanvasViewport): ptr NCanvasTile =
-  for tile in view.grid.tiles: yield tile
+  for tile in view.grid.tiles():
+    yield tile
 
-template mark32*(view: var NCanvasViewport; x32, y32: cint) =
-  view.grid.mark32(x32, y32)
-
-template mark*(view: var NCanvasViewport; dirty: NCanvasDirty) =
-  view.grid.mark(dirty)
-
-template region*(pbo: NCanvasPBOMap): NCanvasDirty =
-  pbo.tile.region()
+iterator maps*(render: var NCanvasRenderer): ptr NCanvasPBOMap =
+  for map in mitems(render.maps):
+    yield map.addr
 
 # ----------------------
 # Canvas Render Commands
 # ----------------------
 
 proc transform(view: var NCanvasViewport) =
-  let affine = addr view.affine
+  let
+    affine = addr view.affine
+    lod = addr affine.lod
   # Calculate Matrices
   affine[].calculate()
   # Copy Matrices as std140 said
   glBindBuffer(GL_UNIFORM_BUFFER, view.ubo)
   let ubo = cast[ptr UncheckedArray[byte]](
     glMapBuffer(GL_UNIFORM_BUFFER, GL_WRITE_ONLY))
-  copyMem(addr ubo[0], addr affine.zoom, 4)
-  copyMem(addr ubo[16], addr affine.model1[0], 12)
-  copyMem(addr ubo[32], addr affine.model1[3], 12)
-  copyMem(addr ubo[48], addr affine.model1[6], 12)
-  copyMem(addr ubo[64], addr affine.projection[0], 64)
+  copyMem(addr ubo[0], addr lod.zoom, 4)
+  copyMem(addr ubo[16], addr lod.model1[0], 12)
+  copyMem(addr ubo[32], addr lod.model1[3], 12)
+  copyMem(addr ubo[48], addr lod.model1[6], 12)
+  copyMem(addr ubo[64], addr affine.pro[0], 64)
   discard glUnmapBuffer(GL_UNIFORM_BUFFER)
   glBindBuffer(GL_UNIFORM_BUFFER, 0)
 
@@ -337,10 +335,13 @@ proc active(idx, tex: GLuint) =
   glBindTexture(GL_TEXTURE_2D, tex)
 
 proc render*(view: var NCanvasViewport) =
+  let
+    ctx = view.renderer
+    idx = cint(view.affine.zoom <= 1.0)
+  # Current Vertex
   var cursor: cint
-  let ctx = view.renderer
   # Bind Program and VAO
-  glUseProgram(ctx.program[1])
+  glUseProgram(ctx.program[idx])
   glBindVertexArray(view.vao)
   glBindBufferBase(GL_UNIFORM_BUFFER, 0, view.ubo)
   # Render Each Tile

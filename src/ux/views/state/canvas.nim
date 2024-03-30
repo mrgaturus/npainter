@@ -12,9 +12,10 @@ from math import
   log2, pow, `mod`,
   PI, arctan2, floor
 
-# -----------------
+# ----------------------------------------
 # Canvas Controller
-# -----------------
+# TODO: move canvas control to engine side
+# ----------------------------------------
 
 controller CXCanvas:
   attributes:
@@ -30,11 +31,8 @@ controller CXCanvas:
     # TODO: move this to engine side??
     prev: NCanvasAffine
 
-  callback cbClear0proof:
-    self.engine.canvas.clear()
-
   proc affine: ptr NCanvasAffine {.inline.} =
-    self.engine.canvas.affine()
+    self.engine.canvas.affine
 
   proc update*() =
     let 
@@ -55,8 +53,8 @@ controller CXCanvas:
     # Apply Horizontal and Vertical Mirror
     m.mirror = mirrorX xor mirrorY
     if mirrorY: m.angle += PI
-    # Update Canvas
-    update(self.engine.canvas)
+    # Update Canvas Transform
+    transform(self.engine.canvas)
 
   # -- Backup Proc --
   proc backup(e: ptr AuxState) =
@@ -180,7 +178,7 @@ controller CXCanvas:
 
   # -- Canvas State Constructor --
   new cxcanvas():
-    result.zoom = value(lerp2(-5, 5), result.cbUpdate)
+    result.zoom = value(lerp2(-6, 6), result.cbUpdate)
     result.angle = value(lerp2(-PI, PI), result.cbUpdate)
     # Mirror Updating
     result.mirrorX.head.cb = result.cbMirror
