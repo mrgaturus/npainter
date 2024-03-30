@@ -12,6 +12,7 @@ controller CXLayers:
   attributes:
     canvas: NCanvasImage
     image: NImage
+    busy: bool
     # Current State
     {.public.}:
       mode: @ NBlendMode
@@ -54,10 +55,23 @@ controller CXLayers:
   # Layer Control Manipulation
   # --------------------------
 
+  callback cbRender:
+    let image = self.image
+    # XXX: this is a proof of concept
+    # TODO: move this to engine side 
+    image.status.clip = mark(0, 0, 0, 0)
+    image.status.mark(0, 0, image.ctx.w, image.ctx.h)
+    self.canvas.update()
+    # Remove Busy
+    self.busy = false
+
+  proc render() =
+    if not self.busy:
+      self.busy = true
+      push(self.cbRender)
+
   callback cbUpdateLayer:
-    let
-      image = self.image
-      layer = self.image.selected
+    let layer = self.image.selected
     # Create Flags
     var flags = {lpVisible}
     if self.clipping.peek[]: flags.incl(lpClipping)
@@ -68,11 +82,8 @@ controller CXLayers:
     layer.props.flags = flags
     layer.props.mode = self.mode.peek[]
     layer.props.opacity = toRaw(self.opacity.peek[])
-    # XXX: this is a proof of concept
-    # TODO: move this to engine side 
-    image.status.clip = mark(0, 0, 0, 0)
-    image.status.mark(0, 0, image.ctx.w, image.ctx.h)
-    self.canvas.update()
+    # Render Layer
+    self.render()
 
   callback cbCreateLayer:
     let
@@ -86,6 +97,8 @@ controller CXLayers:
     # Select New Layer
     self.select(layer)
     push(self.onstructure)
+    # Render Layer
+    self.render()
 
   callback cbClearLayer:
     let
@@ -96,9 +109,8 @@ controller CXLayers:
     # TODO: move this to engine side 
     tiles[].destroy()
     tiles[] = createTileImage(4)
-    image.status.clip = mark(0, 0, 0, 0)
-    image.status.mark(0, 0, image.ctx.w, image.ctx.h)
-    self.canvas.update()
+    # Render Layer
+    self.render()
 
   callback cbRemoveLayer:
     let
@@ -112,14 +124,12 @@ controller CXLayers:
     if not isNil(layer.next):
       self.select(layer.next)
     else: self.select(layer.prev)
-    # Layer Detach
+    # Layer Detach and Dealloc
     layer.detach()
-    # XXX: this is a proof of concept
-    # TODO: move this to engine side 
-    image.status.clip = mark(0, 0, 0, 0)
-    image.status.mark(0, 0, image.ctx.w, image.ctx.h)
-    self.canvas.update()
+    layer.destroy()
+    # Render Layer
     push(self.onstructure)
+    self.render()
 
   # ----------------------------
   # Layer Control Initialization
