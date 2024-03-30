@@ -6,3 +6,6 @@ icons.list
 paths.list
 # Ignore Data Folder
 data/
+
+# Ignore VSCode
+.vscode
