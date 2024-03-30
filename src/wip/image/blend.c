@@ -177,14 +177,17 @@ __m128i blend_colordodge(__m128i src, __m128i dst) {
 }
 
 __m128i blend_lineardodge(__m128i src, __m128i dst) {
-  __m128i xmm0, xmm1;
+  __m128i xmm0, xmm1, alpha;
   xmm0 = _mm_shuffle_epi32(src, 0xFF);
   xmm1 = _mm_shuffle_epi32(dst, 0xFF);
+  alpha = _mm_multiply_color(xmm0, xmm1);
+
   // s + d
   src = _mm_multiply_color(src, xmm1);
   dst = _mm_multiply_color(dst, xmm0);
   xmm0 = _mm_add_epi32(src, dst);
-  
+  xmm0 = _mm_min_epi32(xmm0, alpha);
+
   return xmm0;
 }
 
@@ -371,6 +374,7 @@ __m128i blend_linearlight(__m128i src, __m128i dst) {
   src = _mm_add_epi32(src, src);
   dst = _mm_sub_epi32(dst, alpha);
   src = _mm_add_epi32(src, dst);
+  src = _mm_min_epi32(src, alpha);
 
   return src;
 }
