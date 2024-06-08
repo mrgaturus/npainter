@@ -1,52 +1,12 @@
 import nogui/builder
 # Import NPainter Engine
-import ../../../wip/[brush, texture, binary, canvas]
-import ../../../wip/image/[context, proxy]
-from ../../../wip/image import createLayer, selectLayer
+import ../../wip/[brush, texture, binary, canvas]
+import ../../wip/image/[context, proxy]
+from ../../wip/image import createLayer, selectLayer
 # Import Multithreading
 import nogui/spmc
 # TODO: move to engine side
 import nogui/libs/gl
-
-# --------------------------------------------------
-# NPainter Engine Workaround Event
-# TODO: remove this after unify event/callback queue
-# --------------------------------------------------
-import nogui/gui/widget
-from nogui/gui/event import GUIEvent
-export GUIEvent
-export widget
-
-type
-  AuxState* = object
-    # XXX: hacky way to avoid flooding engine events
-    #      - This will be solved unifying event/callback queue
-    #      - Also allow deferring a callback after polling events/callbacks
-    busy*: ptr bool
-    first*: bool
-    # Cursor Event
-    click0*: uint
-    x0*, y0*: float32
-    x*, y*: float32
-    pressure*: float32
-    # Pressed Key
-    flags*: GUIFlags
-    kind*: GUIEvent
-    key*: uint
-    mods*: uint
-
-proc guard*(aux: ptr AuxState): bool =
-  let busy = aux.busy
-  # Guard Aux State
-  # XXX: this hack is useful to deal
-  #      with current awful event->callaback sequence
-  #      occurs as [ev0, ev1, ev2 -> cb0, cb1, cb2]
-  #      it should be [ev0 -> cb0, ev1 -> cb1, ev2 -> cb2]
-  result = busy[]
-  busy[] = true
-
-proc release*(aux: ptr AuxState) =
-  aux.busy[] = false
 
 # --------------------------
 # NPainter Engine Controller

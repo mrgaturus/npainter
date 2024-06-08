@@ -1,9 +1,8 @@
-import nogui/gui/value
+import nogui/core/value
 import nogui/ux/prelude
 import nogui/builder
 # Import and Export HSV Color
-from nogui/values import 
-  RGBColor, HSVColor, toRGB, toPacked
+import nogui/ux/values/chroma
 export RGBColor, HSVColor
 
 # -----------------------
@@ -42,7 +41,7 @@ controller CXColor:
     # Disable Eraser
     eraser[] = false
     # Execute Changed Callback
-    push(self.onchange)
+    send(self.onchange)
 
   # -- Eraser Manipulation --
   proc setEraser*(value: bool) =

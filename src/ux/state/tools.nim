@@ -1,10 +1,10 @@
-import nogui/gui/value
+import nogui/core/value
 import nogui/builder
 # Import Values
-import nogui/values
+import nogui/ux/values/linear
 import engine, color
-import ../../../wip/canvas/matrix
-from ../../../wip/image/proxy import commit
+import ../../wip/canvas/matrix
+from ../../wip/image/proxy import commit
 
 # ----------------------
 # Bucket Tool Controller
@@ -27,8 +27,8 @@ controller CXBucket:
       mode: @ int32
       target: @ int32
       # Bucket Fill Parameters
-      threshold: @ Lerp
-      gap: @ Lerp
+      threshold: @ Linear
+      gap: @ Linear
       antialiasing: @ bool
     # TODO: Move this to a dispatch widget
     {.public, cursor.}:
@@ -72,6 +72,6 @@ controller CXBucket:
     self.engine.clearProxy()
 
   new cxbucket():
-    let lerpBasic = lerp(0, 100)
-    result.threshold = lerpBasic.value
-    result.gap = lerpBasic.value
+    let liBasic = linear(0, 100)
+    result.threshold = liBasic
+    result.gap = liBasic

@@ -1,13 +1,13 @@
-from nogui/builder import widget, controller, child
+from nogui/builder import controller, child
 from tools import iconLogo
-import nogui/gui/[widget, render]
+import nogui/ux/prelude
 import nogui/ux/widgets/menu
 import nogui/ux/widgets/button
 
 widget UXNoClick:
   new noclick(w: GUIWidget):
     result.add w
-    w.flags = wHidden
+    w.flags = {wHidden}
 
   method draw(ctx: ptr CTXRender) =
     let w {.cursor.} = self.first
@@ -162,7 +162,7 @@ controller NCMainMenu:
       menuitem("Work in progress", self.dummy)
 
   proc menuLogo: UXNoClick =
-    result = noclick button(iconLogo, self.dummy).opaque()
+    result = noclick button(iconLogo, self.dummy).clear()
 
   proc createMenu*(): UXMenuBar =
     menubar().child:

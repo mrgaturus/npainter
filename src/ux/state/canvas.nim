@@ -1,12 +1,12 @@
 import engine
 # Import Builder
 import nogui/builder
-import nogui/gui/value
-import nogui/values
+import nogui/core/value
+import nogui/ux/values/dual
 # TODO: make affine backup on engine side
-import nogui/gui/event
-from nogui import getApp, windowSize
-import ../../../wip/canvas/matrix
+import nogui/ux/prelude
+from nogui import getApp, getWindow
+import ../../wip/canvas/matrix
 # Import PI for Angle
 from math import 
   log2, pow, `mod`,
@@ -20,7 +20,7 @@ from math import
 controller CXCanvas:
   attributes:
     {.public.}:
-      [zoom, angle]: @ Lerp2
+      [zoom, angle]: @ LinearDual
       [x, y]: @ float32
       # Mirror Buttons
       mirrorX: @ bool
@@ -181,5 +181,5 @@ controller CXCanvas:
     result.zoom = value(lerp2(-6, 6), result.cbUpdate)
     result.angle = value(lerp2(-PI, PI), result.cbUpdate)
     # Mirror Updating
-    result.mirrorX.head.cb = result.cbMirror
-    result.mirrorY.head.cb = result.cbMirror
+    result.mirrorX.cb = result.cbMirror
+    result.mirrorY.cb = result.cbMirror

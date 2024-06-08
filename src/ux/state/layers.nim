@@ -1,9 +1,9 @@
-import nogui/gui/[value, signal]
-import nogui/values
+import nogui/core/[value, callback]
+import nogui/ux/values/linear
 import nogui/builder
-import ../../../wip/image
-import ../../../wip/image/[layer, tiles, context]
-import ../../../wip/canvas
+import ../../wip/image
+import ../../wip/image/[layer, tiles, context]
+import ../../wip/canvas
 # This is a proof of concept
 # nogui needs to be remaked again to do remaining parts
 export layer
@@ -16,7 +16,7 @@ controller CXLayers:
     # Current State
     {.public.}:
       mode: @ NBlendMode
-      opacity: @ Lerp
+      opacity: @ Linear
       # Dummies Flags
       clipping: @ bool
       protect: @ bool
@@ -49,7 +49,7 @@ controller CXLayers:
     self.image.selectLayer(layer)
     self.reflect(layer)
     # React to Selected Changes
-    push(self.onselect)
+    send(self.onselect)
 
   # --------------------------
   # Layer Control Manipulation
@@ -68,7 +68,7 @@ controller CXLayers:
   proc render() =
     if not self.busy:
       self.busy = true
-      push(self.cbRender)
+      send(self.cbRender)
 
   callback cbUpdateLayer:
     let layer = self.image.selected
@@ -96,7 +96,7 @@ controller CXLayers:
     layer.props.opacity = 1.0
     # Select New Layer
     self.select(layer)
-    push(self.onstructure)
+    send(self.onstructure)
     # Render Layer
     self.render()
 
@@ -128,7 +128,7 @@ controller CXLayers:
     layer.detach()
     layer.destroy()
     # Render Layer
-    push(self.onstructure)
+    send(self.onstructure)
     self.render()
 
   # ----------------------------
@@ -148,21 +148,21 @@ controller CXLayers:
     img.selectLayer(layer)
     # Update Strcuture
     self.reflect(layer)
-    push(self.cbUpdateLayer)
-    push(self.onselect)
-    push(self.onstructure)
+    send(self.cbUpdateLayer)
+    send(self.onselect)
+    send(self.onstructure)
 
   new cxlayers(canvas: NCanvasImage):
     result.canvas = canvas
     result.image = canvas.image
-    result.opacity = value lerp(0, 100)
+    result.opacity = linear(0, 100)
     # Configure Attribute Callbacks
     let cb = result.cbUpdateLayer
-    result.clipping.head.cb = cb
-    result.protect.head.cb = cb
-    result.lock.head.cb = cb
-    result.wand.head.cb = cb
-    result.opacity.head.cb = cb
-    result.mode.head.cb = cb
+    result.clipping.cb = cb
+    result.protect.cb = cb
+    result.lock.cb = cb
+    result.wand.cb = cb
+    result.opacity.cb = cb
+    result.mode.cb = cb
     # Create Initial Layer
     result.bindLayer0proof()

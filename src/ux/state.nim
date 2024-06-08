@@ -1,6 +1,6 @@
 import nogui/builder
-import nogui/gui/value
-from nogui/values import lerp, lorp
+import nogui/core/value
+import nogui/ux/values/[linear, dual]
 # Import State Objects
 import ./state/[
   color,

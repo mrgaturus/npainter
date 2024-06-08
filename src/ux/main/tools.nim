@@ -1,11 +1,10 @@
 from nogui/builder import controller, child
 from nogui/pack import icons
 # Import Widget and Layout
-import nogui/gui/value
+import nogui/core/value
 import nogui/ux/layouts/level
 import nogui/ux/widgets/radio
-# Import Separator
-from nogui/ux/widgets/menu/base import menuseparator
+import nogui/ux/separator
 # Import Selected Kind Dock
 from ../state import CKPainterTool
 
@@ -41,13 +40,13 @@ controller NCMainTools:
       button(iconSelect, s, ord stSelect)
       button(iconWand, s, ord stWand)
       # Paint Tools
-      menuseparator()
+      vseparator()
       button(iconBrush, s, ord stBrush)
       button(iconEraser, s, ord stEraser)
       button(iconFill, s, ord stFill)
       button(iconEyedrop, s, ord stEyedrop)
       # Special Tools
-      menuseparator()
+      vseparator()
       button(iconShapes, s, ord stShapes)
       button(iconGradient, s, ord stGradient)
       button(iconText, s, ord stText)
