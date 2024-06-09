@@ -1,109 +1,53 @@
-# TODO: client side decoration
-# TODO: syncronize min size with native handle
-import dock/session
 import nogui/ux/layouts/base
+from nogui/builder import widget, controller, child
 import nogui/ux/prelude
+# Import Controllers
+import main/[menu, tools, frame]
+import docks, state, dispatch
 
-# -----------------------
-# Window Panel Background
-# -----------------------
+# ---------------------
+# Main Frame Controller
+# ---------------------
 
-widget UXMainBG of UXLayoutCell:
-  new mainbg(w: GUIWidget):
-    result.cell0(w)
-
-  method draw(ctx: ptr CTXRender) =
-    ctx.color getApp().colors.panel
-    ctx.fill rect(self.rect)
-
-# -----------------------
-# Window Frame Definition
-# -----------------------
-
-widget UXMainFrame:
-  attributes: {.public, cursor.}:
-    [title, body]: GUIWidget
-
-  new mainframe(title, body: GUIWidget):
-    result.add title
-    result.add body
-    # Register Title and Body
-    result.title = title
-    result.body = body
-    # XXX: hacky way to forward event
-    result.flags = wKeyboard
-
-  method draw(ctx: ptr CTXRender) =
-    ctx.color getApp().colors.panel
-    ctx.fill rect(self.title.rect)
-
-  method event(state: ptr GUIState) =
-    # XXX: hacky way to forward event
-    if state.kind in {evKeyDown, evKeyUp}:
-      let body {.cursor.} = self.body
-      body.vtable.event(body, state)
-
-  method layout =
-    let
-      m = addr self.metrics
-      # Main Frame Metrics
-      m0 = addr self.title.metrics
-      m1 = addr self.body.metrics
-      # Content Size
-      w = m.w
-      h0 = m0.minH
-      h1 = m.h - h0
-    # Arrange Title
-    m0.x = 0; m0.y = 0
-    m0.w = w; m0.h = h0
-    # Arrange Content
-    m1.x = 0; m1.y = h0
-    m1.w = w; m1.h = h1
-
-widget UXMainBody:
-  attributes: 
-    {.public, cursor.}:
-      [tools, body]: GUIWidget
+controller NCMainFrame:
+  attributes:
+    # Window Stuff
+    menu: NCMainMenu
+    tools: NCMainTools
+    docks: CXDocks
+    # NPainter Dispatcher
+    dispatch: UXPainterDispatch
+    # Main Frame
     {.public.}:
-      # FUTURE DIRECTION:
-      # make docks/groups be childrens
-      session: UXDockSession
-  
-  new mainbody(tools, body: GUIWidget, s: UXDockSession):
-    result.add tools
-    result.add body
-    # Register Tools and Body
-    result.tools = tools
-    result.body = body
-    # Register Session
-    result.session = s
-    s.weird = body
+      state: NPainterState
+      frame: UXMainFrame
 
-  method draw(ctx: ptr CTXRender) =
-    ctx.color getApp().colors.panel
-    ctx.fill rect(self.tools.rect)
+  callback dummy: 
+    discard
 
-  method event(state: ptr GUIState) =
-    # XXX: hacky way to forward event
-    if state.kind in {evKeyDown, evKeyUp}:
-      let body {.cursor.} = self.body
-      body.vtable.event(body, state)
-
-  method layout =
+  proc createFrame: UXMainFrame =
     let
-      m = addr self.metrics
-      # Main Frame Metrics
-      m0 = addr self.tools.metrics
-      m1 = addr self.body.metrics
-      # Content Size
-      h = m.h
-      w0 = m0.minW
-      w1 = m.w - w0
-    # Arrange Title
-    m0.x = 0; m0.y = 0
-    m0.w = w0; m0.h = h
-    # Arrange Content
-    m1.x = w0; m1.y = 0
-    m1.w = w1; m1.h = h
-    # Update Session Directions
-    push(self.session.cbUpdate)
+      # Menu, Toolbar and Dock Session
+      title = createMenu(self.menu)
+      tools = createToolbar(self.tools)
+      session = self.docks.session
+    mainframe title, mainbody(tools, session)
+
+  new cxnpainter0proof(w, h: int32, checker = 0'i32):
+    let state = npainterstate()
+    state.engine0proof(w, h, checker)
+    # Create Frame Docks
+    let
+      dispatch = npainterdispatch(state)
+      docks = cxdocks(state, dispatch)
+    result.state = state
+    result.dispatch = dispatch
+    result.docks = docks
+    # Create Main Frame
+    result.menu = ncMainMenu()
+    result.tools = ncMainTools(state.tool)
+    let frame = result.createFrame()
+    result.frame = frame
+    # XXX: proof of concept
+    docks.proof0arrange()
+    state.tool.react[] = ord stBrush

@@ -1,10 +1,9 @@
 import nogui/ux/prelude
 import nogui/builder
 # Import Shared Values
-import nogui/gui/value
-# Import A Dock
+import nogui/core/value
 import nogui/ux/widgets/[color, menu]
-import ../../../containers/dock
+import nogui/ux/containers/dock
 # Import Color State
 import ../../state/color
 import base
@@ -29,7 +28,7 @@ controller CXColorDock:
       select: GUIWidget
     # Dock Handle
     {.public.}:
-      dock: UXDock
+      dock: UXDockContent
 
   # -- Color Pickers --
   proc selectPicker =
@@ -47,7 +46,7 @@ controller CXColorDock:
     if found != select:
       let b = self.base
       b.body = found
-      b.set(wDirty)
+      b.send(wsLayout)
 
   proc createPickers =
     let c = addr self.c.color
@@ -78,8 +77,8 @@ controller CXColorDock:
     # Create Dock and Define Menu
     let
       base = colorbase(self.c)
-      dock = dock("Color", iconDockColor, base)
-    dock.bindMenu self.createMenu()
+      dock = dockcontent("Color", iconDockColor, base)
+    dock.menu = self.createMenu()
     # Set Current Dock
     self.dock = dock
     self.base = base

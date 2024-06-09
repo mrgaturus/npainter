@@ -40,13 +40,13 @@ controller NCMainTools:
       button(iconSelect, s, ord stSelect)
       button(iconWand, s, ord stWand)
       # Paint Tools
-      vseparator()
+      separator()
       button(iconBrush, s, ord stBrush)
       button(iconEraser, s, ord stEraser)
       button(iconFill, s, ord stFill)
       button(iconEyedrop, s, ord stEyedrop)
       # Special Tools
-      vseparator()
+      separator()
       button(iconShapes, s, ord stShapes)
       button(iconGradient, s, ord stGradient)
       button(iconText, s, ord stText)

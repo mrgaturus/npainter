@@ -32,9 +32,8 @@ widget UXLayerList:
     while not isNil(layer):
       self.add layeritem(layers, layer, 0)
       layer = layer.next
-    # Set Layer Dirty
-    self.set(wDirty)
-    echo "Reloaded"
+    # Relayout Layer List
+    self.send(wsLayout)
 
   # -----------------
   # Useful Methods XD

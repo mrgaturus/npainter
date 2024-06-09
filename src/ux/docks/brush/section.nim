@@ -1,11 +1,9 @@
 import nogui/builder
-import nogui/gui/widget
+import nogui/core/widget
 import nogui/ux/layouts/[base, box, misc]
 import nogui/ux/widgets/[button, combo, menu, label]
 # Import Icons Macro
 import nogui/pack
-# Import Menu Scroll
-import ../../../widgets/menuscroll
 
 # ------------------------
 # Brush Section Controller
@@ -22,7 +20,7 @@ controller CXBrushSection:
     views: seq[GUIWidget]
     # Button And Combobox
     {.cursor.}:
-      button: UXIconButton
+      button: UXButtonCB
       combo: UXComboBox
       view: GUIWidget
     # Public Section
@@ -38,7 +36,7 @@ controller CXBrushSection:
     self.views.add(self.section)
 
   proc update*() =
-    privateAccess(UXIconButton)
+    privateAccess(UXButtonBase)
     # Update Button Icon
     self.button.icon =
       if isNil(self.view): 
@@ -60,7 +58,7 @@ controller CXBrushSection:
         else: v.replace(w)
         # Replace View
         self.view = w
-        s.parent.set(wDirty)
+        s.parent.send(wsLayout)
       # Replace Index
       self.index = index
       self.update()
@@ -98,14 +96,14 @@ controller CXBrushSection:
       v = nil
     # Update View
     self.view = v
-    s.parent.set(wDirty)
+    s.parent.send(wsLayout)
     self.update()
 
   # -- Section Constructors --
   proc createSection =
     let 
       button = button(iconFold0, self.cbFold)
-      combo = combobox(self.model).opaque()
+      combo = combobox(self.model).clear()
     # Set Attributes
     self.button = button
     self.combo = combo
@@ -113,17 +111,15 @@ controller CXBrushSection:
     self.section =
       vertical().child:
         min: horizontal().child:
-          min: button.opaque()
+          min: button.clear()
           combo
 
   new cxbrushsection(menu: UXMenu):
-    # Create Combobox Model
     let model = combomodel(menu)
     model.onchange = result.cbChange
     result.model = model
     # Create Section
     result.createSection()
-    model.toScrollMenu(shift = 1)
 
   new cxbrushsection():
     discard
@@ -134,8 +130,7 @@ controller CXBrushSection:
 
 widget UXButtonCover:
   new uxbuttoncover(w: GUIWidget, cb: GUICallback):
-    result.add button(CTXIconEmpty, "", cb).opaque()
-    # XXX: for some reason input is found from start to end
+    result.add button("", cb).clear()
     result.add w
 
   method update =
@@ -163,7 +158,7 @@ proc cxbrushsection*(label: string, w: GUIWidget): CXBrushSection =
   # Create Header
   let header =
     horizontal().child:
-      min: button.opaque()
+      min: button.clear()
       label(label, hoLeft, veMiddle)
   # Create Section Template
   result.button = button

@@ -1,12 +1,10 @@
-import nogui/gui/value
+import nogui/core/value
 import nogui/ux/layouts/base
 import nogui/builder
 # Import State Controllers
 import state
 # Import Docks
-import ../containers/dock
-from ../containers/dock/dock import replace0awful
-from ../containers/dock/session import watch
+import nogui/ux/containers/dock
 import docks/[
   color/color,
   brush/brush,
@@ -15,9 +13,11 @@ import docks/[
   tools/bucket
 ]
 
-# --------------------
+# ------------------------------------------------
 # Dock Tool Controller
-# --------------------
+# TODO: create a proper way to swap a dock content
+#       nogui -> ux: docking part 2
+# ------------------------------------------------
 
 controller CXToolDock:
   attributes:
@@ -28,19 +28,15 @@ controller CXToolDock:
     # Tool Dock Controllers
     dockBrush: CXBrushDock
     dockBucket: CXBucketDock
-    dockDummy: UXDock
-    # Dock Array
-    lookup: array[CKPainterTool, UXDock]
-    # Usable Dock
+    dockDummy: UXDockContent
+    # Dock Content Array Lookup
+    lookup: array[CKPainterTool, UXDockContent]
     {.public.}:
-      dock: UXDock
+      dock: UXDockContent
 
-  callback cbChange:
-    var
-      idx = CKPainterTool self.state.tool.peek[]
-      found {.cursor.} = self.lookup[idx]
-    # Replace Current Dock
-    replace0awful(self.dock, found)
+  proc createDummy =
+    self.dockDummy = dockcontent("Wip Tool", dummy())
+    self.dock = dockcontent("Wip Tool", dummy())
 
   proc createLookups =
     let 
@@ -61,6 +57,24 @@ controller CXToolDock:
     lo[stGradient] = dummy
     lo[stText] = dummy
 
+  callback cbChange:
+    var
+      idx = CKPainterTool self.state.tool.peek[]
+      found {.cursor.} = self.lookup[idx]
+      dock {.cursor.} = self.dock
+    # Avoid Replace Same Widget
+    if found.widget == dock.widget:
+      return
+    # Replace Current Dock
+    privateAccess(UXDockContent)
+    dock.widget = found.widget
+    dock.serial = found.serial
+    dock.title = found.title
+    dock.icon = found.icon
+    # Update Dock if Attached
+    if dock.attached():
+      dock.select()
+
   new cxtooldock(state: NPainterState, session: UXDockSession):
     result.state = state
     result.session = session
@@ -71,13 +85,8 @@ controller CXToolDock:
     #      eventually more widgets may need react to tool change
     #      -- possiblity when change tool, also change dispatcher --
     state.tool = value(int32 stBrush, result.cbChange)
-    let dummy = dock("wip tool", CTXIconEmpty, dummy())
-    result.dockDummy = dummy
-    # XXX: hacky way to change a dock
-    #      this will be fixed when nogui core
-    #      and dock system got remake
-    result.dock = dock("wip tool", CTXIconEmpty, dummy())
     # Create Dock Lookups
+    result.createDummy()
     result.createLookups()
 
 # ----------------
@@ -95,12 +104,11 @@ controller CXDocks:
     dockLayers: CXLayersDock
     dockTool: CXToolDock
     # Session Manager
-    # TODO: this will be a widget
     {.public.}:
       session: UXDockSession
 
-  new cxdocks(state: NPainterState):
-    let session = docksession()
+  new cxdocks(state: NPainterState, root: GUIWidget):
+    let session = docksession(root)
     result.session = session
     result.state = state
     # Initialize Docks
@@ -108,61 +116,33 @@ controller CXDocks:
     result.dockNav = cxnavigatordock(state.canvas)
     result.dockLayers = cxlayersdock(state.layers)
     result.dockTool = cxtooldock(state, session)
-    # Session Watch Docks
-    session.watch(result.dockColor.dock)
-    session.watch(result.dockNav.dock)
-    session.watch(result.dockLayers.dock)
-    session.watch(result.dockTool.dock)
 
 # --------------------------------
 # Proof of Concept Default Arrange
 # --------------------------------
-import ../containers/dock/group
 
-proc proof0arrange*(docks: CXDocks) =
-  let session = docks.session
-  # Left Panel
-  block leftPanel:
-    let 
-      row = dockrow()
-      d0 = docks.dockColor.dock
-      d1 = docks.dockTool.dock
-      n0 = docknode(d0)
-      n1 = docknode(d1)
-      group = dockgroup(row)
-    # Resize Docks
-    d0.resize(230, 220)
-    d1.resize(230, 350)
-    # Watch Group to Session
-    session.left = group
-    session.watch(group)
-    # Attach Nodes
-    row.attach(n0)
-    n0.attach(n1)
-    # Open Nodes
-    d0.open()
-    d1.open()
-    group.open()
-  # Right Panel
-  block rightPanel:
-    let 
-      row = dockrow()
-      d0 = docks.dockNav.dock
-      d1 = docks.dockLayers.dock
-      # Awful Nodes
-      n0 = docknode(d0)
-      n1 = docknode(d1)
-      group = dockgroup(row)
-    # Resize Docks
-    d0.resize(250, 220)
-    d1.resize(250, 450)
-    # Watch Group to Session
-    session.right = group
-    session.watch(group)
-    # Attach Nodes
-    row.attach(n0)
-    n0.attach(n1)
-    # Open Nodes
-    d0.open()
-    d1.open()
-    group.open()
+proc dockpanel(dock: UXDockContent): UXDockPanel =
+  result = dockpanel()
+  result.add(dock)
+
+proc proof0arrange*(self: CXDocks) =
+  let
+    session {.cursor.} = self.session
+    docks {.cursor.} = session.docks
+  # Create Left Side
+  let left = dockgroup:
+    dockcolumns().child:
+      dockrow().child:
+        dockpanel(self.dockColor.dock)
+        dockpanel(self.dockTool.dock)
+  # Create Right Side
+  let right = dockgroup:
+    dockcolumns().child:
+      dockrow().child:
+        dockpanel(self.dockNav.dock)
+        dockpanel(self.dockLayers.dock)
+  # Add Docks to Session
+  docks.add(left)
+  docks.add(right)
+  docks.left = left
+  docks.right = right

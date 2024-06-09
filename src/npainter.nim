@@ -5,17 +5,16 @@ from nogui/libs/gl import
   GL_DEPTH_BUFFER_BIT
 from nogui/pack import folders
 from nogui import createApp, executeApp
-# Import Main Controller
-import ux/views/main/main
 # Import Engine Controller
-from ux/views/state import engine0proof
-import ux/views/state/engine
+from ux/state import engine0proof
+import ux/state/engine
+import ux/main
 
 folders:
   "canvas" -> "glsl"
 
 proc main() =
-  createApp(1280, 720, nil)
+  createApp(1280, 720)
   let
     c = cxnpainter0proof(1920, 1080)
     engine = c.state.engine

@@ -45,7 +45,7 @@ widget UXLayerThumb:
   new layerthumb(layers: CXLayers, layer: NLayer):
     result.layers = layers
     result.layer = layer
-    result.flags = wMouse
+    result.flags = {wMouse}
 
   method update =
     let
@@ -100,7 +100,7 @@ icons "dock/layers", 16:
 widget UXLayerItem:
   attributes:
     # Button Manipulation
-    [btnShow, btnProps]: UXIconButton
+    [btnShow, btnProps]: UXButtonCB
     # XXX: proof of concept linking
     {.cursor.}:
       thumb: UXLayerThumb
@@ -125,14 +125,14 @@ widget UXLayerItem:
         # Showing Button
         min: level().child:
           layerlevel(result.level, btnShow)
-          btnShow.opaque()
+          btnShow.clear()
         # Widget Info
         margin(4):
           horizontal().child:
             min: thumb
             layertext()
     # Button Props
-    result.add btnProps.opaque()
+    result.add btnProps.clear()
     # Store Buttons
     result.btnShow = btnShow
     result.btnProps = btnProps
@@ -173,5 +173,5 @@ widget UXLayerItem:
     # Draw Rect
     if self.thumb.layer == self.thumb.layers.selected:
       ctx.color self.itemColor()
-    else: ctx.color self.opaqueColor()
+    else: ctx.color self.clearColor()
     ctx.fill rect(r)

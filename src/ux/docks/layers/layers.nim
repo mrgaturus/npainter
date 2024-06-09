@@ -6,8 +6,8 @@ import nogui/builder
 # Import Widgets
 import nogui/ux/layouts/[box, level, form, misc, grid]
 import nogui/ux/widgets/[button, check, slider, combo, menu]
-import ../../../containers/[dock, scroll]
-import ../../../widgets/[separator, menuscroll]
+import nogui/ux/containers/[dock, scroll]
+import nogui/ux/separator
 # Import Layer State
 import ../../state/layers
 
@@ -43,7 +43,7 @@ controller CXLayersDock:
     mode: ComboModel
     # Usable Dock
     {.public.}:
-      dock: UXDock
+      dock: UXDockContent
 
   callback cbUpdate:
     let m = peek(self.layers.mode)[]
@@ -93,9 +93,8 @@ controller CXLayersDock:
         comboitem("Saturation", ord bmSaturation)
         comboitem("Color", ord bmColor)
         comboitem("Luminosity", ord bmLuminosity)
-    # Scroll Menu Hack
+    # Change Blending Callback
     self.mode.onchange = self.cbChangeMode
-    toScrollMenu(self.mode)
 
   proc createWidget: GUIWidget =
     let
@@ -112,6 +111,7 @@ controller CXLayersDock:
           form().child:
             field("Blending"): combobox(self.mode)
             field("Opacity"): slider(la.opacity)
+          min: separator()
           grid(2, 2).child:
             cell(0, 0): button("Protect Alpha", iconAlpha, la.protect)
             cell(0, 1): button("Clipping", iconClipping, la.clipping)
@@ -120,24 +120,24 @@ controller CXLayersDock:
       # Layer Control
       min: level().child:
         # Layer Creation
-        button(iconAddLayer, la.cbCreateLayer).opaque()
-        button(iconAddMask, cb).opaque()
-        button(iconAddFolder, cb).opaque()
+        button(iconAddLayer, la.cbCreateLayer).clear()
+        button(iconAddMask, cb).clear()
+        button(iconAddFolder, cb).clear()
         vseparator() # Layer Manipulation
-        button(iconDelete, la.cbRemoveLayer).opaque()
-        button(iconDuplicate, cb).opaque()
-        button(iconMerge, cb).opaque()
-        button(iconClear, la.cbClearLayer).opaque()
+        button(iconDelete, la.cbRemoveLayer).clear()
+        button(iconDuplicate, cb).clear()
+        button(iconMerge, cb).clear()
+        button(iconClear, la.cbClearLayer).clear()
         # Misc Buttons
-        tail: button(iconUp, cb).opaque()
-        tail: button(iconDown, cb).opaque()
+        tail: button(iconUp, cb).clear()
+        tail: button(iconDown, cb).clear()
       # Layer Item
       scrollview():
         self.list
 
   proc createDock() =
     let w = self.createWidget()
-    self.dock = dock("Layers", iconLayers, w)
+    self.dock = dockcontent("Layers", iconLayers, w)
 
   new cxlayersdock(layers: CXLayers):
     result.layers = layers

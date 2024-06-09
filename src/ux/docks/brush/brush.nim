@@ -1,14 +1,14 @@
 import nogui/ux/prelude
 import nogui/builder
 # Import Value Formatting
-import nogui/[format, values]
+import nogui/format
 # Import Widgets
 import nogui/pack
-import nogui/ux/widgets
-import nogui/ux/widgets/[label, slider]
+import nogui/ux/widgets/[check, label, slider]
 import nogui/ux/layouts/[form, level, misc]
+import nogui/ux/values/[linear, dual]
 # Import Docks and Brushes
-import ../../../containers/[dock, scroll]
+import nogui/ux/containers/[dock, scroll]
 import ../../state/brush
 # Import Brush Section
 import section
@@ -17,13 +17,13 @@ import section
 # Brush Field Formatting
 # ----------------------
 
-proc fmtScale(s: ShallowString, v: Lerp2) =
+proc fmtScale(s: ShallowString, v: LinearDual) =
   let val = v.toFloat * 100.0
   if val >= 100.0:
     s.format("%.0f%%", val)
   else: s.format("%.1f%%", val)
 
-proc fmtAspect(s: ShallowString, v: Lerp2) =
+proc fmtAspect(s: ShallowString, v: LinearDual) =
   var val = int32(v.toFloat * 200.0)
   if val == 100:
     s.format("1:1")
@@ -45,7 +45,7 @@ proc field(name: string, check: & bool, w: GUIWidget): GUIWidget =
   # Create Middle Checkbox
   let c = checkbox("", ck)
   if isNil(check):
-    c.flags = wHidden
+    c.flags = {wHidden}
   # Level Widget
   let l = level().child:
     label(name, hoLeft, veMiddle)
@@ -53,7 +53,7 @@ proc field(name: string, check: & bool, w: GUIWidget): GUIWidget =
   # Return Widget
   field(l): w
 
-proc half(value: & Lerp): UXAdjustLayout =
+proc half(value: & Linear): UXAdjustLayout =
   result = adjust slider(value)
   # Adjust Metrics
   result.scaleW = 0.75
@@ -96,7 +96,7 @@ controller CXBrushDock:
     extraSec: CXBrushSection
     # Usable Dock
     {.public.}:
-      dock: UXDock
+      dock: UXDockContent
 
   callback cbChangeProof:
     privateAccess(CXBrushSection)
@@ -274,7 +274,7 @@ controller CXBrushDock:
   proc createDock =
     let
       w = scrollview self.createWidget()
-      dock = dock("Brush Tool", iconDockBrush, w)
+      dock = dockcontent("Brush Tool", iconDockBrush, w)
     # Define Dock Attribute
     self.dock = dock
 

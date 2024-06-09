@@ -2,10 +2,10 @@ import nogui/ux/prelude
 import nogui/builder
 # Import A Dock
 import nogui/pack
-import nogui/ux/widgets
-import nogui/ux/widgets/[label, slider, radio]
+import nogui/ux/widgets/
+  [label, slider, check, radio]
 import nogui/ux/layouts/[form, misc]
-import ../../../containers/[dock, scroll]
+import nogui/ux/containers/[dock, scroll]
 # Import Bucket Data
 import ../../state/tools
 
@@ -24,7 +24,7 @@ controller CXBucketDock:
     bucket: CXBucket
     # Usable Dock
     {.public.}:
-      dock: UXDock
+      dock: UXDockContent
 
   proc createWidget: GUIWidget =
     let bucket {.cursor.} = self.bucket
@@ -47,7 +47,7 @@ controller CXBucketDock:
   proc createDock() =
     let
       w = scrollview self.createWidget()
-      dock = dock("Bucket Tool", iconBucket, w)
+      dock = dockcontent("Bucket Tool", iconBucket, w)
     # Define Dock Attribute
     self.dock = dock
 

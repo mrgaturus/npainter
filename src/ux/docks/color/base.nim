@@ -1,7 +1,7 @@
-from system/ansi_c import c_sprintf
 import nogui/ux/prelude
+from system/ansi_c import c_sprintf
 from nogui/pack import icons
-from nogui/values import toRGB
+from nogui/ux/values/chroma import toRGB
 import nogui/ux/widgets/color/base
 # Import Color Controller
 import ../../state/color
@@ -11,7 +11,7 @@ import ../../state/color
 # ---------------------
 
 proc clicked(self: GUIWidget, state: ptr GUIState): bool {.inline.} =
-  state.kind == evCursorRelease and (self.flags and wHover) == wHover
+  state.kind == evCursorRelease and (wHover in self.flags)
 
 icons "dock", 16:
   dockColor *= "color.svg"
@@ -29,13 +29,13 @@ widget UXColorSelected:
 
   new colorprimary(color: CXColor):
     result.color = color
-    result.flags = wMouse
+    result.flags = {wMouse}
     # Select Primary Color
     result.target = addr color.color0
 
   new colorsecondary(color: CXColor):
     result.color = color
-    result.flags = wMouse
+    result.flags = {wMouse}
     # Select Secondary Color
     result.target = addr color.color1
 
@@ -52,7 +52,7 @@ widget UXColorSelected:
       if self.target != peek(c.color):
         c.swap()
       elif c.checkEraser():
-        push(c.cbChange)
+        send(c.cbChange)
 
   proc color32: uint32 =
     let color = self.target[]
@@ -91,7 +91,7 @@ widget UXColorTransparent:
 
   new colortransparent(color: CXColor):
     result.color = color
-    result.flags = wMouse
+    result.flags = {wMouse}
 
   method update =
     # TODO: scalable hardcoded
@@ -104,31 +104,31 @@ widget UXColorTransparent:
   method draw(ctx: ptr CTXRender) =
     let 
       r0 = rect(self.rect)
-      rx = (r0.xw - r0.x) * 0.25
-      ry = (r0.yh - r0.y) * 0.25
+      rx = (r0.x1 - r0.x0) * 0.25
+      ry = (r0.y1 - r0.y0) * 0.25
       # Checkboard Colors
       c = addr getApp().colors
       cols = [c.item, c.panel]
     # Scale Rect by 4
     var r = r0
-    r.xw = r.x + rx
-    r.yh = r.y + ry
+    r.x1 = r.x0 + rx
+    r.y1 = r.y0 + ry
     # Split Rect Into 4 Parts
     for i in 0 ..< 4:
       # Reset X Position
-      r.x = r0.x
-      r.xw = r.x + rx
+      r.x0 = r0.x0
+      r.x1 = r.x0 + rx
       for j in 0 ..< 4:
         # Fill Checkboard Color
         let idx = (i and 1) xor (j and 1)
         ctx.color cols[idx]
         ctx.fill r
         # Step X Position
-        r.x = r.xw
-        r.xw += rx
+        r.x0 = r.x1
+        r.x1 += rx
       # Step Y Position
-      r.y = r.yh
-      r.yh += ry
+      r.y0 = r.y1
+      r.y1 += ry
     # Fill if Selected
     # TODO: create a scale(px) for hardcoded
     if peek(self.color.eraser)[]:
@@ -157,7 +157,7 @@ widget UXColorText:
     # "C: 255" buffer
     setLen(result.buffer, 8)
     result.color = color
-    result.flags = wMouse
+    result.flags = {wMouse}
 
   proc display(letter: char, number, scaler: float32) =
     let 
@@ -238,6 +238,7 @@ widget UXColorBase:
         tail: colortext(c)
 
   new colorbase(color: CXColor):
+    result.kind = wkContainer
     result.c = color
     # Create Widgets
     let
@@ -253,12 +254,13 @@ widget UXColorBase:
     result.body = body
 
   method update =
-    # Vertical Min Size
     let 
-      w {.cursor.} = self.side
-      awful = getApp().font.height
-    # TODO: improve this better
-    self.metrics.minH = w.metrics.minH + awful
+      m = addr self.metrics
+      m0 = addr self.side.metrics
+      pad = getApp().font.height
+    # Adjust Min Size using Side
+    m.minH = m0.minH + pad
+    m.minW = m0.minW + m0.minH
 
   method layout =
     let 
