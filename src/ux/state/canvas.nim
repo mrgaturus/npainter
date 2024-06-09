@@ -57,7 +57,7 @@ controller CXCanvas:
     transform(self.engine.canvas)
 
   # -- Backup Proc --
-  proc backup(e: ptr AuxState) =
+  proc backup() =
     # Backup Affine Transform
     self.prev = self.affine[]
     # TODO: move pow(2.0, zoom) to engine side
@@ -65,17 +65,18 @@ controller CXCanvas:
     self.prev.angle = toFloat self.angle.peek[]
 
   # -- Dispatch Procs --
-  proc move(e: ptr AuxState) =
+  proc move(state: ptr GUIState) =
     let
       m = self.affine
       prev = addr self.prev
+      s0 = addr self.engine.state0
       x = peek(self.x)
       y = peek(self.y)
     # Calculate Movement
     let
       # Apply Inverse Matrix
-      p0 = m[].forward(e.x0, e.y0)
-      p1 = m[].forward(e.x, e.y)
+      p0 = m[].forward(s0.px, s0.py)
+      p1 = m[].forward(state.px, state.py)
       # Calculate Deltas
       dx = p1.x - p0.x
       dy = p1.y - p0.y
@@ -83,15 +84,16 @@ controller CXCanvas:
     x[] = prev.x - dx
     y[] = prev.y - dy
 
-  proc zoom(e: ptr AuxState) =
+  proc zoom(state: ptr GUIState) =
     let 
       prev = addr self.prev
-      bound = getApp().windowSize
+      s0 = addr self.engine.state0
+      rect = getWindow().rect
       z = peek(self.zoom)
     # Calculate Zoom Amount
     let
-      size = cfloat(bound.h)
-      dist = e.y0 - e.y
+      size = cfloat(rect.h)
+      dist = s0.py - state.py
       # Delta Scaling
       z0 = prev.zoom
       delta = (dist / size) * 6
@@ -99,20 +101,21 @@ controller CXCanvas:
     # Apply Zoom
     z[].lerp(t)
 
-  proc rotate(e: ptr AuxState) =
+  proc rotate(state: ptr GUIState) =
     let 
       prev = addr self.prev
-      bound = getApp().windowSize
+      s0 = addr self.engine.state0
+      rect = getWindow().rect
       a = peek(self.angle)
     # Calculate Rotation
     let
-      cx = cfloat(bound.w) * 0.5
-      cy = cfloat(bound.h) * 0.5
+      cx = cfloat(rect.w) * 0.5
+      cy = cfloat(rect.h) * 0.5
       # Calculate Deltas
-      dx0 = e.x0 - cx
-      dy0 = e.y0 - cy
-      dx1 = e.x - cx
-      dy1 = e.y - cy
+      dx0 = s0.px - cx
+      dy0 = s0.py - cy
+      dx1 = state.px - cx
+      dy1 = state.py - cy
       # Calculate Rotation
       rot0 = arctan2(dy0, dx0)
       rot1 = arctan2(dy1, dx1)
@@ -126,14 +129,19 @@ controller CXCanvas:
     # Apply Rotation
     a[].lerp(t - t.floor)
 
-  callback cbDispatch(e: AuxState):
-    if e.first:
-      self.backup(e)
-    elif (e.flags and wGrab) == wGrab:
-      case e.mods
-      of ShiftMod: zoom(self, e)
-      of CtrlMod: rotate(self, e)
-      else: move(self, e)
+  callback cbDispatch:
+    let
+      state = self.engine.state
+      state0 = addr self.engine.state0
+    # Backup Affine When Clicked
+    if state.kind == evCursorClick:
+      self.backup()
+    elif state0.locked:
+      let mods = state0.mods
+      # Decide Move, Zoom or Rotate
+      if mods == {}: move(self, state)
+      elif Mod_Shift in mods: zoom(self, state)
+      elif Mod_Control in mods: rotate(self, state)
     # Update Canvas
     self.update()
 
@@ -152,7 +160,7 @@ controller CXCanvas:
     angle[].lerp(t - t.floor)
     self.update()
 
-  proc reset(value: & Lerp2) =
+  proc reset(value: & LinearDual) =
     value.peek[].lerp(0.5)
     self.update()
 
@@ -178,8 +186,11 @@ controller CXCanvas:
 
   # -- Canvas State Constructor --
   new cxcanvas():
-    result.zoom = value(lerp2(-6, 6), result.cbUpdate)
-    result.angle = value(lerp2(-PI, PI), result.cbUpdate)
+    let cb = result.cbUpdate
+    result.zoom = dual(-6, 6)
+    result.angle = dual(-PI, PI)
+    result.zoom.cb = cb
+    result.angle.cb = cb
     # Mirror Updating
     result.mirrorX.cb = result.cbMirror
     result.mirrorY.cb = result.cbMirror

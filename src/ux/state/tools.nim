@@ -1,4 +1,4 @@
-import nogui/core/value
+import nogui/ux/prelude
 import nogui/builder
 # Import Values
 import nogui/ux/values/linear
@@ -43,15 +43,20 @@ controller CXBucket:
     of bcmColorSimilar: bkSimilar
 
   # -- Bucket Dispatcher --
-  callback cbDispatch(e: AuxState):
-    if not e.first: return
+  callback cbDispatch:
     let
-      canvas = addr self.engine.canvas
+      engine {.cursor.} = self.engine
+      state = engine.state
+    if state.kind != evCursorClick:
+      return
+    let
+      canvas = addr engine.canvas
       proxy = self.engine.proxyBucket0proof()
-      fill = addr self.engine.bucket
+      fill = addr engine.bucket
       # Map Current Position
       affine = canvas[].affine
-      p = affine[].forward(e.x, e.y)
+      p = affine[].forward(state.px, state.py)
+      # Integer Position
       x = int32 p.x
       y = int32 p.y
     # Configure Bucket

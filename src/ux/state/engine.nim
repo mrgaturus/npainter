@@ -1,4 +1,6 @@
 import nogui/builder
+import nogui/ux/pivot
+import nogui/native/ffi
 # Import NPainter Engine
 import ../../wip/[brush, texture, binary, canvas]
 import ../../wip/image/[context, proxy]
@@ -14,6 +16,8 @@ import nogui/libs/gl
 
 controller NPainterEngine:
   attributes: {.public.}:
+    state0: GUIStatePivot
+    state: ptr GUIState
     # Engine Objects
     brush: NBrushStroke
     bucket: NBucketProof

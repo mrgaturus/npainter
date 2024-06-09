@@ -313,7 +313,7 @@ controller CXBrush:
   callback cbChange:
     force(self.onchange)
 
-  callback cbDispathStroke(e: AuxState):
+  callback cbDispatchStroke:
     let
       engine {.cursor.} = self.engine
       brush = addr engine.brush
@@ -324,45 +324,57 @@ controller CXBrush:
     canvas[].update()
     engine.pool.stop()
     # Release Anti Flooding
-    e.release()
     if self.finalized:
       self.proxy[].commit()
       self.engine.clearProxy()
 
-  callback cbDispatch(e: AuxState):
-    if e.first:
+  callback cbDispatch:
+    let
+      engine {.cursor.} = self.engine
+      state0 = addr engine.state0
+      state = engine.state
+      # Check Clicked Grab
+      locked = state0.locked
+      button = state0.button == Button_Left
+      # Brush Engine Pointer
+      stable = addr self.stabilizer
+      brush = addr engine.brush
+    # Prepare Brush Dispatch
+    # TODO: move stabilizer logic to engine
+    if state.kind == evCursorClick:
       self.prepareDispatch()
-      e.pressure = 0.0
+      state.pressure = 0.0
     # Start Dragging Brush
-    if (e.flags and wGrab) == wGrab and e.click0 == LeftButton:
+    if locked and button:
       let
         engine {.cursor.} = self.engine
         affine = engine.canvas.affine
-        p = affine[].forward(e.x, e.y)
-        press = e.pressure
+        # Transfrom Point to Canvas Coordinates
+        p = affine[].forward(state.px, state.py)
+        press = state.pressure
       # Push Point to Path
-      if self.stabilizer.capacity > 0:
-        let ps = self.stabilizer.smooth(p.x, p.y, press, 0.0)
-        point(engine.brush, ps.x, ps.y, ps.press, 0.0)
-      else: point(engine.brush, p.x, p.y, press, 0.0)
-      # XXX: this hacky guard avoids event flooding
-      if e.guard():
-        push(self.cbDispathStroke, e[])
+      if stable.capacity > 0:
+        let ps = stable[].smooth(p.x, p.y, press, 0.0)
+        brush[].point(ps.x, ps.y, ps.press, 0.0)
+      else: brush[].point(p.x, p.y, press, 0.0)
+      # Send Dispatch Stroke
+      relax(self.cbDispatchStroke)
     # XXX: hacky way to endpoint stabilizer
-    elif e.kind == evCursorRelease and e.click0 == LeftButton:
+    elif not locked and button:
       let
         engine {.cursor.} = self.engine
         affine = engine.canvas.affine
-        p = affine[].forward(e.x, e.y)
-        cap = self.stabilizer.capacity
+        cap = stable.capacity
+        # Transfrom Point to Canvas Coordinates
+        p = affine[].forward(state.px, state.py)
+        press = state.pressure
       # Push Point to Path
       for _ in 0 ..< cap:
-        let ps = self.stabilizer.smooth(p.x, p.y, e.pressure, 0.0)
-        point(engine.brush, ps.x, ps.y, ps.press, 0.0)
+        let ps = stable[].smooth(p.x, p.y, press, 0.0)
+        brush[].point(ps.x, ps.y, ps.press, 0.0)
+      # Send Dispatch Stroke
       self.finalized = true
-      # XXX: this hacky guard avoids event flooding
-      if e.guard():
-        push(self.cbDispathStroke, e[])
+      relax(self.cbDispatchStroke)
 
   # -- Initializers --
   proc initShape =
