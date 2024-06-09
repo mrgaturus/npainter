@@ -275,6 +275,11 @@ controller CXBrushDock:
     let
       w = scrollview self.createWidget()
       dock = dockcontent("Brush Tool", iconDockBrush, w)
+    # Register Top Section
+    self.shapeSec.top = w
+    self.textureSec.top = w
+    self.blendSec.top = w
+    self.extraSec.top = w
     # Define Dock Attribute
     self.dock = dock
 

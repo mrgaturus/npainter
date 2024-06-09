@@ -129,6 +129,10 @@ proc proof0arrange*(self: CXDocks) =
   let
     session {.cursor.} = self.session
     docks {.cursor.} = session.docks
+  # Adjust Dock Sizes
+  self.dockTool.dock.h = 400
+  self.dockNav.dock.h = 220
+  self.dockLayers.dock.h = 400
   # Create Left Side
   let left = dockgroup:
     dockcolumns().child:

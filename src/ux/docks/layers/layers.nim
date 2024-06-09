@@ -111,7 +111,6 @@ controller CXLayersDock:
           form().child:
             field("Blending"): combobox(self.mode)
             field("Opacity"): slider(la.opacity)
-          min: separator()
           grid(2, 2).child:
             cell(0, 0): button("Protect Alpha", iconAlpha, la.protect)
             cell(0, 1): button("Clipping", iconClipping, la.clipping)

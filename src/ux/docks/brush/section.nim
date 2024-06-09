@@ -25,6 +25,7 @@ controller CXBrushSection:
       view: GUIWidget
     # Public Section
     {.public.}:
+      top: GUIWidget
       section: GUIWidget
       onchange: GUICallback
 
@@ -96,7 +97,7 @@ controller CXBrushSection:
       v = nil
     # Update View
     self.view = v
-    s.parent.send(wsLayout)
+    send(self.top, wsLayout)
     self.update()
 
   # -- Section Constructors --
@@ -120,6 +121,7 @@ controller CXBrushSection:
     result.model = model
     # Create Section
     result.createSection()
+    result.top = result.section
 
   new cxbrushsection():
     discard
@@ -130,14 +132,15 @@ controller CXBrushSection:
 
 widget UXButtonCover:
   new uxbuttoncover(w: GUIWidget, cb: GUICallback):
+    result.flags = {wMouse}
     result.add button("", cb).clear()
     result.add w
 
   method update =
     let 
       m = addr self.metrics
-      m0 = addr self.first.metrics
-    # Inherit First Min Size
+      m0 = addr self.last.metrics
+    # Inherit Last Min Size
     m.minW = m0.minW
     m.minH = m0.minH
 
@@ -149,6 +152,13 @@ widget UXButtonCover:
     # Locate Both First and Last
     m0.w = m.w; m0.h = m.h
     m1.w = m.w; m1.h = m.h
+
+  method event(state: ptr GUIState) =
+    let first {.cursor.} = self.first
+    first.vtable.event(first, state)
+
+  method handle(reason: GUIHandle) =
+    self.first.flags = self.flags
 
 proc cxbrushsection*(label: string, w: GUIWidget): CXBrushSection =
   result = cxbrushsection()
@@ -166,6 +176,7 @@ proc cxbrushsection*(label: string, w: GUIWidget): CXBrushSection =
     vertical().child:
       min: uxbuttoncover(header, cb)
   # Register Unique Widget
+  result.top = result.section
   result.register(w)
 
 # Export Menu
