@@ -210,8 +210,8 @@ widget UXCanvasDispatch:
       if mods == {}: move(self, state)
       elif Mod_Shift in mods: zoom(self, state)
       elif Mod_Control in mods: rotate(self, state)
-    # Update Canvas
-    c.update()
+    # Update Canvas View
+    relax(c.cbUpdate)
 
   method handle(reason: GUIHandle) =
     echo "canvas reason: ", reason

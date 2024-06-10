@@ -12,7 +12,6 @@ controller CXLayers:
   attributes:
     canvas: NCanvasImage
     image: NImage
-    busy: bool
     # Current State
     {.public.}:
       mode: @ NBlendMode
@@ -62,13 +61,6 @@ controller CXLayers:
     image.status.clip = mark(0, 0, 0, 0)
     image.status.mark(0, 0, image.ctx.w, image.ctx.h)
     self.canvas.update()
-    # Remove Busy
-    self.busy = false
-
-  proc render() =
-    if not self.busy:
-      self.busy = true
-      send(self.cbRender)
 
   callback cbUpdateLayer:
     let layer = self.image.selected
@@ -83,7 +75,7 @@ controller CXLayers:
     layer.props.mode = self.mode.peek[]
     layer.props.opacity = toRaw(self.opacity.peek[])
     # Render Layer
-    self.render()
+    relax(self.cbRender)
 
   callback cbCreateLayer:
     let
@@ -97,8 +89,7 @@ controller CXLayers:
     # Select New Layer
     self.select(layer)
     send(self.onstructure)
-    # Render Layer
-    self.render()
+    send(self.cbRender)
 
   callback cbClearLayer:
     let
@@ -110,7 +101,7 @@ controller CXLayers:
     tiles[].destroy()
     tiles[] = createTileImage(4)
     # Render Layer
-    self.render()
+    send(self.cbRender)
 
   callback cbRemoveLayer:
     let
@@ -129,7 +120,7 @@ controller CXLayers:
     layer.destroy()
     # Render Layer
     send(self.onstructure)
-    self.render()
+    send(self.cbRender)
 
   # ----------------------------
   # Layer Control Initialization
