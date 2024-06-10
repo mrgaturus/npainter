@@ -5,7 +5,9 @@ import ../../wip/image
 import ../../wip/image/[layer, tiles, context]
 import ../../wip/canvas
 # This is a proof of concept
-# nogui needs to be remaked again to do remaining parts
+import nogui/core/shortcut
+import nogui/ux/prelude
+# Move many parts to engine side
 export layer
 
 controller CXLayers:
@@ -142,6 +144,9 @@ controller CXLayers:
     send(self.cbUpdateLayer)
     send(self.onselect)
     send(self.onstructure)
+    # Delete Shortcut for Clear Layer
+    getWindow().shorts[].register:
+      shortcut(self.cbClearLayer, NK_Delete)
 
   new cxlayers(canvas: NCanvasImage):
     result.canvas = canvas

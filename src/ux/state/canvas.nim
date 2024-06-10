@@ -215,3 +215,8 @@ widget UXCanvasDispatch:
 
   method handle(reason: GUIHandle) =
     echo "canvas reason: ", reason
+    let win = getWindow()
+    if reason == inHover:
+      win.cursor(cursorBasic)
+    elif reason == outHover:
+      win.cursorReset()

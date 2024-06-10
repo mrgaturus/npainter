@@ -96,3 +96,8 @@ widget UXBucketDispatch:
 
   method handle(reason: GUIHandle) =
     echo "bucket reason: ", reason
+    let win = getWindow()
+    if reason == inHover:
+      win.cursor(cursorBasic)
+    elif reason == outHover:
+      win.cursorReset()

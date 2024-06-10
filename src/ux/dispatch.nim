@@ -26,13 +26,16 @@ widget UXPainterDispatch:
     let
       slot {.cursor.} = self.slot
       dummy {.cursor.} = self.dummy
+    # Capture Flags and Window Rect
+    # TODO: move this to layout/update
+    widget.flags = widget.flags + {wVisible, wMouse}
+    widget.rect = getWindow().rect
     if widget == slot or dummy.test(wFocus):
       return
     # Handle Select Changes
     slot.vtable.handle(slot, outFrame)
     widget.vtable.handle(widget, inFrame)
     # Replace Current Slot
-    widget.flags.incl(wMouse)
     self.slot = widget
 
   proc select*(tool: CKPainterTool) =

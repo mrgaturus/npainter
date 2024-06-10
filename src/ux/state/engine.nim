@@ -1,4 +1,4 @@
-import nogui/builder
+import nogui/[builder, pack]
 import nogui/ux/pivot
 # Import NPainter Engine
 import ../../wip/[brush, texture, binary, canvas]
@@ -8,6 +8,9 @@ from ../../wip/image import createLayer, selectLayer
 import nogui/spmc
 # TODO: move to engine side
 import nogui/libs/gl
+
+cursors 16:
+  basic *= "basic.svg" (0, 0)
 
 # --------------------------
 # NPainter Engine Controller

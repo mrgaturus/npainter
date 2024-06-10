@@ -532,3 +532,8 @@ widget UXBrushDispatch:
 
   method handle(reason: GUIHandle) =
     echo "brush reason: ", reason
+    let win = getWindow()
+    if reason == inHover:
+      win.cursor(cursorBasic)
+    elif reason == outHover:
+      win.cursorReset()
