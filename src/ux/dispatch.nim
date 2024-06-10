@@ -23,43 +23,41 @@ widget UXPainterDispatch:
 
   # -- Dispatcher Selector --
   proc select(widget: GUIWidget) =
-    let slot {.cursor.} = self.slot
-    if widget == slot: return
+    let
+      slot {.cursor.} = self.slot
+      dummy {.cursor.} = self.dummy
+    if widget == slot or dummy.test(wFocus):
+      return
     # Handle Select Changes
     slot.vtable.handle(slot, outFrame)
     widget.vtable.handle(widget, inFrame)
     # Replace Current Slot
-    widget.flags = {wMouse}
+    widget.flags.incl(wMouse)
     self.slot = widget
+
+  proc select*(tool: CKPainterTool) =
+    var slot {.cursor.} = self.tools[tool]
+    if isNil(slot): slot = self.dummy
+    # Change Current Slot
+    self.slot0 = slot
+    self.select(slot)
 
   # -- Dispatcher Register --
   proc capture(state: ptr GUIState) =
-    let
-      dummy {.cursor.} = self.dummy
-      engine {.cursor.} = self.engine
-      state0 = addr engine.pivot
-    # Capture Key State
+    let state0 = addr self.engine.pivot
     state0[].capture(state)
     # Decide Painter Dispatch
-    # TODO: high end shotcuts modifiers
-    let
-      id = CKPainterTool self.state.tool.peek[]
-      spaced = state.key == NK_Space
-    var slot = self.tools[id]
-    self.slot0 = slot
-    # XXX: proof of concept space switching
+    let spaced = state.key == NK_Space
     if spaced and state.kind == evKeyDown:
       self.spaced = true
     elif spaced and state.kind == evKeyUp:
       self.spaced = false
-    # Decide Canvas Dispatch
+    # TODO: high end shotcuts modifiers
+    # XXX: this is a tool switch proof of concept
+    var slot = self.slot0
     if self.spaced:
-      slot = self.tools[stView]
-    elif isNil(slot):
-      slot = dummy
-    # Select Canvas Dispatch
-    if not dummy.test(wFocus):
-      self.select(slot)
+      slot = self.tools[stCanvas]
+    self.select(slot)
 
   callback keyCapture:
     let state = getApp().state
@@ -74,7 +72,7 @@ widget UXPainterDispatch:
     # Initialize Dispatch Widgets
     self.tools[stBrush] = uxbrushdispatch(state.brush)
     self.tools[stFill] = uxbucketdispatch(state.bucket)
-    self.tools[stView] = uxcanvasdispatch(state.canvas)
+    self.tools[stCanvas] = uxcanvasdispatch(state.canvas)
     # Initialize State
     self.state = state
     self.engine = state.engine

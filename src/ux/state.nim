@@ -16,7 +16,7 @@ import ./state/[
 # -------------------------
 
 type
-  CKPainterTool* = enum
+  CKPainterTool* {.size: int32.sizeof.} = enum
     # Manipulation Tools
     stMove
     stLasso
@@ -31,13 +31,13 @@ type
     stShapes
     stGradient
     stText
-    stView
+    stCanvas
 
 controller NPainterState:
   attributes: {.public.}:
     engine: NPainterEngine
     layers: CXLayers
-    tool: @ int32 # <- CKPainterTool
+    tool: @ CKPainterTool
     # Common State
     color: CXColor
     canvas: CXCanvas

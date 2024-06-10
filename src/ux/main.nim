@@ -22,8 +22,11 @@ controller NCMainFrame:
       state: NPainterState
       frame: UXMainFrame
 
-  callback dummy: 
-    discard
+  callback cbSelectTool: 
+    let tool = self.state.tool.peek[]
+    # Select Dock and Dispatch
+    self.docks.select(tool)
+    self.dispatch.select(tool)
 
   proc createFrame: UXMainFrame =
     let
@@ -35,6 +38,8 @@ controller NCMainFrame:
 
   new cxnpainter0proof(w, h: int32, checker = 0'i32):
     let state = npainterstate0proof(w, h, checker)
+    state.tool.cb = result.cbSelectTool
+    state.tool.react[] = stBrush
     state.proof0default()
     # Create Frame Docks
     let
@@ -50,4 +55,4 @@ controller NCMainFrame:
     result.frame = frame
     # XXX: proof of concept
     docks.proof0arrange()
-    state.tool.react[] = ord stBrush
+

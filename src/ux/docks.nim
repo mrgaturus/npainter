@@ -24,7 +24,6 @@ controller CXToolDock:
     # State Controller
     {.cursor.}:
       state: NPainterState
-      session: UXDockSession
     # Tool Dock Controllers
     dockBrush: CXBrushDock
     dockBucket: CXBucketDock
@@ -56,12 +55,11 @@ controller CXToolDock:
     lo[stShapes] = dummy
     lo[stGradient] = dummy
     lo[stText] = dummy
-    lo[stView] = dummy
+    lo[stCanvas] = dummy
 
-  callback cbChange:
-    var
-      idx = CKPainterTool self.state.tool.peek[]
-      found {.cursor.} = self.lookup[idx]
+  proc select(tool: CKPainterTool) =
+    let
+      found {.cursor.} = self.lookup[tool]
       dock {.cursor.} = self.dock
     # Avoid Replace Same Widget
     if found.widget == dock.widget:
@@ -76,16 +74,11 @@ controller CXToolDock:
     if dock.attached():
       dock.select()
 
-  new cxtooldock(state: NPainterState, session: UXDockSession):
+  new cxtooldock(state: NPainterState):
     result.state = state
-    result.session = session
     # Initialize Docks
     result.dockBrush = cxbrushdock(state.brush)
     result.dockBucket = cxbucketdock(state.bucket)
-    # XXX: docking needs a callback when tool is changed
-    #      eventually more widgets may need react to tool change
-    #      -- possiblity when change tool, also change dispatcher --
-    state.tool = value(int32 stBrush, result.cbChange)
     # Create Dock Lookups
     result.createDummy()
     result.createLookups()
@@ -108,6 +101,9 @@ controller CXDocks:
     {.public.}:
       session: UXDockSession
 
+  proc select*(tool: CKPainterTool) =
+    self.dockTool.select(tool)
+
   new cxdocks(state: NPainterState, root: GUIWidget):
     let session = docksession(root)
     result.session = session
@@ -116,7 +112,7 @@ controller CXDocks:
     result.dockColor = cxcolordock(state.color)
     result.dockNav = cxnavigatordock(state.canvas)
     result.dockLayers = cxlayersdock(state.layers)
-    result.dockTool = cxtooldock(state, session)
+    result.dockTool = cxtooldock(state)
 
 # --------------------------------
 # Proof of Concept Default Arrange

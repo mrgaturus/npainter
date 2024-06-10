@@ -23,15 +23,14 @@ icons "tools", 24:
   shapes := "shapes.svg"
   gradient := "gradient.svg"
   text := "text.svg"
-  view := "view.svg"
+  canvas := "canvas.svg"
 
 controller NCMainTools:
   attributes:
-    # Selected Tool
     select: & int32
 
-  new ncMainTools(select: & int32):
-    result.select = select
+  new ncMainTools(select: & CKPainterTool):
+    result.select = cast[& int32](select)
 
   proc createToolbar*: UXLayoutVLevel =
     let s = self.select
@@ -52,4 +51,4 @@ controller NCMainTools:
       button(iconGradient, s, ord stGradient)
       button(iconText, s, ord stText)
       separator()
-      button(iconView, s, ord stView)
+      button(iconCanvas, s, ord stCanvas)
