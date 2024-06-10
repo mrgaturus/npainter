@@ -38,13 +38,9 @@ widget UXLayerLevel:
 widget UXLayerThumb:
   attributes:
     # This is a proof of concept
-    layers: CXLayers
-    layer: NLayer
     size: & int32
 
-  new layerthumb(layers: CXLayers, layer: NLayer):
-    result.layers = layers
-    result.layer = layer
+  new layerthumb():
     result.flags = {wMouse}
 
   method update =
@@ -55,11 +51,6 @@ widget UXLayerThumb:
     # Thumbnail Min Size
     m.minW = s
     m.minH = s
-
-  method event(state: ptr GUIState) =
-    # This is patetic XD
-    if state.kind == evCursorClick:
-      self.layers.select(self.layer)
 
   method draw(ctx: ptr CTXRender) =
     ctx.color 0xFFFFFFFF'u32
@@ -104,6 +95,8 @@ widget UXLayerItem:
     # XXX: proof of concept linking
     {.cursor.}:
       thumb: UXLayerThumb
+      layers: CXLayers
+      layer: NLayer
     # TODO: link to a layer controller
     {.public.}:
       level: @ int32
@@ -116,9 +109,13 @@ widget UXLayerItem:
 
   new layeritem(layers: CXLayers, layer: NLayer, lvl: int32):
     let
-      thumb = layerthumb(layers, layer)
+      thumb = layerthumb()
       btnShow = button(iconVisible, result.cbVisible)
       btnProps = button(iconProps, result.cbProps)
+    # Store Layer Attributes
+    result.flags = {wMouse}
+    result.layers = layers
+    result.layer = layer
     # Create Layer Layout
     result.add:
       horizontal().child:
@@ -165,13 +162,18 @@ widget UXLayerItem:
     p.w = p.minW
     p.h = m.minH
 
+  method event(state: ptr GUIState) =
+    # Change Layer when Clicked
+    if state.kind == evCursorClick:
+      self.layers.select(self.layer)
+
   method draw(ctx: ptr CTXRender) =
     var r = self.rect
     let r0 = addr self.btnShow.rect
     # Adjust Rect to Button Position
     r.x = r0.x
     # Draw Rect
-    if self.thumb.layer == self.thumb.layers.selected:
+    if self.layer == self.layers.selected:
       ctx.color self.itemColor()
     else: ctx.color self.clearColor()
     ctx.fill rect(r)

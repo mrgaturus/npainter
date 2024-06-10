@@ -12,6 +12,7 @@ widget UXLayerList:
     layers: CXLayers
 
   new layerlist(layers: CXLayers):
+    result.kind = wkLayout
     result.layers = layers
 
   proc clear() =
