@@ -3,8 +3,8 @@ import engine
 import nogui/builder
 import nogui/core/value
 import nogui/ux/values/dual
-# TODO: make affine backup on engine side
-import nogui/ux/prelude
+# Import Widget Builder
+import nogui/ux/[prelude, pivot]
 from nogui import getApp, getWindow
 import ../../wip/canvas/matrix
 # Import PI for Angle
@@ -12,30 +12,27 @@ from math import
   log2, pow, `mod`,
   PI, arctan2, floor
 
-# ----------------------------------------
+# -----------------
 # Canvas Controller
-# TODO: move canvas control to engine side
-# ----------------------------------------
+# -----------------
 
 controller CXCanvas:
   attributes:
+    {.cursor.}:
+      engine: NPainterEngine
+    # Canvas Properties
     {.public.}:
       [zoom, angle]: @ LinearDual
       [x, y]: @ float32
       # Mirror Buttons
       mirrorX: @ bool
       mirrorY: @ bool
-    # TODO: Move this to a dispatch widget
-    {.public, cursor.}:
-      engine: NPainterEngine
-    # TODO: move this to engine side??
-    prev: NCanvasAffine
 
   proc affine: ptr NCanvasAffine {.inline.} =
     self.engine.canvas.affine
 
   proc update*() =
-    let 
+    let
       m = self.affine
       # Basic Affine Attributes
       zoom = toFloat self.zoom.peek[]
@@ -55,95 +52,6 @@ controller CXCanvas:
     if mirrorY: m.angle += PI
     # Update Canvas Transform
     transform(self.engine.canvas)
-
-  # -- Backup Proc --
-  proc backup() =
-    # Backup Affine Transform
-    self.prev = self.affine[]
-    # TODO: move pow(2.0, zoom) to engine side
-    self.prev.zoom = toFloat self.zoom.peek[]
-    self.prev.angle = toFloat self.angle.peek[]
-
-  # -- Dispatch Procs --
-  proc move(state: ptr GUIState) =
-    let
-      m = self.affine
-      prev = addr self.prev
-      s0 = addr self.engine.state0
-      x = peek(self.x)
-      y = peek(self.y)
-    # Calculate Movement
-    let
-      # Apply Inverse Matrix
-      p0 = m[].forward(s0.px, s0.py)
-      p1 = m[].forward(state.px, state.py)
-      # Calculate Deltas
-      dx = p1.x - p0.x
-      dy = p1.y - p0.y
-    # Apply Movement
-    x[] = prev.x - dx
-    y[] = prev.y - dy
-
-  proc zoom(state: ptr GUIState) =
-    let 
-      prev = addr self.prev
-      s0 = addr self.engine.state0
-      rect = getWindow().rect
-      z = peek(self.zoom)
-    # Calculate Zoom Amount
-    let
-      size = cfloat(rect.h)
-      dist = s0.py - state.py
-      # Delta Scaling
-      z0 = prev.zoom
-      delta = (dist / size) * 6
-      t = z[].toNormal(z0, delta)
-    # Apply Zoom
-    z[].lerp(t)
-
-  proc rotate(state: ptr GUIState) =
-    let 
-      prev = addr self.prev
-      s0 = addr self.engine.state0
-      rect = getWindow().rect
-      a = peek(self.angle)
-    # Calculate Rotation
-    let
-      cx = cfloat(rect.w) * 0.5
-      cy = cfloat(rect.h) * 0.5
-      # Calculate Deltas
-      dx0 = s0.px - cx
-      dy0 = s0.py - cy
-      dx1 = state.px - cx
-      dy1 = state.py - cy
-      # Calculate Rotation
-      rot0 = arctan2(dy0, dx0)
-      rot1 = arctan2(dy1, dx1)
-      delta = rot1 - rot0
-    # Hardcoded 2 * PI
-    const pi2 = 2 * PI
-    # Adjust Rotation
-    let
-      d0 = (delta + pi2) mod pi2
-      t = (prev.angle + d0 + PI) / pi2
-    # Apply Rotation
-    a[].lerp(t - t.floor)
-
-  callback cbDispatch:
-    let
-      state = self.engine.state
-      state0 = addr self.engine.state0
-    # Backup Affine When Clicked
-    if state.kind == evCursorClick:
-      self.backup()
-    elif state0.locked:
-      let mods = state0.mods
-      # Decide Move, Zoom or Rotate
-      if mods == {}: move(self, state)
-      elif Mod_Shift in mods: zoom(self, state)
-      elif Mod_Control in mods: rotate(self, state)
-    # Update Canvas
-    self.update()
 
   # -- Step Dispatchers Buttons --
   proc stepZoom(s: float32) =
@@ -183,9 +91,12 @@ controller CXCanvas:
 
   callback cbUpdate:
     self.update()
+    echo "reached canvas view"
 
   # -- Canvas State Constructor --
-  new cxcanvas():
+  new cxcanvas(engine: NPainterEngine):
+    result.engine = engine
+    # Configure Transform State
     let cb = result.cbUpdate
     result.zoom = dual(-6, 6)
     result.angle = dual(-PI, PI)
@@ -194,3 +105,113 @@ controller CXCanvas:
     # Mirror Updating
     result.mirrorX.cb = result.cbMirror
     result.mirrorY.cb = result.cbMirror
+
+# ---------------
+# Canvas Dispatch
+# ---------------
+
+widget UXCanvasDispatch:
+  attributes:
+    affine0: NCanvasAffine
+    {.cursor.}:
+      canvas: CXCanvas
+
+  new uxcanvasdispatch(canvas: CXCanvas):
+    result.canvas = canvas
+
+  # -- Backup Proc --
+  proc backup() =
+    let c {.cursor.} = self.canvas
+    # Backup Affine Transform
+    let a0 = addr self.affine0
+    a0[] = c.affine[]
+    # TODO: move pow(2.0, zoom) to engine side
+    a0.zoom = toFloat c.zoom.peek[]
+    a0.angle = toFloat c.angle.peek[]
+
+  # -- Dispatch Procs --
+  proc move(state: ptr GUIState) =
+    let
+      c {.cursor.} = self.canvas
+      a0 = addr self.affine0
+      s0 = addr c.engine.pivot
+      x = peek(c.x)
+      y = peek(c.y)
+      m = c.affine
+    # Calculate Movement
+    let
+      # Apply Inverse Matrix
+      p0 = m[].forward(s0.px, s0.py)
+      p1 = m[].forward(state.px, state.py)
+      # Calculate Deltas
+      dx = p1.x - p0.x
+      dy = p1.y - p0.y
+    # Apply Movement
+    x[] = a0.x - dx
+    y[] = a0.y - dy
+
+  proc zoom(state: ptr GUIState) =
+    let 
+      c {.cursor.} = self.canvas
+      a0 = addr self.affine0
+      s0 = addr c.engine.pivot
+      rect = getWindow().rect
+      z = peek(c.zoom)
+    # Calculate Zoom Amount
+    let
+      size = cfloat(rect.h)
+      dist = s0.py - state.py
+      # Delta Scaling
+      z0 = a0.zoom
+      delta = (dist / size) * 6
+      t = z[].toNormal(z0, delta)
+    # Apply Zoom
+    z[].lerp(t)
+
+  proc rotate(state: ptr GUIState) =
+    let 
+      c {.cursor.} = self.canvas
+      a0 = addr self.affine0
+      s0 = addr c.engine.pivot
+      rect = getWindow().rect
+      a = peek(c.angle)
+    # Calculate Rotation
+    let
+      cx = cfloat(rect.w) * 0.5
+      cy = cfloat(rect.h) * 0.5
+      # Calculate Deltas
+      dx0 = s0.px - cx
+      dy0 = s0.py - cy
+      dx1 = state.px - cx
+      dy1 = state.py - cy
+      # Calculate Rotation
+      rot0 = arctan2(dy0, dx0)
+      rot1 = arctan2(dy1, dx1)
+      delta = rot1 - rot0
+    # Hardcoded 2 * PI
+    const pi2 = 2 * PI
+    # Adjust Rotation
+    let
+      d0 = (delta + pi2) mod pi2
+      t = (a0.angle + d0 + PI) / pi2
+    # Apply Rotation
+    a[].lerp(t - t.floor)
+
+  method event(state: ptr GUIState) =
+    let
+      c {.cursor.} = self.canvas
+      state0 = addr c.engine.pivot
+    # Backup Affine When Clicked
+    if state.kind == evCursorClick:
+      self.backup()
+    elif self.test(wGrab):
+      let mods = state0.mods
+      # Decide Move, Zoom or Rotate
+      if mods == {}: move(self, state)
+      elif Mod_Shift in mods: zoom(self, state)
+      elif Mod_Control in mods: rotate(self, state)
+    # Update Canvas
+    c.update()
+
+  method handle(reason: GUIHandle) =
+    echo "canvas reason: ", reason

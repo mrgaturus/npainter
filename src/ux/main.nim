@@ -34,8 +34,8 @@ controller NCMainFrame:
     mainframe title, mainbody(tools, session)
 
   new cxnpainter0proof(w, h: int32, checker = 0'i32):
-    let state = npainterstate()
-    state.engine0proof(w, h, checker)
+    let state = npainterstate0proof(w, h, checker)
+    state.proof0default()
     # Create Frame Docks
     let
       dispatch = npainterdispatch(state)

@@ -17,7 +17,7 @@ import ./state/[
 
 type
   CKPainterTool* = enum
-    # Manipulation Docks
+    # Manipulation Tools
     stMove
     stLasso
     stSelect
@@ -31,6 +31,7 @@ type
     stShapes
     stGradient
     stText
+    stView
 
 controller NPainterState:
   attributes: {.public.}:
@@ -44,36 +45,26 @@ controller NPainterState:
     brush: CXBrush
     bucket: CXBucket
 
-  new npainterstate():
-    result.color = cxcolor()
-    result.canvas = cxcanvas()
-    # Tools State
-    result.brush = cxbrush()
-    result.bucket = cxbucket()
-    # Proof of Concept Layers
+  new npainterstate0proof(w, h: int32, checker = 0'i32):
+    let engine = npainterengine(w, h, checker)
+    result.layers = cxlayers(engine.canvas)
+    result.engine = engine
+    # Initialize Color State
+    let color = cxcolor()
+    result.color = color
+    # Initialize Tools State
+    result.canvas = cxcanvas(engine)
+    result.brush = cxbrush(engine, color)
+    result.bucket = cxbucket(engine, color)
 
-  proc engine0proof*(w, h: int32, checker = 0'i32) =
-    let
-      engine = npainterengine(w, h, checker)
-      color {.cursor.} = self.color
-      # Engine Tools
-      brush {.cursor.} = self.brush
-      bucket {.cursor.} = self.bucket
-    # Apply Engine To Objects
-    self.engine = engine
-    self.canvas.engine = engine
-    brush.engine = engine
-    brush.color = color
-    bucket.engine = engine
-    bucket.color = color
-    # Create Proof of Concept Layer
-    self.layers = cxlayers(engine.canvas)
+  proc proof0default*() =
     # Locate Canvas to Center
+    let engine {.cursor.} = self.engine
     self.canvas.x.peek[] = cfloat(engine.canvas.image.ctx.w) * 0.5
     self.canvas.y.peek[] = cfloat(engine.canvas.image.ctx.h) * 0.5
     lorp self.canvas.zoom.peek[], -1.0
     # Default Brush Values
-    proof0default(brush)
+    proof0default(self.brush)
 
 # ---------------
 # State Exporting

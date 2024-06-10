@@ -56,6 +56,7 @@ controller CXToolDock:
     lo[stShapes] = dummy
     lo[stGradient] = dummy
     lo[stText] = dummy
+    lo[stView] = dummy
 
   callback cbChange:
     var

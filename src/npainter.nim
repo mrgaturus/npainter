@@ -6,7 +6,6 @@ from nogui/libs/gl import
 from nogui/pack import folders
 from nogui import createApp, executeApp
 # Import Engine Controller
-from ux/state import engine0proof
 import ux/state/engine
 import ux/main
 

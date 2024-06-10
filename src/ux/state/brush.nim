@@ -21,7 +21,7 @@ type
     opacity*: @ Linear
     opacityMin*: @ Linear
     opacityAmp*: @ LinearDual
-    # Stabilizer
+    # Stabilizer Level
     stabilizer*: @ Linear
   CXBrushCircle = object
     hardness*: @ Linear
@@ -120,261 +120,20 @@ type
 # -----------------------
 
 controller CXBrush:
-  attributes: 
+  attributes:
+    {.cursor.}:
+      engine: NPainterEngine
+      color: CXColor
+    # Brush Properties
     {.public.}:
-      # Change Callback
       shape: CXBrushShape
       texture: CXBrushTexture
       blending: CXBrushBlending
       # User Defined Callback
       onchange: GUICallback
-    # TODO: Move this to a dispatch widget
-    {.public, cursor.}:
-      engine: NPainterEngine
-      color: CXColor
-    # XXX: proof of concept stabilizer
-    stabilizer: NBrushStabilizer
-    proxy: ptr NImageProxy
-    finalized: bool
 
-  # -- Basic State -> Engine --
-  proc prepareBasics() =
-    let
-      brush = addr self.engine.brush
-      b0 = addr self.shape.basic
-      b1 = addr brush.basic
-    # Configure Basics Size
-    b1.size = toRaw b0.size.peek[]
-    b1.p_size = toRaw b0.sizeMin.peek[]
-    # Configure Basics Opacity
-    b1.alpha = toRaw b0.opacity.peek[]
-    b1.p_alpha = toRaw b0.opacityMin.peek[]
-    # Configure Basics Dynamics
-    b1.amp_size = toFloat b0.sizeAmp.peek[]
-    b1.amp_alpha = toFloat b0.opacityAmp.peek[]
-    # Configure Stabilizer
-    reset(self.stabilizer, toInt b0.stabilizer.peek[])
-
-  proc prepareColor() =
-    let
-      brush = addr self.engine.brush
-      c {.cursor.} = self.color
-      # Lookup Current Color
-      rgb = c.color.peek[].toRGB
-      glass = c.eraser.peek[]
-      # Unpack to Fix8
-      r = cint(rgb.r * 255.0)
-      g = cint(rgb.g * 255.0)
-      b = cint(rgb.b * 255.0)
-    # Configure Current Color
-    brush[].color(r, g, b, glass)
-
-  # -- Shape State -> Engine --
-  proc prepareCircle() =
-    let 
-      brush = addr self.engine.brush
-      circle0 = addr self.shape.circle
-      circle1 = addr brush.mask.circle
-    # Configure Hardness And Sharpness
-    circle1.hard = toRaw circle0.hardness.peek[]
-    circle1.sharp = toRaw circle0.sharpness.peek[]
-    # Configure Shape Mode
-    brush.shape = bsCircle
-
-  proc prepareBlotmap() =
-    let 
-      brush = addr self.engine.brush
-      blot0 = addr self.shape.blotmap
-      blot1 = addr brush.mask.blot
-    # Configure Blotmap Circle
-    blot1.hard = toRaw blot0.hardness.peek[]
-    blot1.sharp = toRaw blot0.sharpness.peek[]
-    # Configure Blotmap Texture
-    blot1.fract = toRaw blot0.mess.peek[]
-    blot1.scale = toFloat blot0.scale.peek[]
-    blot1.tone = toRaw blot0.tone.peek[]
-    blot1.invert = blot0.invert.peek[]
-    # Configure Shape Mode
-    brush.shape = bsBlotmap
-    blot1.texture = addr self.engine.tex0
-
-  proc prepareBitmap() =
-    let 
-      brush = addr self.engine.brush
-      bm0 = addr self.shape.bitmap
-      bm1 = addr brush.mask.bitmap
-    # Configure Bitmap
-    bm1.flow = toRaw bm0.flow.peek[]
-    bm1.step = toRaw bm0.spacing.peek[]
-    bm1.angle = toRaw bm0.angle.peek[]
-    bm1.aspect = toRaw bm0.aspect.peek[]
-    bm1.scale = toRaw bm0.scale.peek[]
-    # Configure Bitmap Scattering
-    bm1.s_space = toRaw bm0.spacingMess.peek[]
-    bm1.s_angle = toRaw bm0.angleMess.peek[]
-    bm1.s_scale = toRaw bm0.scaleMess.peek[]
-    # Configure Bitmap Automatic
-    bm1.auto_flow = bm0.flowAuto.peek[]
-    bm1.auto_angle = # XXX: Bitmap Auto-angle, this needs to be enum
-      if bm0.angleAuto.peek[]: 255 else: 0
-    # Configure Bitmap Mode
-    brush.shape = bsBitmap
-    bm1.texture = addr self.engine.tex1
-
-  # -- Texture State -> Engine --
-  proc prepareTexture() =
-    let 
-      brush = addr self.engine.brush
-      tex0 = addr self.texture
-      tex1 = addr brush.texture
-    # Configure Texture
-    tex1.fract = toRaw tex0.intensity.peek[]
-    tex1.scale = toFloat tex0.scale.peek[]
-    tex1.invert = tex0.invert.peek[]
-    tex1.enabled = tex0.enabled.peek[] and tex1.fract > 0.0
-    # Configure Texture Scratch
-    tex1.scratch = toRaw tex0.scratch.peek[]
-    tex1.p_scratch = toRaw tex0.minScratch.peek[]
-    tex1.texture = addr self.engine.tex2
-
-  # -- Blending State -> Engine --
-  proc prepareWater(mode: NBrushBlend) =
-    let 
-      brush = addr self.engine.brush
-      avg0 = addr self.blending.water
-      avg1 = addr brush.data.avg
-    # Configure Average
-    avg1.blending = toRaw avg0.blending.peek[]
-    avg1.dilution = toRaw avg0.dilution.peek[]
-    avg1.persistence = toRaw avg0.persistence.peek[]
-    avg1.watering = toRaw avg0.watering.peek[]
-    avg1.coloring = avg0.colouring.peek[]
-    # Configure Average Pressure
-    avg1.p_blending = avg0.pBlending.peek[]
-    avg1.p_dilution = avg0.pDilution.peek[]
-    avg1.p_watering = avg0.pWatering.peek[]
-    avg1.p_minimun = toRaw avg0.minimum.peek[]
-    # Configure Average Mode
-    brush.blend = mode
-
-  proc prepareMarker() =
-    let
-      brush = addr self.engine.brush
-      avg0 = addr self.blending.water
-      avg1 = addr brush.data.marker
-    # Configure Marker
-    avg1.blending = toRaw avg0.blending.peek[]
-    avg1.persistence = toRaw avg0.dilution.peek[]
-    avg1.p_blending = avg0.pBlending.peek[]
-    # Configure Marker Mode
-    brush.blend = bnMarker
-  
-  proc prepareBlur() =
-    let
-      brush = addr self.engine.brush
-      blur0 = addr self.blending.blur
-      blur1 = addr brush.data.blur
-    # Configure Blur
-    blur1.radius = toRaw blur0.size.peek[]
-    # Configure Blur Mode
-    brush.blend = bnBlur
-
-  # -- Dispatch Preparing --
-  proc prepareDispatch() =
-    let brush = addr self.engine.brush
-    # Prepare Brush Proxy
-    self.proxy = self.engine.proxyBrush0proof()
-    brush.proxy = self.proxy
-    self.finalized = false
-    # Configure Basics
-    self.prepareBasics()
-    # Configure Shape
-    case self.shape.kind
-    of ckShapeCircle: self.prepareCircle()
-    of ckShapeBlotmap: self.prepareBlotmap()
-    of ckShapeBitmap: self.prepareBitmap()
-    # Configure Texture
-    self.prepareTexture()
-    # Configure Blending
-    case self.blending.kind
-    of ckBlendPen: brush.blend = bnFlat
-    of ckBlendPencil: brush.blend = bnPencil
-    of ckBlendEraser: brush.blend = bnEraser
-    of ckBlendBrush: self.prepareWater(bnAverage)
-    of ckBlendWater: self.prepareWater(bnWater)
-    of ckBlendMarker: self.prepareMarker()
-    of ckBlendBlur: self.prepareBlur()
-    of ckBlendSmudge: brush.blend = bnSmudge
-    # Prepare Brush Dispatch
-    self.prepareColor()
-    brush[].prepare()
-
-  # -- Callbacks --
   callback cbChange:
     force(self.onchange)
-
-  callback cbDispatchStroke:
-    let
-      engine {.cursor.} = self.engine
-      brush = addr engine.brush
-      canvas = addr engine.canvas
-    # Dispath Stroke Path
-    engine.pool.start()
-    brush[].dispatch()
-    canvas[].update()
-    engine.pool.stop()
-    # Release Anti Flooding
-    if self.finalized:
-      self.proxy[].commit()
-      self.engine.clearProxy()
-
-  callback cbDispatch:
-    let
-      engine {.cursor.} = self.engine
-      state0 = addr engine.state0
-      state = engine.state
-      # Check Clicked Grab
-      locked = state0.locked
-      button = state0.button == Button_Left
-      # Brush Engine Pointer
-      stable = addr self.stabilizer
-      brush = addr engine.brush
-    # Prepare Brush Dispatch
-    # TODO: move stabilizer logic to engine
-    if state.kind == evCursorClick:
-      self.prepareDispatch()
-      state.pressure = 0.0
-    # Start Dragging Brush
-    if locked and button:
-      let
-        engine {.cursor.} = self.engine
-        affine = engine.canvas.affine
-        # Transfrom Point to Canvas Coordinates
-        p = affine[].forward(state.px, state.py)
-        press = state.pressure
-      # Push Point to Path
-      if stable.capacity > 0:
-        let ps = stable[].smooth(p.x, p.y, press, 0.0)
-        brush[].point(ps.x, ps.y, ps.press, 0.0)
-      else: brush[].point(p.x, p.y, press, 0.0)
-      # Send Dispatch Stroke
-      relax(self.cbDispatchStroke)
-    # XXX: hacky way to endpoint stabilizer
-    elif not locked and button:
-      let
-        engine {.cursor.} = self.engine
-        affine = engine.canvas.affine
-        cap = stable.capacity
-        # Transfrom Point to Canvas Coordinates
-        p = affine[].forward(state.px, state.py)
-        press = state.pressure
-      # Push Point to Path
-      for _ in 0 ..< cap:
-        let ps = stable[].smooth(p.x, p.y, press, 0.0)
-        brush[].point(ps.x, ps.y, ps.press, 0.0)
-      # Send Dispatch Stroke
-      self.finalized = true
-      relax(self.cbDispatchStroke)
 
   # -- Initializers --
   proc initShape =
@@ -449,7 +208,9 @@ controller CXBrush:
     blur.size = liBasic
 
   # -- Constructor --
-  new cxbrush():
+  new cxbrush(engine: NPainterEngine, color: CXColor):
+    result.engine = engine
+    result.color = color
     # Init Value Ranges
     result.initShape()
     result.initTexture()
@@ -518,3 +279,256 @@ proc proof0default*(brush: CXBrush) =
   proof0water(addr blend.water)
   # Configure Blur Amount
   lorp blend.blur.size.peek[], 20
+
+# ---------------------
+# Brush Engine Dispatch
+# TODO: move stabilizer logic to engine
+# ---------------------
+
+widget UXBrushDispatch:
+  attributes:
+    {.cursor.}:
+      brush: CXBrush
+    proxy: ptr NImageProxy
+    stabilizer: NBrushStabilizer
+
+  new uxbrushdispatch(brush: CXBrush):
+    result.brush = brush
+
+  # -- Basic State -> Engine --
+  proc prepareBasics() =
+    let
+      brush0 {.cursor.} = self.brush
+      brush = addr brush0.engine.brush
+      b0 = addr brush0.shape.basic
+      b1 = addr brush.basic
+    # Configure Basics Size
+    b1.size = toRaw b0.size.peek[]
+    b1.p_size = toRaw b0.sizeMin.peek[]
+    # Configure Basics Opacity
+    b1.alpha = toRaw b0.opacity.peek[]
+    b1.p_alpha = toRaw b0.opacityMin.peek[]
+    # Configure Basics Dynamics
+    b1.amp_size = toFloat b0.sizeAmp.peek[]
+    b1.amp_alpha = toFloat b0.opacityAmp.peek[]
+    # Configure Stabilizer
+    reset(self.stabilizer, toInt b0.stabilizer.peek[])
+
+  proc prepareColor() =
+    let
+      brush0 {.cursor.} = self.brush
+      brush = addr brush0.engine.brush
+      c {.cursor.} = brush0.color
+      # Lookup Current Color
+      rgb = c.color.peek[].toRGB
+      glass = c.eraser.peek[]
+      # Unpack to Fix8
+      r = cint(rgb.r * 255.0)
+      g = cint(rgb.g * 255.0)
+      b = cint(rgb.b * 255.0)
+    # Configure Current Color
+    brush[].color(r, g, b, glass)
+
+  # -- Shape State -> Engine --
+  proc prepareCircle() =
+    let
+      brush0 {.cursor.} = self.brush
+      brush = addr brush0.engine.brush
+      circle0 = addr brush0.shape.circle
+      circle1 = addr brush.mask.circle
+    # Configure Hardness And Sharpness
+    circle1.hard = toRaw circle0.hardness.peek[]
+    circle1.sharp = toRaw circle0.sharpness.peek[]
+    # Configure Shape Mode
+    brush.shape = bsCircle
+
+  proc prepareBlotmap() =
+    let
+      brush0 {.cursor.} = self.brush
+      brush = addr brush0.engine.brush
+      blot0 = addr brush0.shape.blotmap
+      blot1 = addr brush.mask.blot
+    # Configure Blotmap Circle
+    blot1.hard = toRaw blot0.hardness.peek[]
+    blot1.sharp = toRaw blot0.sharpness.peek[]
+    # Configure Blotmap Texture
+    blot1.fract = toRaw blot0.mess.peek[]
+    blot1.scale = toFloat blot0.scale.peek[]
+    blot1.tone = toRaw blot0.tone.peek[]
+    blot1.invert = blot0.invert.peek[]
+    # Configure Shape Mode
+    brush.shape = bsBlotmap
+    blot1.texture = addr brush0.engine.tex0
+
+  proc prepareBitmap() =
+    let
+      brush0 {.cursor.} = self.brush
+      brush = addr brush0.engine.brush
+      bm0 = addr brush0.shape.bitmap
+      bm1 = addr brush.mask.bitmap
+    # Configure Bitmap
+    bm1.flow = toRaw bm0.flow.peek[]
+    bm1.step = toRaw bm0.spacing.peek[]
+    bm1.angle = toRaw bm0.angle.peek[]
+    bm1.aspect = toRaw bm0.aspect.peek[]
+    bm1.scale = toRaw bm0.scale.peek[]
+    # Configure Bitmap Scattering
+    bm1.s_space = toRaw bm0.spacingMess.peek[]
+    bm1.s_angle = toRaw bm0.angleMess.peek[]
+    bm1.s_scale = toRaw bm0.scaleMess.peek[]
+    # Configure Bitmap Automatic
+    # XXX: Bitmap Auto-angle, needs to be enum
+    bm1.auto_flow = bm0.flowAuto.peek[]
+    bm1.auto_angle = if bm0.angleAuto.peek[]: 255 else: 0
+    # Configure Bitmap Mode
+    brush.shape = bsBitmap
+    bm1.texture = addr brush0.engine.tex1
+
+  # -- Texture State -> Engine --
+  proc prepareTexture() =
+    let
+      brush0 {.cursor.} = self.brush
+      brush = addr brush0.engine.brush
+      tex0 = addr brush0.texture
+      tex1 = addr brush.texture
+    # Configure Texture
+    tex1.fract = toRaw tex0.intensity.peek[]
+    tex1.scale = toFloat tex0.scale.peek[]
+    tex1.invert = tex0.invert.peek[]
+    tex1.enabled = tex0.enabled.peek[] and tex1.fract > 0.0
+    # Configure Texture Scratch
+    tex1.scratch = toRaw tex0.scratch.peek[]
+    tex1.p_scratch = toRaw tex0.minScratch.peek[]
+    tex1.texture = addr brush0.engine.tex2
+
+  # -- Blending State -> Engine --
+  proc prepareWater(mode: NBrushBlend) =
+    let
+      brush0 {.cursor.} = self.brush
+      brush = addr brush0.engine.brush
+      avg0 = addr brush0.blending.water
+      avg1 = addr brush.data.avg
+    # Configure Average
+    avg1.blending = toRaw avg0.blending.peek[]
+    avg1.dilution = toRaw avg0.dilution.peek[]
+    avg1.persistence = toRaw avg0.persistence.peek[]
+    avg1.watering = toRaw avg0.watering.peek[]
+    avg1.coloring = avg0.colouring.peek[]
+    # Configure Average Pressure
+    avg1.p_blending = avg0.pBlending.peek[]
+    avg1.p_dilution = avg0.pDilution.peek[]
+    avg1.p_watering = avg0.pWatering.peek[]
+    avg1.p_minimun = toRaw avg0.minimum.peek[]
+    # Configure Average Mode
+    brush.blend = mode
+
+  proc prepareMarker() =
+    let
+      brush0 {.cursor.} = self.brush
+      brush = addr brush0.engine.brush
+      avg0 = addr brush0.blending.water
+      avg1 = addr brush.data.marker
+    # Configure Marker
+    avg1.blending = toRaw avg0.blending.peek[]
+    avg1.persistence = toRaw avg0.dilution.peek[]
+    avg1.p_blending = avg0.pBlending.peek[]
+    # Configure Marker Mode
+    brush.blend = bnMarker
+  
+  proc prepareBlur() =
+    let
+      brush0 {.cursor.} = self.brush
+      brush = addr brush0.engine.brush
+      blur0 = addr brush0.blending.blur
+      blur1 = addr brush.data.blur
+    # Configure Blur
+    blur1.radius = toRaw blur0.size.peek[]
+    # Configure Blur Mode
+    brush.blend = bnBlur
+
+  # -- Dispatch Preparing --
+  proc prepareDispatch() =
+    let
+      brush0 {.cursor.} = self.brush
+      engine {.cursor.} = brush0.engine
+      brush = addr engine.brush
+    # Prepare Brush Proxy
+    self.proxy = engine.proxyBrush0proof()
+    brush.proxy = self.proxy
+    # Configure Basics
+    self.prepareBasics()
+    # Configure Shape
+    case brush0.shape.kind
+    of ckShapeCircle: self.prepareCircle()
+    of ckShapeBlotmap: self.prepareBlotmap()
+    of ckShapeBitmap: self.prepareBitmap()
+    # Configure Texture
+    self.prepareTexture()
+    # Configure Blending
+    case brush0.blending.kind
+    of ckBlendPen: brush.blend = bnFlat
+    of ckBlendPencil: brush.blend = bnPencil
+    of ckBlendEraser: brush.blend = bnEraser
+    of ckBlendBrush: self.prepareWater(bnAverage)
+    of ckBlendWater: self.prepareWater(bnWater)
+    of ckBlendMarker: self.prepareMarker()
+    of ckBlendBlur: self.prepareBlur()
+    of ckBlendSmudge: brush.blend = bnSmudge
+    # Prepare Brush Dispatch
+    self.prepareColor()
+    brush[].prepare()
+
+  # -- Dispatch Callbacks --
+  callback cbDispatchStroke:
+    let engine {.cursor.} = self.brush.engine
+    # Dispath Stroke Path
+    engine.pool.start()
+    engine.brush.dispatch()
+    engine.canvas.update()
+    engine.pool.stop()
+
+  callback cbCommitStroke:
+    self.proxy[].commit()
+    self.brush.engine.clearProxy()
+
+  # -- Dispatch Event --
+  method event(state: ptr GUIState) =
+    let
+      engine {.cursor.} = self.brush.engine
+      stable = addr self.stabilizer
+      brush = addr engine.brush
+      affine = engine.canvas.affine
+    # Prepare Brush Dispatch
+    if state.kind == evCursorClick:
+      self.prepareDispatch()
+      state.pressure = 0.0
+    # Start Dragging Brush Stroke
+    if self.test(wGrab):
+      let
+        # Transfrom Point to Canvas Coordinates
+        p = affine[].forward(state.px, state.py)
+        press = state.pressure
+      # TODO: move stabilizer logic to engine
+      if stable.capacity > 0:
+        let ps = stable[].smooth(p.x, p.y, press, 0.0)
+        brush[].point(ps.x, ps.y, ps.press, 0.0)
+      else: brush[].point(p.x, p.y, press, 0.0)
+      # Send Dispatch Stroke
+      relax(self.cbDispatchStroke)
+    # Terminate Brush Stroke
+    elif state.kind == evCursorRelease:
+      let
+        # Transfrom Point to Canvas Coordinates
+        p = affine[].forward(state.px, state.py)
+        press = state.pressure
+        cap = stable.capacity
+      # TODO: move stabilizer logic to engine
+      for _ in 0 ..< cap:
+        let ps = stable[].smooth(p.x, p.y, press, 0.0)
+        brush[].point(ps.x, ps.y, ps.press, 0.0)
+      # Send Dispatch Stroke
+      relax(self.cbDispatchStroke)
+      relax(self.cbCommitStroke)
+
+  method handle(reason: GUIHandle) =
+    echo "brush reason: ", reason

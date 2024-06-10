@@ -22,7 +22,11 @@ type
     bctWandTarget
 
 controller CXBucket:
-  attributes: 
+  attributes:
+    {.cursor.}:
+      engine: NPainterEngine
+      color: CXColor
+    # Bucket Properties
     {.public.}:
       mode: @ int32
       target: @ int32
@@ -30,29 +34,44 @@ controller CXBucket:
       threshold: @ Linear
       gap: @ Linear
       antialiasing: @ bool
-    # TODO: Move this to a dispatch widget
-    {.public, cursor.}:
-      color: CXColor
-      engine: NPainterEngine
 
-  proc awful0mode: NBucketCheck =
+  proc modecheck: NBucketCheck =
     case CKBucketMode self.mode.peek[]
     of bcmAlphaMin: bkMinimun
     of bcmAlphaDiff: bkAlpha
     of bcmColorDiff: bkColor
     of bcmColorSimilar: bkSimilar
 
+  new cxbucket(engine: NPainterEngine, color: CXColor):
+    result.engine = engine
+    result.color = color
+    # Configure Bucket Values
+    let liBasic = linear(0, 100)
+    result.threshold = liBasic
+    result.gap = liBasic
+
+# --------------------
+# Bucket Tool Dispatch
+# --------------------
+
+widget UXBucketDispatch:
+  attributes: {.cursor.}:
+    bucket: CXBucket
+
+  new uxbucketdispatch(bucket: CXBucket):
+    result.bucket = bucket
+
   # -- Bucket Dispatcher --
-  callback cbDispatch:
+  method event(state: ptr GUIState) =
     let
-      engine {.cursor.} = self.engine
-      state = engine.state
+      bucket {.cursor.} = self.bucket
+      engine {.cursor.} = bucket.engine
     if state.kind != evCursorClick:
       return
     let
-      canvas = addr engine.canvas
-      proxy = self.engine.proxyBucket0proof()
       fill = addr engine.bucket
+      canvas = addr engine.canvas
+      proxy = engine.proxyBucket0proof()
       # Map Current Position
       affine = canvas[].affine
       p = affine[].forward(state.px, state.py)
@@ -60,11 +79,11 @@ controller CXBucket:
       x = int32 p.x
       y = int32 p.y
     # Configure Bucket
-    fill.tolerance = cint(self.threshold.peek[].toRaw * 255)
-    fill.gap = cint(self.gap.peek[].toRaw * 255)
-    fill.check = self.awful0mode
-    fill.antialiasing = self.antialiasing.peek[]
-    fill.rgba = self.color.color32()
+    fill.tolerance = cint(bucket.threshold.peek[].toRaw * 255)
+    fill.gap = cint(bucket.gap.peek[].toRaw * 255)
+    fill.check = bucket.modecheck
+    fill.antialiasing = bucket.antialiasing.peek[]
+    fill.rgba = bucket.color.color32()
     # Dispatch Position
     if fill.check != bkSimilar:
       fill[].flood(x, y)
@@ -73,10 +92,7 @@ controller CXBucket:
     # Update Render Region
     canvas[].update()
     proxy[].commit()
-    # Clear Proxy
-    self.engine.clearProxy()
+    engine.clearProxy()
 
-  new cxbucket():
-    let liBasic = linear(0, 100)
-    result.threshold = liBasic
-    result.gap = liBasic
+  method handle(reason: GUIHandle) =
+    echo "bucket reason: ", reason

@@ -34,12 +34,6 @@ widget UXMainFrame:
     ctx.color getApp().colors.panel
     ctx.fill rect(self.title.rect)
 
-  method event(state: ptr GUIState) =
-    # XXX: hacky way to forward event
-    if state.kind in {evKeyDown, evKeyUp}:
-      let body {.cursor.} = self.body
-      body.vtable.event(body, state)
-
   method layout =
     let
       m = addr self.metrics

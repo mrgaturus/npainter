@@ -1,7 +1,5 @@
-import nogui
 import nogui/builder
 import nogui/ux/pivot
-import nogui/native/ffi
 # Import NPainter Engine
 import ../../wip/[brush, texture, binary, canvas]
 import ../../wip/image/[context, proxy]
@@ -17,8 +15,7 @@ import nogui/libs/gl
 
 controller NPainterEngine:
   attributes: {.public.}:
-    state0: GUIStatePivot
-    state: ptr GUIState
+    pivot: GUIStatePivot
     # Engine Objects
     brush: NBrushStroke
     bucket: NBucketProof
@@ -115,7 +112,6 @@ controller NPainterEngine:
 
   # -- NPainter Constructor - proof of concept --
   new npainterengine(proof_W, proof_H: cint, checker = 0'i32):
-    result.state = getApp().state
     result.man = createCanvasManager()
     result.canvas = result.man.createCanvas(proof_W, proof_H)
     # Proof of Concept Affine Transform

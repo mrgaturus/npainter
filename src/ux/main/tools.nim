@@ -14,15 +14,16 @@ icons "tools", 24:
   lasso := "lasso.svg"
   select := "select.svg"
   wand := "wand.svg"
-  # Painting
+  # Painting Tools
   brush := "brush.svg"
   eraser := "eraser.svg"
   fill := "fill.svg"
   eyedrop := "eyedrop.svg"
-  # Special
+  # Special Tools
   shapes := "shapes.svg"
   gradient := "gradient.svg"
   text := "text.svg"
+  view := "view.svg"
 
 controller NCMainTools:
   attributes:
@@ -50,3 +51,5 @@ controller NCMainTools:
       button(iconShapes, s, ord stShapes)
       button(iconGradient, s, ord stGradient)
       button(iconText, s, ord stText)
+      separator()
+      button(iconView, s, ord stView)
