@@ -3,6 +3,7 @@ npainter.dump
 
 # Ignore Generated List
 icons.list
+cursors.list
 paths.list
 # Ignore Data Folder
 data/
