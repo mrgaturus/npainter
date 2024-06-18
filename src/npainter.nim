@@ -11,6 +11,7 @@ import ux/main
 
 folders:
   "canvas" -> "glsl"
+  "proof" -> "proof"
 
 proc main() =
   createApp(1280, 720)

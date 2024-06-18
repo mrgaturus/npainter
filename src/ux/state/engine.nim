@@ -1,5 +1,7 @@
 import nogui/[builder, pack]
 import nogui/ux/pivot
+# XXX: This is a proof of concept
+import nogui/data {.all.}
 # Import NPainter Engine
 import ../../wip/[brush, texture, binary, canvas]
 import ../../wip/image/[context, proxy]
@@ -124,9 +126,9 @@ controller NPainterEngine:
     result.pool = newThreadPool(6)
     result.brush.pipe.pool = result.pool
     # XXX: demo textures meanwhile a picker is done
-    result.tex0 = newPNGTexture("tex0.png")
-    result.tex1 = newPNGTexture("tex1.png")
-    result.tex2 = newPNGTexture("tex2.png")
+    result.tex0 = newPNGTexture(toDataPath "proof/tex0.png")
+    result.tex1 = newPNGTexture(toDataPath "proof/tex1.png")
+    result.tex2 = newPNGTexture(toDataPath "proof/tex2.png")
 
   # -- Foreign Renderer --
   proc renderGL*() =
