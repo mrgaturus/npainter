@@ -1,12 +1,14 @@
 npainter
 npainter.dump
+npainter.exe
 
 # Ignore Generated List
 icons.list
 cursors.list
 paths.list
-# Ignore Data Folder
+# Ignore Compiled
 data/
+release/
 
 # Ignore VSCode
 .vscode

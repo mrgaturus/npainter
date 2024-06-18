@@ -4,7 +4,7 @@ fast and simple digital painting software, work in progress
 ![Proof of Concept](https://raw.githubusercontent.com/mrgaturus/npainter/master/proof.png)
 
 ## 🛠️ Building
-- Only works on Linux X11/XWayland. Other Platforms are Work in Progress
+- Only works on Linux X11/XWayland and Windows.
 - Requires [Nim Programming Language](https://nim-lang.org/) for Compiling.
 - Requires Addtional Developing Packages
   - Ubuntu, Debian: `libfreetype-dev, libegl-dev`
@@ -45,7 +45,7 @@ $ ./npainter
   - [ ] Fundamental Filters
   - [ ] Multi Platform Support
     - [x] Linux/X11
-    - [ ] Windows
+    - [x] Windows
     - [ ] macOS
 
 ### 🕙 Planned Features
