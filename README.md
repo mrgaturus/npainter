@@ -4,24 +4,71 @@ fast and simple digital painting software, work in progress
 ![Proof of Concept](https://raw.githubusercontent.com/mrgaturus/npainter/master/proof.png)
 
 ## 🛠️ Building
-- Only works on Linux X11/XWayland and Windows.
-- Requires [Nim Programming Language](https://nim-lang.org/) for Compiling.
-- Requires Addtional Developing Packages
-  - Ubuntu, Debian: `libfreetype-dev, libegl-dev`
-  - Fedora: `freetype-devel, libglvnd-devel`:
-- Requires GCC 10+:
-  - Clang can be used appending `--cc:clang` to nimble command
+<details>
+<summary>Building for Linux</summary>
+
+- Requires GCC 10+ or Clang 10+
+- Requires Additional Developing Packages on some distros:
+  * Ubuntu/Debian: `libfreetype-dev libegl-dev libgdk-pixbuf-2.0-dev`
+  * Fedora/RHEL: `freetype-devel libglvnd-devel gdk-pixbuf2-devel`
+
+### Building Release Build
 ```sh
-# Building Debug Binary
-$ nimble build
-# Building Fast Binary
-$ nimble build -d:danger
-# Generate Assets (using GUI tool)
-$ ~/.nimble/bin/nopack
+# Install Latest Stable Nim
+curl https://nim-lang.org/choosenim/init.sh -sSf | sh
+# Build Program
+./build_linux.sh
 
 # Running Program
-$ ./npainter
+./npainter
 ```
+
+### Developing Project
+```sh
+# Compile Program
+nimble build
+# Pack Data when needed
+nopack
+
+# Debug Program
+./npainter
+```
+
+</details>
+
+<details>
+<summary>Building for Windows</summary>
+
+- Requires MSYS2 Environment
+  * Download: https://www.msys2.org/
+  * Only works on MINGW64 Environment
+- Requires Nim Programming Language
+  * Download: https://nim-lang.org/
+  * Must be configured on PATH
+
+### Building Release Build
+```sh
+# Build Program
+./build_win32.sh
+# Executing Program
+./release/npainter.exe
+```
+
+### Developing Project
+```sh
+# Prepare Building
+./build_win32.sh
+
+# Compile Program
+nimble build
+# Pack Data when needed
+nopack
+
+# Debug Program
+./npainter
+```
+
+</details>
 
 ## ⚙️ Roadmap Features
   - [x] Pen Pressure Support
@@ -35,7 +82,6 @@ $ ./npainter
     - [x] Folder Layers
     - [x] Fundamental Blending Modes
     - [x] Clipping Group & Alpha Lock
-  - [ ] Intuitive and Professional UI/UX
   - [ ] Transform Tool
     - [ ] Perspective
     - [ ] Mesh
@@ -43,7 +89,8 @@ $ ./npainter
   - [ ] Selection Tools
   - [ ] Infinite Undo using Compressed Files
   - [ ] Fundamental Filters
-  - [ ] Multi Platform Support
+  - [ ] Intuitive and Professional UI/UX
+  - [x] Multi Platform Support
     - [x] Linux/X11
     - [x] Windows
     - [ ] macOS
