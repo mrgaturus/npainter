@@ -36,13 +36,15 @@ controller CXBrushSection:
     # Use Section for Empty Check
     self.views.add(self.section)
 
-  proc update*() =
+  proc update() =
     privateAccess(UXButtonBase)
     # Update Button Icon
     self.button.icon =
       if isNil(self.view): 
         iconFold0
       else: iconFold1
+    # Relayout Top Level
+    send(self.top, wsLayout)
 
   # -- View Chooser --
   proc selectView(index: int32) =
@@ -97,7 +99,6 @@ controller CXBrushSection:
       v = nil
     # Update View
     self.view = v
-    send(self.top, wsLayout)
     self.update()
 
   # -- Section Constructors --
