@@ -56,7 +56,7 @@ controller CXColorDock:
     self.cube = colorcube(c)
     self.cube0tri = colorcube0triangle(c)
     # Create Color Picker Selection
-    # self.option = value(int32 1, self.cbPicker)
+    self.option = value(int32 0, self.cbPicker)
 
   # -- Dock Creation --
   callback cbPicker:
