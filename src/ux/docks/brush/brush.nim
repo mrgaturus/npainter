@@ -290,3 +290,5 @@ controller CXBrushDock:
     result.createBlendSec()
     result.createExtraSec()
     result.createDock()
+    # Proof of Concept Pencil Select
+    result.blendSec.selectProof(1)
