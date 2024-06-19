@@ -42,9 +42,9 @@ controller NPainterEngine:
     let
       ctx = addr canvas.image.ctx
       target = addr self.brush.pipe.canvas
-      # Buffer Mappings
+      # TODO: overhaul brush engine to use less physical pages
       mapColor = ctx[].mapAux(bpp * 4)
-      mapShape = ctx[].mapAux(bpp)
+      mapShape = ctx[].mapAux(bpp * 4)
     # Target Dimensions
     target.w = ctx.w
     target.h = ctx.h
