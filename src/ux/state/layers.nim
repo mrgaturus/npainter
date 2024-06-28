@@ -24,7 +24,7 @@ controller CXLayers:
       lock: @ bool
       wand: @ bool
       visible: bool
-      # On Select Callback
+      # Manipulation Callbacks
       onselect: GUICallback
       onstructure: GUICallback
 
@@ -38,12 +38,13 @@ controller CXLayers:
     let
       flags = layer.props.flags
       opacity = layer.props.opacity
-    # Reflect Flags
+    # Reflect Layer Flags
     self.clipping.peek[] = lpClipping in flags
     self.protect.peek[] = lpProtectAlpha in flags
     self.lock.peek[] = lpLock in flags
     self.wand.peek[] = lpTarget in flags
-    # Reflect Opacity
+    # Reflect Mode and Opacity
+    self.mode.peek[] = layer.props.mode
     self.opacity.peek[].lerp opacity
 
   proc select*(layer: NLayer) =
@@ -65,18 +66,22 @@ controller CXLayers:
     self.canvas.update()
 
   callback cbUpdateLayer:
-    let layer = self.image.selected
-    # Create Flags
-    var flags = {lpVisible}
+    let
+      layer = self.image.selected
+      props = addr layer.props
+      user {.cursor.} = cast[GUIWidget](layer.user)
+    # Update Layer Properties Flags
+    var flags = props.flags * {lpVisible}
     if self.clipping.peek[]: flags.incl(lpClipping)
     if self.protect.peek[]: flags.incl(lpProtectAlpha)
     if self.lock.peek[]: flags.incl(lpLock)
     if self.wand.peek[]: flags.incl(lpTarget)
     # Update Layer Attributes
-    layer.props.flags = flags
-    layer.props.mode = self.mode.peek[]
-    layer.props.opacity = toRaw(self.opacity.peek[])
+    props.flags = flags
+    props.mode = self.mode.peek[]
+    props.opacity = toRaw(self.opacity.peek[])
     # Render Layer
+    user.send(wsLayout)
     relax(self.cbRender)
 
   callback cbCreateLayer:
@@ -86,11 +91,12 @@ controller CXLayers:
       selected = image.selected
     # Put Next to Selected
     selected.attachPrev(layer)
-    layer.props.flags.incl lpVisible
+    layer.props.flags.incl(lpVisible)
     layer.props.opacity = 1.0
     # Select New Layer
-    self.select(layer)
     send(self.onstructure)
+    self.select(layer)
+    # Render Layer
     send(self.cbRender)
 
   callback cbClearLayer:

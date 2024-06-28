@@ -1,7 +1,9 @@
 import nogui/ux/prelude
 import ../../state/layers
-import item
 # XXX: this is a proof of concept
+# Import Layer Item
+import item
+export item
 
 # -----------------
 # Layer List Layout
@@ -31,7 +33,7 @@ widget UXLayerList:
     # Create Layer items
     var layer = root.first
     while not isNil(layer):
-      self.add layeritem(layers, layer, 0)
+      self.add layeritem(layers, layer)
       layer = layer.next
     # Relayout Layer List
     self.send(wsLayout)

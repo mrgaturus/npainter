@@ -17,16 +17,11 @@ import ../../state/layers
 
 icons "dock/layers", 16:
   layers := "layers.svg"
-  # Layer Flags
-  clipping := "clipping.svg"
-  alpha := "alpha.svg"
-  lock := "lock.svg"
-  wand := "wand.svg"
-  # Layer Addition
+  # Layer Button Addition
   addLayer := "add_layer.svg"
   addMask := "add_mask.svg"
   addFolder := "add_folder.svg"
-  # Layer Manipulation
+  # Layer Button Manipulation
   delete := "delete.svg"
   duplicate := "layers.svg"
   merge := "merge.svg"
