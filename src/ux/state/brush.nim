@@ -430,7 +430,7 @@ widget UXBrushDispatch:
       avg1 = addr brush.data.marker
     # Configure Marker
     avg1.blending = toRaw avg0.blending.peek[]
-    avg1.persistence = toRaw avg0.dilution.peek[]
+    avg1.persistence = toRaw avg0.persistence.peek[]
     avg1.p_blending = avg0.pBlending.peek[]
     # Configure Marker Mode
     brush.blend = bnMarker
