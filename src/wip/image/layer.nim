@@ -8,14 +8,14 @@ export NBlendMode
 # -------------------
 
 type
-  # Layer Binding
+  # Layer Owner Definition
+  NLayerOwner* = distinct pointer
   NLayerUser* = distinct pointer
+  # Layer Compositing Hook
   NLayerProc* = distinct pointer
   NLayerHook* = object
     fn*: NLayerProc
     ext*: pointer
-  NLayerOwner* {.borrow.} =
-    distinct ptr cint
   # Layer Properties
   NLayerKind* = enum
     lkColor
@@ -82,9 +82,6 @@ proc createLayer*(kind: NLayerKind, owner: NLayerOwner): NLayer =
   # Define Initial Properties
   result.owner = owner
   result.kind = kind
-  # Define Layer Code from Owner
-  let own = cast[ptr cint](owner)
-  result.props.code = own[]
 
 # -----------------
 # Layer Destruction

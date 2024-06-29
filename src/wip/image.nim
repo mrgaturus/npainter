@@ -13,8 +13,10 @@ type
     ctx*: NImageContext
     status*: NImageStatus
     com*: NCompositor
-    # Image Layering
+    # Image Ticket
     ticket: cint
+    t0, t1: cint
+    # Image Layering
     owner*: NLayerOwner
     root*: NLayer
     # Image Proxy
@@ -76,8 +78,12 @@ proc destroy*(img: NImage) =
 
 proc createLayer*(img: NImage, kind: NLayerKind): NLayer =
   result = createLayer(kind, img.owner)
+  # Define Layer Ticket
+  result.props.code = img.ticket
+  result.props.label = "Layer " & $img.t0
   # Step Layer Count
   inc(img.ticket)
+  inc(img.t0)
 
 proc selectLayer*(img: NImage, layer: NLayer) =
   # Check if layer belongs to image
