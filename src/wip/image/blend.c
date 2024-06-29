@@ -478,14 +478,18 @@ __m128i blend_divide(__m128i src, __m128i dst) {
   const __m128 zeros = _mm_setzero_ps();
   const __m128 ones = _mm_set1_ps(1.0);
   const __m128 xmm65535 = _mm_set1_ps(65535.0);
-  const __m128 rcp65535 = _mm_rcp_ps(xmm65535);
+  const __m128 rcp255 = _mm_set1_ps(1.0 / 255.0);
+
+  // Quantize to 8 bit RGBA
+  src = _mm_srli_epi32(src, 8);
+  dst = _mm_srli_epi32(dst, 8);
 
   __m128 xmm0, xmm1, xmm2, xmm3;
   // Convert to Float and Normalize
   __m128 src0 = _mm_cvtepi32_ps(src);
   __m128 dst0 = _mm_cvtepi32_ps(dst);
-  src0 = _mm_mul_ps(src0, rcp65535);
-  dst0 = _mm_mul_ps(dst0, rcp65535);
+  src0 = _mm_mul_ps(src0, rcp255);
+  dst0 = _mm_mul_ps(dst0, rcp255);
   // Convert to Straight Alpha
   __m128 sa = _mm_shuffle_ps(src0, src0, 0xFF);
   __m128 da = _mm_shuffle_ps(dst0, dst0, 0xFF);
