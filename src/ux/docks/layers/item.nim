@@ -1,9 +1,55 @@
+from nogui/core/tree import inside
 from nogui/builder import child
-import nogui/pack
+import nogui/[pack, format]
 # Import Widget Creation
 import nogui/ux/prelude
 import nogui/ux/layouts/[box, level, misc]
 import ../../state/layers
+
+icons "dock/layers", 16:
+  clipping *= "clipping.svg"
+  alpha *= "alpha.svg"
+  lock *= "lock.svg"
+  wand *= "wand.svg"
+  # Layer Properties Button
+  hidden := "hidden.svg"
+  visible := "visible.svg"
+  props := "props.svg"
+
+const blendname*: array[NBlendMode, cstring] = [
+  bmNormal: "Normal",
+  bmPassthrough: "Passthrough",
+  # -- Darker --
+  bmMultiply: "Multiply",
+  bmDarken: "Darken",
+  bmColorBurn: "Color Burn",
+  bmLinearBurn: "Linear Burn",
+  bmDarkerColor: "Darker Color",
+  # -- Light --
+  bmScreen: "Screen",
+  bmLighten: "Lighten",
+  bmColorDodge: "Color Dodge",
+  bmLinearDodge: "Linear Dodge",
+  bmLighterColor: "Lighter Color",
+  # -- Contrast --
+  bmOverlay: "Overlay",
+  bmSoftLight: "Soft Light",
+  bmHardLight: "Hard Light",
+  bmVividLight: "Vivid Light",
+  bmLinearLight: "Linear Light",
+  bmPinLight: "Pin Light",
+  bmHardMix: "Hard Mix",
+  # -- Compare --
+  bmDifference: "Difference",
+  bmExclusion: "Exclusion",
+  bmSubstract: "Substract",
+  bmDivide: "Divide",
+  # -- Composite --
+  bmHue: "Hue",
+  bmSaturation: "Saturation",
+  bmColor: "Color",
+  bmLuminosity: "Luminosity"
+]
 
 # -------------------
 # Layer Nesting Level
@@ -71,12 +117,25 @@ widget UXLayerThumb:
     ctx.fill rect(self.rect)
 
 widget UXLayerText:
-  new layertext():
-    discard
+  attributes:
+    {.cursor.}:
+      layer: NLayer
+    # Blending Label
+    mode: NBlendMode
+    blend: string
+
+  new layertext(layer: NLayer):
+    result.layer = layer
 
   method update =
     let h = getApp().font.height
     self.metrics.minH = h * 2
+    # Blending Mode Label
+    let props = addr self.layer.props
+    if len(self.blend) == 0 or self.mode != props.mode:
+      self.blend = $blendname[props.mode]
+    # Blending Mode Cache
+    self.mode = props.mode
 
   method draw(ctx: ptr CTXRender) =
     let
@@ -88,25 +147,25 @@ widget UXLayerText:
       # App Metrics & Colors
       h = app.font.height
       col = app.colors.text
-    # Draw Layer Info
+      # Layer Opacity
+      props = addr self.layer.props
+      opacity = int32(props.opacity * 100.0)
+    # Draw Layer Name
     ctx.color(col)
-    ctx.text(x, y, "Layer 1")
+    ctx.text(x, y, props.label)
+    # Draw Layer Blend
     ctx.color(col and 0x7FFFFFFF)
-    ctx.text(x, y + h, "Normal")
+    if opacity == 100:
+      ctx.text(x, y + h, self.blend)
+      return
+    # Draw Layer Opacity
+    let blend = cstring(self.blend)
+    app.fmt.format("%s %d%%", blend, opacity)
+    ctx.text(x, y + h, app.fmt.peek)
 
 # --------------------
 # Layer Widget Buttons
 # --------------------
-
-icons "dock/layers", 16:
-  clipping *= "clipping.svg"
-  alpha *= "alpha.svg"
-  lock *= "lock.svg"
-  wand *= "wand.svg"
-  # Layer Properties Button
-  hidden := "hidden.svg"
-  visible := "visible.svg"
-  props := "props.svg"
 
 proc metrics0(self: GUIWidget, icon: CTXIconID) =
   let
@@ -124,10 +183,11 @@ proc metrics0(self: GUIWidget, icon: CTXIconID) =
 
 widget UXLayerVisible:
   attributes:
-    icon: CTXIconID
     layer: NLayer
-    # Toggle Callback
     cb: GUICallback
+    # Visible Status
+    icon: CTXIconID
+    mask: bool
 
   new layervisible(layer: NLayer):
     result.flags = {wMouse}
@@ -146,8 +206,28 @@ widget UXLayerVisible:
     self.icon = icon
 
   method event(state: ptr GUIState) =
-    if state.kind == evCursorRelease and self.test(wHover):
+    if state.kind == evCursorClick:
       send(self.cb)
+    # Propagate Status Change
+    elif {wHover, wGrab} * self.flags == {wGrab}:
+      let user {.cursor.} = cast[GUIWidget](self.layer.user)
+      let item {.cursor.} = inside(user.parent, user.rect.x, state.my)
+      # HACK: Ensure UXLayerProps is UXLayerItem.last
+      if item != user and item.vtable == user.vtable:
+        let layer = cast[UXLayerVisible](item.last).layer
+        if self.mask != (lpVisible in layer.props.flags):
+          return
+        # Prepare Item Callback
+        privateAccess(GUICallback)
+        var cb = self.cb
+        # Hook Callback to Selected
+        cb.sender = cast[pointer](item)
+        cb.send()
+
+  method handle(reason: GUIHandle) =
+    if reason == inGrab:
+      let flags = self.layer.props.flags
+      self.mask = lpVisible in flags
 
   method draw(ctx: ptr CTXRender) =
     let
@@ -161,10 +241,10 @@ widget UXLayerVisible:
 
 widget UXLayerProps:
   attributes:
-    icon: CTXIconID
     layer: NLayer
-    # Props Callback
     cb: GUICallback
+    # Props Status
+    icon: CTXIconID
 
   new layerprops(layer: NLayer):
     result.flags = {wMouse}
@@ -186,6 +266,9 @@ widget UXLayerProps:
 
   method draw(ctx: ptr CTXRender) =
     let
+      flags = self.layer.props.flags
+      selected = self.parent.test(wHold) or self.test(wHover)
+      # Widget Metrics
       m = addr self.metrics
       r = addr self.rect
     var
@@ -193,9 +276,11 @@ widget UXLayerProps:
       y = r.y + (r.h - m.maxH) shr 1
     # Draw Properties Icon
     ctx.color getApp().colors.text
-    ctx.icon(self.icon, x, y)
+    if selected or lpLock in flags:
+      ctx.icon(self.icon, x, y)
+    else: x += r.w
     # Draw Wand Target Icon
-    if lpTarget in self.layer.props.flags:
+    if lpTarget in flags:
       ctx.icon(iconWand, x - r.w, y)
 
 # ------------------------
@@ -252,7 +337,7 @@ widget UXLayerItem:
         margin():
           horizontal().child:
             min: thumb
-            layertext()
+            layertext(layer)
     # Button Callbacks
     btnShow.cb = result.cbVisible
     btnProps.cb = result.cbProps
@@ -273,6 +358,10 @@ widget UXLayerItem:
     # Calculate Accmulated Size
     m.minW = l.minW + p.minW
     m.minH = max(l.minH, p.minH)
+    # Check Layer Selected
+    self.flags.excl(wHold)
+    if self.layer == self.layers.selected:
+      self.flags.incl(wHold)
 
   method layout =
     let
@@ -307,15 +396,16 @@ widget UXLayerItem:
       self.layers.select(self.layer)
 
   method draw(ctx: ptr CTXRender) =
-    let
-      layer = self.layer
-      ox = self.btnShow.rect.x
+    let ox = self.btnShow.rect.x
     # Adjust Rect to Button Position
     var r = self.rect
     r.w -= ox - r.x
     r.x = ox
     # Draw Selected Rect
-    if layer == self.layers.selected:
-      ctx.color self.itemColor()
-    else: ctx.color self.clearColor()
-    ctx.fill rect(r)
+    let colors = addr getApp().colors
+    if self.test(wHold):
+      ctx.color colors.focus
+      ctx.fill rect(r)
+    elif self.test(wHover):
+      ctx.color colors.item
+      ctx.fill rect(r)

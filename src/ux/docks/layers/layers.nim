@@ -11,6 +11,9 @@ import nogui/ux/separator
 # Import Layer State
 import ../../state/layers
 
+proc comboitem(mode: NBlendMode): UXComboItem =
+  comboitem($blendname[mode], ord mode)
+
 # -----------
 # Layers Dock
 # -----------
@@ -58,36 +61,36 @@ controller CXLayersDock:
   proc createCombo() =
     self.mode = 
       combomodel(): menu("").child:
-        comboitem("Normal", ord bmNormal)
+        comboitem(bmNormal)
         menuseparator("Dark")
-        comboitem("Multiply", ord bmMultiply)
-        comboitem("Darken", ord bmDarken)
-        comboitem("Color Burn", ord bmColorBurn)
-        comboitem("Linear Burn", ord bmLinearBurn)
-        comboitem("Darker Color", ord bmDarkerColor)
+        comboitem(bmMultiply)
+        comboitem(bmDarken)
+        comboitem(bmColorBurn)
+        comboitem(bmLinearBurn)
+        comboitem(bmDarkerColor)
         menuseparator("Light")
-        comboitem("Screen", ord bmScreen)
-        comboitem("Lighten", ord bmLighten)
-        comboitem("Color Dodge", ord bmColorDodge)
-        comboitem("Linear Dodge", ord bmLinearDodge)
-        comboitem("Lighter Color", ord bmLighterColor)
+        comboitem(bmScreen)
+        comboitem(bmLighten)
+        comboitem(bmColorDodge)
+        comboitem(bmLinearDodge)
+        comboitem(bmLighterColor)
         menuseparator("Contrast")
-        comboitem("Overlay", ord bmOverlay)
-        comboitem("Soft Light", ord bmSoftLight)
-        comboitem("Hard Light", ord bmHardLight)
-        comboitem("Vivid Light", ord bmVividLight)
-        comboitem("Linear Light", ord bmLinearLight)
-        comboitem("Pin Light", ord bmPinLight)
+        comboitem(bmOverlay)
+        comboitem(bmSoftLight)
+        comboitem(bmHardLight)
+        comboitem(bmVividLight)
+        comboitem(bmLinearLight)
+        comboitem(bmPinLight)
         menuseparator("Comprare")
-        comboitem("Difference", ord bmDifference)
-        comboitem("Exclusion", ord bmExclusion)
-        comboitem("Substract", ord bmSubstract)
-        comboitem("Divide", ord bmDivide)
+        comboitem(bmDifference)
+        comboitem(bmExclusion)
+        comboitem(bmSubstract)
+        comboitem(bmDivide)
         menuseparator("Composite")
-        comboitem("Hue", ord bmHue)
-        comboitem("Saturation", ord bmSaturation)
-        comboitem("Color", ord bmColor)
-        comboitem("Luminosity", ord bmLuminosity)
+        comboitem(bmHue)
+        comboitem(bmSaturation)
+        comboitem(bmColor)
+        comboitem(bmLuminosity)
     # Change Blending Callback
     self.mode.onchange = self.cbChangeMode
 

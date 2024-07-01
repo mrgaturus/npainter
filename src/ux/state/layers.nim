@@ -48,10 +48,16 @@ controller CXLayers:
     self.opacity.peek[].lerp opacity
 
   proc select*(layer: NLayer) =
+    let
+      u0 {.cursor.} = cast[GUIWidget](self.selected.user)
+      u1 {.cursor.} = cast[GUIWidget](layer.user)
+    # Select Current Layer
     self.image.selectLayer(layer)
     self.reflect(layer)
-    # React to Selected Changes
+    # Update Widgets
     send(self.onselect)
+    u0.send(wsLayout)
+    u1.send(wsLayout)
 
   # --------------------------
   # Layer Control Manipulation
@@ -94,7 +100,7 @@ controller CXLayers:
     layer.props.flags.incl(lpVisible)
     layer.props.opacity = 1.0
     # Select New Layer
-    send(self.onstructure)
+    force(self.onstructure)
     self.select(layer)
     # Render Layer
     send(self.cbRender)
