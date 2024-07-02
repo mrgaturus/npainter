@@ -479,7 +479,6 @@ __m128i blend_divide(__m128i src, __m128i dst) {
   const __m128 ones = _mm_set1_ps(1.0);
   const __m128 xmm65535 = _mm_set1_ps(65535.0);
   const __m128 rcp255 = _mm_set1_ps(1.0 / 255.0);
-
   // Quantize to 8 bit RGBA
   src = _mm_srli_epi32(src, 8);
   dst = _mm_srli_epi32(dst, 8);
