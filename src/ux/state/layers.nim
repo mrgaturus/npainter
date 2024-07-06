@@ -77,15 +77,15 @@ controller CXLayers:
       props = addr layer.props
       user {.cursor.} = cast[GUIWidget](layer.user)
     # Update Layer Properties Flags
-    var flags = props.flags * {lpVisible}
+    var flags = props.flags - {lpClipping .. lpLock}
     if self.clipping.peek[]: flags.incl(lpClipping)
     if self.protect.peek[]: flags.incl(lpProtectAlpha)
-    if self.lock.peek[]: flags.incl(lpLock)
     if self.wand.peek[]: flags.incl(lpTarget)
+    if self.lock.peek[]: flags.incl(lpLock)
     # Update Layer Attributes
     props.flags = flags
     props.mode = self.mode.peek[]
-    props.opacity = toRaw(self.opacity.peek[])
+    props.opacity = self.opacity.peek[].toRaw
     # Render Layer
     user.send(wsLayout)
     relax(self.cbRender)
@@ -150,6 +150,23 @@ controller CXLayers:
     layer.props.opacity = 1.0
     # Select Current Layer
     img.root.attachInside(layer)
+    img.root.attachInside img.createLayer(lkColor)
+    img.root.attachInside img.createLayer(lkColor)
+    let folder0 = img.createLayer(lkFolder)
+    let folder1 = img.createLayer(lkFolder)
+    let folder2 = img.createLayer(lkFolder)
+    let folder3 = img.createLayer(lkFolder)
+    img.root.attachInside(folder0)
+    folder0.attachInside img.createLayer(lkColor)
+    folder0.attachInside img.createLayer(lkColor)
+    folder0.attachInside folder2
+    folder0.attachInside folder3
+    folder0.attachInside folder1
+    folder1.attachInside img.createLayer(lkColor)
+    folder1.attachInside img.createLayer(lkColor)
+    folder1.attachInside img.createLayer(lkColor)
+    folder2.props.flags.incl(lpFolded)
+    folder3.props.flags.incl(lpFolded)
     img.selectLayer(layer)
     # Update Strcuture
     self.reflect(layer)

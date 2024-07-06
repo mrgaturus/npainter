@@ -1,4 +1,4 @@
-import list
+import item, list
 # Import Builder
 import nogui/pack
 import nogui/ux/prelude
@@ -50,10 +50,9 @@ controller CXLayersDock:
   callback cbChangeMode:
     let m = react(self.layers.mode)
     m[] = NBlendMode(self.mode.selected.value)
-    echo "Selected Value:", self.mode.selected.value
 
   callback cbStructure:
-    self.list.reloadProofLayerList()
+    self.list.reload()
 
   callback cbDummy:
     discard
@@ -100,7 +99,7 @@ controller CXLayersDock:
       la = self.layers
     # Create Layer List
     self.list = layerlist(self.layers)
-    self.list.reloadProofLayerList()
+    self.list.reload()
     # Create Layouts
     vertical().child:
       # Layer Quick Properties
@@ -121,11 +120,11 @@ controller CXLayersDock:
         button(iconAddMask, cb).clear()
         button(iconAddFolder, cb).clear()
         vseparator() # Layer Manipulation
-        button(iconDelete, la.cbRemoveLayer).clear()
         button(iconDuplicate, cb).clear()
         button(iconMerge, cb).clear()
         button(iconClear, la.cbClearLayer).clear()
-        # Misc Buttons
+        button(iconDelete, la.cbRemoveLayer).clear()
+        # Layer Reordering Buttons
         tail: button(iconUp, cb).clear()
         tail: button(iconDown, cb).clear()
       # Layer Item

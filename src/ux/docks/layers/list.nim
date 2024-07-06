@@ -1,41 +1,61 @@
 import nogui/ux/prelude
 import ../../state/layers
-# XXX: this is a proof of concept
 # Import Layer Item
 import item
-export item
 
 # -----------------
 # Layer List Layout
 # -----------------
 
 widget UXLayerList:
-  attributes: {.cursor.}:
-    layers: CXLayers
+  attributes:
+    {.cursor.}:
+      layers: CXLayers
+    # Previous Childrens
+    stack: GUIWidget
 
   new layerlist(layers: CXLayers):
     result.kind = wkLayout
     result.layers = layers
 
   proc clear() =
-    # XXX: this is awful
-    # ARC / ORC torture XD
-    for w in forward(self.first):
-      w.parent = nil
+    self.stack = self.first
+    # Clear Layer List
     self.first = nil
     self.last = nil
 
-  proc reloadProofLayerList* =
-    let
-      root = self.layers.root
-      layers = self.layers
+  proc register(layer: NLayer) =
+    var item = cast[UXLayerItem](self.stack)
+    # Consume Layer Item From Stack
+    if not isNil(item):
+      self.stack = item.next
+      # Clear Endpoints
+      item.next = nil
+      item.prev = nil
+    # Create New Layer Item
+    else: item = layeritem(self.layers)
+    item.useLayer(layer)
+    self.add(item)
+
+  proc reload*() =
+    let root = self.layers.root
+    # Clear Layer List
     self.clear()
-    # Create Layer items
+    # Create Layer List
     var layer = root.first
     while not isNil(layer):
-      self.add layeritem(layers, layer)
+      self.register(layer)
+      # Enter/Leave Folder
+      if layer.kind == lkFolder:
+        if not isNil(layer.first):
+          layer = layer.first
+          continue
+      while isNil(layer.next) and layer != root:
+        layer = layer.folder
+      # Next Layer
       layer = layer.next
-    # Relayout Layer List
+    # Relayout Widget
+    wasMoved(self.stack)
     self.send(wsLayout)
 
   # -----------------
@@ -45,8 +65,9 @@ widget UXLayerList:
   method update =
     var h: int16
     for w in forward(self.first):
+      if w.test(wHidden): continue
       h += w.metrics.minH
-    # Change Min Size
+    # Update Minimun Size
     self.metrics.minH = h
 
   method layout =
@@ -54,10 +75,12 @@ widget UXLayerList:
     let w = self.metrics.w
     # Arrange Each Layer
     for widget in forward(self.first):
+      if widget.test(wHidden): continue
+      # Locate Layer Item
       let m = addr widget.metrics
       m.y = y
       m.x = 0
       m.w = w
       m.h = m.minH
-      # Next Y
+      # Step Layer Item
       y += m.minH

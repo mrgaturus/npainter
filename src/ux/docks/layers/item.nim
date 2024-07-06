@@ -16,6 +16,10 @@ icons "dock/layers", 16:
   visible := "visible.svg"
   props := "props.svg"
 
+icons "dock/layers", 32:
+  folder0 := "folder0.svg"
+  folder1 := "folder1.svg"
+
 const blendname*: array[NBlendMode, cstring] = [
   bmNormal: "Normal",
   bmPassthrough: "Passthrough",
@@ -56,32 +60,37 @@ const blendname*: array[NBlendMode, cstring] = [
 # -------------------
 
 widget UXLayerLevel:
-  attributes:
-    layer: NLayer
-    {.cursor.}:
-      helper: GUIWidget
+  attributes: {.cursor.}:
+    layer: ptr NLayer
+    helper: GUIWidget
+    # Layer Level Info
+    level: NLayerLevel
 
-  new layerlevel(layer: NLayer, helper: GUIWidget):
+  new layerlevel(layer: ptr NLayer, helper: GUIWidget):
     result.layer = layer
     result.helper = helper
 
   method update =
     let
-      layer = self.layer
+      layer = self.layer[]
       help {.cursor.} = self.helper
       m = addr self.metrics
       m0 = addr help.metrics
+      # Calculate Layer Level
+      level = layer.level()
     # Layer Nesting Level
-    var l = int16(layer.level) - 1
+    var l = int16(level.depth) - 1
     if lpClipping in layer.props.flags:
       inc(l)
     # Calculate Level Width
     help.vtable.update(help)
     m.minW = m0.minW * l
+    # Store Layer Level
+    self.level = level
 
   method draw(ctx: ptr CTXRender) =
     let
-      layer = self.layer
+      layer = self.layer[]
       w = float32(self.helper.rect.w)
     var r = rect(self.rect)
     # Draw Layer Clipping Mark
@@ -96,35 +105,44 @@ widget UXLayerLevel:
 # ----------------------
 
 widget UXLayerThumb:
-  attributes:
-    # This is a proof of concept
-    size: & int32
+  attributes: {.cursor.}:
+    layer: ptr NLayer
 
-  new layerthumb():
+  new layerthumb(layer: ptr NLayer):
     result.flags = {wMouse}
+    result.layer = layer
 
   method update =
     let
-      # TODO: allow calculate scaling from app DPI
-      s = int16 32 #int16 self.size.peek[]
+      # XXX: this is proof of concept
+      s = int16 32
       m = addr self.metrics
     # Thumbnail Min Size
     m.minW = s
     m.minH = s
 
   method draw(ctx: ptr CTXRender) =
+    let
+      layer = self.layer[]
+      r = self.rect
+    # TODO: draw thumbnail texture here
     ctx.color 0xFFFFFFFF'u32
-    ctx.fill rect(self.rect)
+    if layer.kind != lkFolder:
+      ctx.fill rect(r)
+    # Draw Folder Collapsed
+    elif lpFolded notin layer.props.flags:
+      ctx.icon(iconFolder0, r.x, r.y)
+    else: ctx.icon(iconFolder1, r.x, r.y)
 
 widget UXLayerText:
   attributes:
     {.cursor.}:
-      layer: NLayer
+      layer: ptr NLayer
     # Blending Label
     mode: NBlendMode
     blend: string
 
-  new layertext(layer: NLayer):
+  new layertext(layer: ptr NLayer):
     result.layer = layer
 
   method update =
@@ -183,13 +201,13 @@ proc metrics0(self: GUIWidget, icon: CTXIconID) =
 
 widget UXLayerVisible:
   attributes:
-    layer: NLayer
+    layer: ptr NLayer
     cb: GUICallback
     # Visible Status
     icon: CTXIconID
-    mask: bool
+    [mask, hidden]: bool
 
-  new layervisible(layer: NLayer):
+  new layervisible(layer: ptr NLayer):
     result.flags = {wMouse}
     result.layer = layer
 
@@ -235,18 +253,22 @@ widget UXLayerVisible:
       r = addr self.rect
       x = r.x + (r.w - m.maxW) shr 1
       y = r.y + (r.h - m.maxH) shr 1
+    # Check Level Visibility
+    var color = getApp().colors.text
+    if self.hidden:
+      color = color and 0x7FFFFFFF'u32
     # Draw Visible Icon
-    ctx.color getApp().colors.text
+    ctx.color color
     ctx.icon(self.icon, x, y)
 
 widget UXLayerProps:
   attributes:
-    layer: NLayer
+    layer: ptr NLayer
     cb: GUICallback
     # Props Status
     icon: CTXIconID
 
-  new layerprops(layer: NLayer):
+  new layerprops(layer: ptr NLayer):
     result.flags = {wMouse}
     result.layer = layer
 
@@ -295,60 +317,83 @@ widget UXLayerItem:
     btnShow: UXLayerVisible
     btnProps: UXLayerProps
     # Layer Item Content
+    laLevel: UXLayerLevel
+    laThumb: UXLayerThumb
+    laText: UXLayerText
+    # Layer Item Layout
     content: GUIWidget
-    thumb: UXLayerThumb
 
-  callback cbVisible:
-    let props = addr self.layer.props
+  proc useLayer*(layer: NLayer) =
+    layer.user = cast[NLayerUser](self)
+    self.layer = layer
+
+  proc toggle(flag: NLayerFlag) =
+    let
+      layer = self.layer
+      props = addr layer.props
     var flags = props.flags
     # Toggle Visiblity
-    if lpVisible in flags:
-      flags.excl(lpVisible)
-    else: flags.incl(lpVisible)
+    if flag in flags:
+      flags.excl(flag)
+    else: flags.incl(flag)
     # Replace Flags
     props.flags = flags
-    # Relayout Layer
-    self.send(wsLayout)
+
+  callback cbVisible:
+    let layer = self.layer
+    self.toggle(lpVisible)
+    # Check Layer as Folder
+    var w {.cursor.} = cast[GUIWidget](self)
+    if layer.kind == lkFolder:
+      w = w.parent
+    # Relayout Widget
+    w.send(wsLayout)
     send(self.layers.cbRender)
 
   callback cbProps:
     self.send(wsLayout)
     send(self.layers.cbRender)
 
-  new layeritem(layers: CXLayers, layer: NLayer):
+  callback cbFold:
+    self.toggle(lpFolded)
+    self.parent.send(wsLayout)
+
+  new layeritem(layers: CXLayers):
     let
-      thumb = layerthumb()
+      layer = addr result.layer
+      # Layer Widget Buttons
       btnShow = layervisible(layer)
       btnProps = layerprops(layer)
+      # Layer Widget Content
+      laLevel = layerlevel(layer, btnShow)
+      laThumb = layerthumb(layer)
+      laText = layertext(layer)
     # Store Layer Attributes
     result.flags = {wMouse}
     result.layers = layers
-    result.layer = layer
-    # Bind Widget to Layer User
-    layer.user = cast[NLayerUser](result)
     # Create Layer Content
     let content =
       horizontal().child:
-        # Showing Button
         min: level().child:
-          layerlevel(layer, btnShow)
+          laLevel
           btnShow
-        # Widget Info
-        margin():
-          horizontal().child:
-            min: thumb
-            layertext(layer)
-    # Button Callbacks
+        # Layer Information
+        margin: horizontal().child:
+          min: laThumb
+          laText
+    # Store Layer Buttons
     btnShow.cb = result.cbVisible
     btnProps.cb = result.cbProps
-    # Configure Content
-    result.add content
-    result.add btnProps
-    # Store Layer Widgets
     result.btnShow = btnShow
     result.btnProps = btnProps
+    # Store Layer Content
+    result.laLevel = laLevel
+    result.laThumb = laThumb
+    result.laText = laText
+    # Store Layer Layout
+    result.add content
+    result.add btnProps
     result.content = content
-    result.thumb = thumb
 
   method update =
     let
@@ -359,9 +404,15 @@ widget UXLayerItem:
     m.minW = l.minW + p.minW
     m.minH = max(l.minH, p.minH)
     # Check Layer Selected
-    self.flags.excl(wHold)
+    let level = self.laLevel.level
+    var flags = self.flags - {wHold, wHidden}
     if self.layer == self.layers.selected:
-      self.flags.incl(wHold)
+      flags.incl(wHold)
+    # Check Level Folded/Hidden
+    if level.folded: flags.incl(wHidden)
+    self.btnShow.hidden = level.hidden
+    # Check Layer Level
+    self.flags = flags
 
   method layout =
     let
@@ -394,6 +445,10 @@ widget UXLayerItem:
     # Change Layer when Clicked
     elif state.kind == evCursorClick:
       self.layers.select(self.layer)
+      # Fold Folder if Thumnail Clicked
+      if self.laThumb.pointOnArea(x, y):
+        if self.layer.kind == lkFolder:
+          send(self.cbFold)
 
   method draw(ctx: ptr CTXRender) =
     let ox = self.btnShow.rect.x
