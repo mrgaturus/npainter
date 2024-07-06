@@ -23,20 +23,21 @@ type
     lkStencil
     # Layer Tree
     lkFolder
-  NLayerFlags* = enum
+  NLayerFlag* = enum
     lpVisible
-    # Clipping
-    lpProtectAlpha
+    # Layer Props
     lpClipping
-    # GUI Hint
-    lpDraft
+    lpProtectAlpha
     lpTarget
     lpLock
+    # Layer Tree
+    lpDraft
+    lpFolded
   NLayerProps* = object
     code*: cint
     opacity*: cfloat
     mode*: NBlendMode
-    flags*: set[NLayerFlags]
+    flags*: set[NLayerFlag]
     # GUI Labeling
     label*: string
   # Layer Properties Tag
@@ -49,6 +50,11 @@ type
   NLayerTag* = object
     code: cint
     mode: NLayerAttach
+  NLayerLevel* = object
+    depth*: cint
+    # Visible Checks
+    hidden*: bool
+    folded*: bool
   # -- Layer Tree Object --
   NLayer* = ptr object
     next*, prev*: NLayer
@@ -140,12 +146,19 @@ proc tag*(layer: NLayer): NLayerTag =
     result.code = layer.props.code
     result.mode = ltAttachUnknown
 
-proc level*(layer: NLayer): cint =
+proc level*(layer: NLayer): NLayerLevel =
   var folder = layer.folder
   # Walk to Outermost Levels
   while not isNil(folder):
+    inc(result.depth)
+    # Check Folder Status
+    let flags = folder.props.flags
+    if lpVisible notin flags:
+      result.hidden = true
+    if lpFolded in flags:
+      result.folded = true
+    # Next Outside Folder
     folder = folder.folder
-    inc(result)
 
 # -----------------
 # Layer Tree Folder
