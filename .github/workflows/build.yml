@@ -1,0 +1,23 @@
+name: Build
+
+on: [push]
+jobs:
+  Linux:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+      - name: Acquire dependencies
+        run: |
+          sudo apt update -y
+          xargs -a ./ubuntu-packages.txt sudo apt install -y
+          curl https://nim-lang.org/choosenim/init.sh -sSf | sh -s -- -y
+      - name: Build Linux
+        run: ./build_linux.sh -y
+      - name: Upload results
+        uses: actions/upload-artifact@v4
+        with:
+          name: Linux build
+          path: |
+            ./npainter
+            ./data

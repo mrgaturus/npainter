@@ -9,7 +9,7 @@ fast and simple digital painting software, work in progress
 
 - Requires GCC 10+ or Clang 10+
 - Requires Additional Developing Packages on some distros:
-  * Ubuntu/Debian: `libfreetype-dev libegl-dev libgdk-pixbuf-2.0-dev`
+  * Ubuntu/Debian: `libfreetype-dev libegl-dev libgdk-pixbuf-2.0-dev build-essential libxi-dev libx11-dev libxcursor-dev`
   * Fedora/RHEL: `freetype-devel libglvnd-devel gdk-pixbuf2-devel`
 
 ### Building Release Build
