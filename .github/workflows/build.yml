@@ -10,7 +10,7 @@ jobs:
       - name: Acquire dependencies
         run: |
           sudo apt update -y
-          sudo apt install -y gcc-10 libfreetype-dev libegl-dev libgdk-pixbuf-2.0-dev build-essential openssl curl libxi-dev libx11-dev libxcursor-dev
+          xargs -a packages.txt sudo apt install -y
           curl https://nim-lang.org/choosenim/init.sh -sSf | sh -s -- -y
       - name: Build Linux
         run: ./build_linux.sh -y
