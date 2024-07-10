@@ -10,7 +10,7 @@ jobs:
       - name: Acquire dependencies
         run: |
           sudo apt update -y
-          sudo apt install -y gcc-10 libfreetype-dev libegl-dev libgdk-pixbuf-2.0-dev build-essential openssl curl
+          sudo apt install -y gcc-10 libfreetype-dev libegl-dev libgdk-pixbuf-2.0-dev build-essential openssl curl libx11-dev
           curl https://nim-lang.org/choosenim/init.sh -sSf | sh -s -- -y
       - name: Build Linux
         run: ./build_linux.sh -y
@@ -18,4 +18,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: Linux build
-          path: ./npainter
+          path: |
+            ./npainter
+            ./data
