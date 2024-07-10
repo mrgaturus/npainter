@@ -1,0 +1,22 @@
+name: Build
+
+on: [push]
+jobs:
+  Linux:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+      - name: Acquire dependencies
+        run: |
+          apt update -y
+          apt install -y gcc-10 libfreetype-dev libegl-dev libgdk-pixbuf-2.0-dev curl
+          curl https://nim-lang.org/choosenim/init.sh -sSf | sh
+          cd ${{ github.workspace }}
+      - name: Build Linux
+        run: ./build_linux.sh
+      - name: Upload results
+        uses: actions/upload-artifact@v4
+        with:
+          name: Linux build
+          path: ./npainter
