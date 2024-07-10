@@ -11,7 +11,7 @@ jobs:
         run: |
           sudo apt update -y
           sudo apt install -y gcc-10 libfreetype-dev libegl-dev libgdk-pixbuf-2.0-dev curl
-          curl https://nim-lang.org/choosenim/init.sh -sSf | sh
+          curl https://nim-lang.org/choosenim/init.sh -sSf | sh -y
           cd ${{ github.workspace }}
       - name: Build Linux
         run: ./build_linux.sh
