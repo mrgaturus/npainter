@@ -9,8 +9,8 @@ jobs:
         uses: actions/checkout@v4
       - name: Acquire dependencies
         run: |
-          apt update -y
-          apt install -y gcc-10 libfreetype-dev libegl-dev libgdk-pixbuf-2.0-dev curl
+          sudo apt update -y
+          sudo apt install -y gcc-10 libfreetype-dev libegl-dev libgdk-pixbuf-2.0-dev curl
           curl https://nim-lang.org/choosenim/init.sh -sSf | sh
           cd ${{ github.workspace }}
       - name: Build Linux
