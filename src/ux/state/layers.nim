@@ -27,6 +27,7 @@ controller CXLayers:
       # Manipulation Callbacks
       onselect: GUICallback
       onstructure: GUICallback
+      onorder: GUICallbackEX[NLayer]
 
   proc root*: NLayer =
     self.image.root

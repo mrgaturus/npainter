@@ -1,7 +1,125 @@
+from nogui/core/tree import inside
+import nogui/ux/containers/scroll
 import nogui/ux/prelude
 import ../../state/layers
 # Import Layer Item
 import item
+
+# ----------------
+# Layer List Sides
+# ----------------
+
+proc orderSide(state: ptr GUIState, layer: NLayer): NLayerAttach =
+  const modes = [ltAttachPrev, ltAttachFolder, ltAttachNext]
+  let user {.cursor.} = cast[GUIWidget](layer.user)
+  # Check Layer Kind
+  let
+    kind = layer.kind
+    rect = user.rect
+    y = state.my - rect.y
+  # Check Layer Sides
+  if kind != lkFolder:
+    let idx = clamp(y * 2 div rect.h, 0, 1)
+    result = modes[idx shl 1]
+  # Check Folder Sides
+  elif kind == lkFolder:
+    let idx = clamp(y * 3 div rect.h, 0, 2)
+    result = modes[idx]
+
+proc drawSide(ctx: ptr CTXRender, layer: NLayer, mode: NLayerAttach) =
+  let
+    app = getApp()
+    border = float32(app.space.line)
+    user {.cursor.} = cast[UXLayerItem](layer.user)
+  # Prepare Fill Rect
+  var r = user.rectLayer().rect
+  ctx.color(app.colors.darker and 0x3FFFFFFF'u32) 
+  ctx.fill(r)
+  ctx.color(app.colors.text)
+  # Fill Layer Outline
+  case mode
+  of ltAttachNext:
+    r.y0 = r.y1 - border
+    ctx.fill(r)
+  of ltAttachPrev:
+    r.y1 = r.y0 + border
+    ctx.fill(r)
+  of ltAttachFolder:
+    ctx.line(r, border)
+  else: discard
+
+# ---------------------
+# Layer List Reordering
+# ---------------------
+
+widget UXLayerOrder:
+  attributes: {.cursor.}:
+    layers: CXLayers
+    # Layer List Widget
+    list: GUIWidget
+    scroll: UXScrollOffset
+    # Layer Attach
+    layer: NLayer
+    target: NLayer
+    mode: NLayerAttach
+
+  callback cbOrder(data: NLayer):
+    self.layer = data[]
+    # Change Current Grab
+    getWindow().send(wsUnHover)
+    self.send(wsForward)
+    self.send(wsOpen)
+
+  new layerorder(layers: CXLayers, list: GUIWidget):
+    result.kind = wkTooltip
+    result.flags = {wMouse}
+    # Layer Order List
+    result.layers = layers
+    result.list = list
+
+  method layout =
+    let scroll {.cursor.} = self.list.parent
+    self.scroll = cast[UXScrollOffset](scroll)
+    self.rect = scroll.rect
+    # Ensure it's Actually a Scroll
+    assert(scroll of UXScrollOffset)
+
+  method event(state: ptr GUIState) =
+    let
+      x = state.mx
+      y = state.my
+      layer = self.layer
+      user {.cursor.} = cast[GUIWidget](layer.user)
+      list {.cursor.} = self.list
+      # Avoid Finding Outside
+      check = self.pointOnArea(x, y)
+    # Find Current Widget
+    privateAccess(UXLayerItem)
+    var found {.cursor.} = list.inside(x, y)
+    if check and found != list and found != user:
+      let layer = cast[UXLayerItem](found).layer
+      # Configure Layer Mode
+      self.target = layer
+      self.mode = state.orderSide(layer)
+      return
+    # Fallback Values
+    self.target = self.layer
+    self.mode = ltAttachUnknown
+
+  method handle(reason: GUIHandle) =
+    if reason == outGrab:
+      self.send(wsClose)
+
+  method draw(ctx: ptr CTXRender) =
+    let user {.cursor.} = cast[UXLayerItem](self.layer.user)
+    ctx.drawSide(self.target, self.mode)
+    # Decide Layer Coloring
+    var color: CTXColor
+    if self.layer != self.target:
+      color = getApp().colors.darker and 0x7FFFFFFF'u32
+    # Fill Layer Expected
+    ctx.color(color)
+    ctx.fill(rect user.rectLayer)
 
 # -----------------
 # Layer List Layout
@@ -12,11 +130,16 @@ widget UXLayerList:
     {.cursor.}:
       layers: CXLayers
     # Previous Childrens
-    stack: GUIWidget
+    order: UXLayerOrder
+    stack: GUIWidget 
 
   new layerlist(layers: CXLayers):
     result.kind = wkLayout
     result.layers = layers
+    # Create Layer Ordering Helper
+    let order = layerorder(layers, result)
+    layers.onorder = order.cbOrder
+    result.order = order
 
   proc clear() =
     self.stack = self.first
@@ -57,10 +180,6 @@ widget UXLayerList:
     # Relayout Widget
     wasMoved(self.stack)
     self.send(wsLayout)
-
-  # -----------------
-  # Useful Methods XD
-  # -----------------
 
   method update =
     var h: int16

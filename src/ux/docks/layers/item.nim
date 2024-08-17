@@ -327,6 +327,13 @@ widget UXLayerItem:
     layer.user = cast[NLayerUser](self)
     self.layer = layer
 
+  proc rectLayer*: GUIRect =
+    result = self.rect
+    let ox = self.btnShow.rect.x
+    # Adjust Rect to Button Position
+    result.w -= ox - result.x
+    result.x = ox
+
   proc toggle(flag: NLayerFlag) =
     let
       layer = self.layer
@@ -445,17 +452,19 @@ widget UXLayerItem:
     # Change Layer when Clicked
     elif state.kind == evCursorClick:
       self.layers.select(self.layer)
-      # Fold Folder if Thumnail Clicked
+    # Fold Folder if Thumbnail Clicked
+    elif state.kind == evCursorRelease:
       if self.laThumb.pointOnArea(x, y):
         if self.layer.kind == lkFolder:
           send(self.cbFold)
 
+  method handle(reason: GUIHandle) =
+    if reason == outHover: # Start Reordering
+      if wGrab in (self.flags - self.btnShow.flags):
+        force(self.layers.onorder, addr self.layer)
+
   method draw(ctx: ptr CTXRender) =
-    let ox = self.btnShow.rect.x
-    # Adjust Rect to Button Position
-    var r = self.rect
-    r.w -= ox - r.x
-    r.x = ox
+    let r = self.rectLayer()
     # Draw Selected Rect
     let colors = addr getApp().colors
     if self.test(wHold):

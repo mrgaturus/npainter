@@ -41,12 +41,12 @@ type
     # GUI Labeling
     label*: string
   # Layer Properties Tag
-  NLayerAttach = enum
+  NLayerAttach* = enum
+    ltAttachUnknown
+    # Attach Sides
     ltAttachNext
     ltAttachPrev
     ltAttachFolder
-    # Invalid Attach
-    ltAttachUnknown
   NLayerTag* = object
     code: cint
     mode: NLayerAttach

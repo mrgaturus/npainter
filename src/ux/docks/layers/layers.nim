@@ -140,6 +140,6 @@ controller CXLayersDock:
     # Create Docks
     result.createCombo()
     result.createDock()
-    # Configure Callbacks
+    # Configure Layer Controller Callbacks
     result.layers.onselect = result.cbUpdate
     result.layers.onstructure = result.cbStructure
