@@ -137,6 +137,25 @@ controller CXLayers:
     send(self.onstructure)
     send(self.cbRender)
 
+  callback cbOrderLayer(order: NLayerOrder):
+    let
+      target = order.target
+      layer = order.layer
+    # Avoid Unknown Attach
+    if order.mode == ltAttachUnknown:
+      return
+    # Dettach Layer First
+    layer.detach()
+    # Attach Layer to Target
+    case order.mode
+    of ltAttachNext: target.attachNext(layer)
+    of ltAttachPrev: target.attachPrev(layer)
+    of ltAttachFolder: target.attachInside(layer)
+    of ltAttachUnknown: discard
+    # Render Layer
+    force(self.onstructure)
+    send(self.cbRender)
+
   # ----------------------------
   # Layer Control Initialization
   # ----------------------------

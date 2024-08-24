@@ -40,7 +40,12 @@ type
     flags*: set[NLayerFlag]
     # GUI Labeling
     label*: string
-  # Layer Properties Tag
+  NLayerLevel* = object
+    depth*: cint
+    # Visible Checks
+    hidden*: bool
+    folded*: bool
+  # Layer Properties Attaching
   NLayerAttach* = enum
     ltAttachUnknown
     # Attach Sides
@@ -50,11 +55,9 @@ type
   NLayerTag* = object
     code: cint
     mode: NLayerAttach
-  NLayerLevel* = object
-    depth*: cint
-    # Visible Checks
-    hidden*: bool
-    folded*: bool
+  NLayerOrder* = object
+    target*, layer*: NLayer
+    mode*: NLayerAttach
   # -- Layer Tree Object --
   NLayer* = ptr object
     next*, prev*: NLayer
@@ -216,6 +219,25 @@ proc attachInside*(folder, layer: NLayer) =
   else: # Configure First
     layer.folder = folder
     layer.updateFolder()
+
+proc attachCheck*(pivot, layer: NLayer, mode: NLayerAttach): bool =
+  var outer {.cursor.} = pivot
+  if mode == ltAttachNext:
+    outer = outer.prev
+  elif mode == ltAttachPrev:
+    outer = outer.next
+  # Check quick self-attachments
+  if pivot == layer or outer == layer:
+    return false
+  # Check deep self-attachments
+  outer = layer.folder
+  while not isNil(outer):
+    if outer == pivot:
+      return false
+    # Next Outermost
+    outer = outer.folder
+  # This is Attachable
+  return true
 
 # --------------------
 # Layer Tree Detaching

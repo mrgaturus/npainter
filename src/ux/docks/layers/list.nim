@@ -1,5 +1,8 @@
+from math import sqrt
+# Import nogui Widgets
 from nogui/core/tree import inside
 import nogui/ux/containers/scroll
+import nogui/ux/values/scroller
 import nogui/ux/prelude
 import ../../state/layers
 # Import Layer Item
@@ -9,8 +12,22 @@ import item
 # Layer List Sides
 # ----------------
 
+proc orderScroll(state: ptr GUIState, rect: GUIRect): float32 =
+  let
+    h = rect.h
+    y = state.my - rect.y
+  # Calculate Scroll Direction
+  if y < 0:
+    result = float32(0 - y)
+    result = -sqrt(result)
+  elif y > h:
+    result = float32(y - h)
+    result = sqrt(result)
+  # Twice Scroll Direction
+  result += result
+
 proc orderSide(state: ptr GUIState, layer: NLayer): NLayerAttach =
-  const modes = [ltAttachPrev, ltAttachFolder, ltAttachNext]
+  const modes = [ltAttachPrev, ltAttachFolder, ltAttachFolder, ltAttachNext]
   let user {.cursor.} = cast[GUIWidget](layer.user)
   # Check Layer Kind
   let
@@ -20,10 +37,12 @@ proc orderSide(state: ptr GUIState, layer: NLayer): NLayerAttach =
   # Check Layer Sides
   if kind != lkFolder:
     let idx = clamp(y * 2 div rect.h, 0, 1)
-    result = modes[idx shl 1]
+    result = modes[idx * 3]
   # Check Folder Sides
   elif kind == lkFolder:
-    let idx = clamp(y * 3 div rect.h, 0, 2)
+    let
+      check = int32(lpFolded notin layer.props.flags)
+      idx = clamp(y * 4 div rect.h, 0, 3 - check)
     result = modes[idx]
 
 proc drawSide(ctx: ptr CTXRender, layer: NLayer, mode: NLayerAttach) =
@@ -63,6 +82,19 @@ widget UXLayerOrder:
     target: NLayer
     mode: NLayerAttach
 
+  callback cbScroll:
+    let
+      state = getApp().state
+      delta = state.orderScroll(self.rect)
+      # Move Delta Position
+      o = react(self.scroll.oy)
+      pos = o[].position + delta
+    # Update Delta Position
+    o[].position(pos)
+    # Renew Scrolling Manipulation Timer
+    if self.flags * {wGrab, wHover} == {wGrab}:
+      timeout(self.cbScroll, 0)
+
   callback cbOrder(data: NLayer):
     self.layer = data[]
     # Change Current Grab
@@ -88,27 +120,50 @@ widget UXLayerOrder:
     let
       x = state.mx
       y = state.my
-      layer = self.layer
-      user {.cursor.} = cast[GUIWidget](layer.user)
+      layer0 = self.layer
       list {.cursor.} = self.list
-      # Avoid Finding Outside
       check = self.pointOnArea(x, y)
     # Find Current Widget
     privateAccess(UXLayerItem)
     var found {.cursor.} = list.inside(x, y)
-    if check and found != list and found != user:
-      let layer = cast[UXLayerItem](found).layer
-      # Configure Layer Mode
-      self.target = layer
-      self.mode = state.orderSide(layer)
-      return
+    # Find Layer Ordering Side
+    if found == list:
+      found = list.last
+    if check and not isNil(found):
+      let
+        layer = cast[UXLayerItem](found).layer
+        mode = state.orderSide(layer)
+      # Check if is Valid Attachment
+      if layer0.attachCheck(layer, mode):
+        self.target = layer
+        self.mode = mode
+        return
     # Fallback Values
-    self.target = self.layer
+    self.target = layer0
     self.mode = ltAttachUnknown
 
+  proc commit() =
+    var order = NLayerOrder(
+      layer: self.layer,
+      target: self.target,
+      mode: self.mode
+    )
+    # Commit Layer Ordering
+    if order.mode != ltAttachUnknown:
+      force(self.layers.cbOrderLayer, addr order)
+    # Scrolling Manipulation Timer
+    timestop(self.cbScroll)
+
   method handle(reason: GUIHandle) =
-    if reason == outGrab:
+    case reason
+    of outGrab:
       self.send(wsClose)
+      self.commit()
+    # Scroll if not Hovered
+    of outHover, inFrame:
+      if not self.test(wHover):
+        timeout(self.cbScroll, 0)
+    else: discard
 
   method draw(ctx: ptr CTXRender) =
     let user {.cursor.} = cast[UXLayerItem](self.layer.user)
