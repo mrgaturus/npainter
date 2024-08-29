@@ -60,6 +60,24 @@ controller CXLayers:
     u0.send(wsLayout)
     u1.send(wsLayout)
 
+  proc create(kind: NLayerKind) =
+    let
+      image = self.image
+      layer = image.createLayer(kind)
+      target = image.selected
+    # Put Next to Selected or Inside a Folder
+    if target.kind != lkFolder or kind == lkFolder:
+      target.attachPrev(layer)
+    else: target.attachInside(layer)
+    # Default Layer Properties
+    layer.props.flags.incl(lpVisible)
+    layer.props.opacity = 1.0
+    # Select New Layer
+    force(self.onstructure)
+    self.select(layer)
+    # Render Layer
+    send(self.cbRender)
+
   # --------------------------
   # Layer Control Manipulation
   # --------------------------
@@ -92,19 +110,10 @@ controller CXLayers:
     relax(self.cbRender)
 
   callback cbCreateLayer:
-    let
-      image = self.image
-      layer = image.createLayer(lkColor)
-      selected = image.selected
-    # Put Next to Selected
-    selected.attachPrev(layer)
-    layer.props.flags.incl(lpVisible)
-    layer.props.opacity = 1.0
-    # Select New Layer
-    force(self.onstructure)
-    self.select(layer)
-    # Render Layer
-    send(self.cbRender)
+    self.create(lkColor)
+
+  callback cbCreateFolder:
+    self.create(lkFolder)
 
   callback cbClearLayer:
     let
@@ -123,13 +132,16 @@ controller CXLayers:
       image =  self.image
       layer = image.selected
       root = image.root
-    # Avoid Delete When is unique
+    # Avoid Delete When is Unique
     if root.first == layer and root.last == layer:
       return
     # Change Selected
     if not isNil(layer.next):
       self.select(layer.next)
-    else: self.select(layer.prev)
+    elif not isNil(layer.prev):
+      self.select(layer.prev)
+    # Change Selected to Parent Folder
+    else: self.select(layer.folder)
     # Layer Detach and Dealloc
     layer.detach()
     layer.destroy()
@@ -153,6 +165,45 @@ controller CXLayers:
     of ltAttachFolder: target.attachInside(layer)
     of ltAttachUnknown: discard
     # Render Layer
+    force(self.onstructure)
+    send(self.cbRender)
+
+  callback cbRaiseLayer:
+    let target = self.selected
+    if target == self.root.first:
+      return
+    # Decide Pivot Layer
+    var pivot = target.prev
+    let escape = isNil(pivot)
+    if escape: pivot = target.folder
+    # Detach Layer
+    target.detach()
+    # Attach Layer Inside Folder
+    if pivot.kind == lkFolder and not escape:
+      if not isNil(pivot.last):
+        pivot.last.attachNext(target)
+      else: pivot.attachInside(target)
+    # Attach Layer Previous Pivot
+    else: pivot.attachPrev(target)
+    # Render Composition
+    force(self.onstructure)
+    send(self.cbRender)
+
+  callback cbLowerLayer:
+    let target = self.selected
+    if target == self.root.last:
+      return
+    # Decide Pivot Layer
+    var pivot = target.next
+    let escape = isNil(pivot)
+    if escape: pivot = target.folder
+    # Detach Layer
+    target.detach()
+    # Attach Layer Inside Folder or Next
+    if pivot.kind == lkFolder and not escape:
+      pivot.attachInside(target)
+    else: pivot.attachNext(target)
+    # Render Composition
     force(self.onstructure)
     send(self.cbRender)
 

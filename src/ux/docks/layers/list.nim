@@ -48,13 +48,23 @@ proc orderSide(state: ptr GUIState, layer: NLayer): NLayerAttach =
 proc drawSide(ctx: ptr CTXRender, layer: NLayer, mode: NLayerAttach) =
   let
     app = getApp()
+    colors = addr app.colors
     border = float32(app.space.line)
+    # Layer Target Widget
+    folder {.cursor.} = layer.folder
     user {.cursor.} = cast[UXLayerItem](layer.user)
   # Prepare Fill Rect
   var r = user.rectLayer().rect
-  ctx.color(app.colors.darker and 0x3FFFFFFF'u32) 
+  ctx.color(colors.darker and 0x3FFFFFFF'u32) 
   ctx.fill(r)
-  ctx.color(app.colors.text)
+  # Offset Outline to List if is Last and Attach Next to
+  if isNil(folder.folder) and layer == folder.last and mode == ltAttachNext:
+    let u0 {.cursor.} = user.parent
+    var r0 = u0.rect
+    r0.h = u0.metrics.minH
+    r = rect(r0)
+  # Color Layer Outline
+  ctx.color(colors.text)
   # Fill Layer Outline
   case mode
   of ltAttachNext:
@@ -125,22 +135,25 @@ widget UXLayerOrder:
       check = self.pointOnArea(x, y)
     # Find Current Widget
     privateAccess(UXLayerItem)
-    var found {.cursor.} = list.inside(x, y)
-    # Find Layer Ordering Side
-    if found == list:
-      found = list.last
-    if check and not isNil(found):
-      let
-        layer = cast[UXLayerItem](found).layer
-        mode = state.orderSide(layer)
-      # Check if is Valid Attachment
-      if layer0.attachCheck(layer, mode):
-        self.target = layer
-        self.mode = mode
-        return
-    # Fallback Values
-    self.target = layer0
-    self.mode = ltAttachUnknown
+    var
+      found {.cursor.} = list.inside(x, y)
+      layer {.cursor.} = layer0
+      mode = ltAttachUnknown
+    # Find Layer Ordering
+    if not check: discard
+    elif found == list:
+      layer = self.layers.root.last
+      mode = ltAttachNext
+    elif not isNil(found):
+      layer = cast[UXLayerItem](found).layer
+      mode = state.orderSide(layer)
+    # Check Layer Ordering
+    if not layer0.attachCheck(layer, mode):
+      layer = layer0
+      mode = ltAttachUnknown
+    # Define Layer Ordering
+    self.target = layer
+    self.mode = mode
 
   proc commit() =
     var order = NLayerOrder(
@@ -166,15 +179,18 @@ widget UXLayerOrder:
     else: discard
 
   method draw(ctx: ptr CTXRender) =
-    let user {.cursor.} = cast[UXLayerItem](self.layer.user)
-    ctx.drawSide(self.target, self.mode)
-    # Decide Layer Coloring
+    let
+      colors = addr getApp().colors
+      user {.cursor.} = cast[UXLayerItem](self.layer.user)
+    # Draw Selection Filling
     var color: CTXColor
     if self.layer != self.target:
-      color = getApp().colors.darker and 0x7FFFFFFF'u32
-    # Fill Layer Expected
+      color = colors.darker and 0x7FFFFFFF'u32
+    # Draw Selection Filling
     ctx.color(color)
     ctx.fill(rect user.rectLayer)
+    # Draw Selection Outline
+    ctx.drawSide(self.target, self.mode)
 
 # -----------------
 # Layer List Layout

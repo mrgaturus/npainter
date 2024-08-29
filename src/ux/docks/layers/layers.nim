@@ -118,15 +118,15 @@ controller CXLayersDock:
         # Layer Creation
         button(iconAddLayer, la.cbCreateLayer).clear()
         button(iconAddMask, cb).clear()
-        button(iconAddFolder, cb).clear()
+        button(iconAddFolder, la.cbCreateFolder).clear()
         vseparator() # Layer Manipulation
         button(iconDuplicate, cb).clear()
         button(iconMerge, cb).clear()
         button(iconClear, la.cbClearLayer).clear()
         button(iconDelete, la.cbRemoveLayer).clear()
         # Layer Reordering Buttons
-        tail: button(iconUp, cb).clear()
-        tail: button(iconDown, cb).clear()
+        tail: button(iconUp, la.cbRaiseLayer).clear()
+        tail: button(iconDown, la.cbLowerLayer).clear()
       # Layer Item
       scrollview():
         self.list
