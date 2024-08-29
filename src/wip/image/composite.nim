@@ -210,7 +210,7 @@ proc elevate(stack: var NCompositorStack, step: NCompositorStep) =
     layer: layer,
     alpha0: props.opacity
   )
-  # Prepare Clipping Scope
+  # Optimize Clipping Scope
   if clip and visible:
     let last = addr stack.scopes[^1]
     # Optimize Leave Folder
@@ -220,8 +220,9 @@ proc elevate(stack: var NCompositorStack, step: NCompositorStep) =
         last.clip = clip
       # No Scope
       return
-    # Optimize First Layer of Scope when is not Passthrough
-    elif isNil(layer.next) and last.cmd notin {cmScopePass, cmScopeRoot}:
+    # Optimize Last Layer when has Full Opacity
+    if isNil(layer.next) and props.opacity >= 1.0:
+      scope.cmd = cmScopePass
       scope.mode = bmPassthrough
   # Create Passthrough Scope
   if scope.mode == bmPassthrough:
@@ -288,14 +289,22 @@ proc dispatch(state: var NCompositorState, step: NCompositorStep) =
   if scope.cmd == cmDiscard:
     return
   # Prepare Command
-  block prepare:
-    state.layer = layer
-    state.cmd = step.cmd
-    state.mode = layer.props.mode
-    # Prepare Command Clipping
-    const check = {cmScopeClip, cmBlendClip}
-    state.clip = scope.clip and (step.cmd notin check)
-  # Prepare Layer Rendering
+  state.layer = layer
+  state.cmd = step.cmd
+  state.mode = layer.props.mode
+  # Prepare Command Scoping
+  state.clip = scope.clip
+  if step.cmd > cmBlendLayer:
+    # Use Lower Clipping when Scope Blend
+    if step.cmd == cmBlendScope:
+      state.clip = state.lower.clip
+    elif step.cmd in {cmBlendClip, cmScopeClip}:
+      state.clip = false
+    # Avoid Passthrough Blending
+    if scope.cmd == cmScopePass:
+      if step.cmd in {cmBlendScope, cmBlendClip}:
+        return
+  # Prepare Layer Rendering Hook
   var fn = cast[NCompositorProc](hook.fn)
   if isNil(fn): fn = state.chunk.com.fn
   else: state.ext = hook.ext
@@ -303,8 +312,10 @@ proc dispatch(state: var NCompositorState, step: NCompositorStep) =
   if state.mode != bmPassthrough:
     fn(addr state)
 
-proc scoping(state: var NCompositorState, step: NCompositorStep) =
+proc process(state: var NCompositorState, step: NCompositorStep) =
   case step.cmd
+  of cmBlendLayer:
+    state.dispatch(step)
   # Dispatch Elevate Scope
   of cmScopeRoot..cmScopeClip:
     elevate(state.stack, step)
@@ -317,8 +328,9 @@ proc scoping(state: var NCompositorState, step: NCompositorStep) =
     # after Dispatch
     lower(state.stack)
     state.scope()
-  # No Scoping Involved
-  else: discard
+  # Discard Dispatch
+  of cmDiscard:
+    discard
 
 proc createState(chunk: ptr NCompositorBlock): NCompositorState =
   let
@@ -343,28 +355,21 @@ proc render(chunk: ptr NCompositorBlock) =
     step = createStep(chunk.com.root)
   # Walk Layer Tree
   while walking:
-    # Dispatch Scoping
-    case step.cmd:
-    of cmDiscard: discard
-    of cmBlendLayer:
-      state.dispatch(step)
-    of cmBlendClip:
-      let scope = state.scope
-      # Dispatch Clipped Last
+    if step.cmd == cmBlendClip:
       step.cmd = step.cmd0
-      state.dispatch(step)
+      state.process(step)
       # Dispatch Clipped Scope
-      if scope.cmd in {cmDiscard, cmScopeClip}:
+      let scope = state.scope
+      if scope.cmd in {cmDiscard, cmScopeClip, cmScopePass}:
         let layer0 = step.layer
         # Prepare Scoping Layer
         step.cmd = cmBlendClip
         step.layer = scope.layer
         # Dispatch Scoping Layer
-        state.scoping(step)
+        state.process(step)
         step.layer = layer0
-    else:
-      state.scoping(step)
     # Next Layer Step
+    else: state.process(step)
     walking = step.next()
   # Destroy Stack and Dirty
   state.stack.destroy()
