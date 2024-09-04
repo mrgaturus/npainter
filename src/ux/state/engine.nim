@@ -6,9 +6,8 @@ import nogui/data {.all.}
 import ../../wip/[brush, texture, binary, canvas]
 import ../../wip/image/[context, proxy]
 from ../../wip/image import createLayer, selectLayer
-# Import Multithreading
-import nogui/spmc
 # TODO: move to engine side
+import nogui/async/pool
 import nogui/libs/gl
 
 cursors 16:
@@ -123,7 +122,7 @@ controller NPainterEngine:
     result.bindBackground0proof(checker)
     result.bindAffine0proof()
     # Initialize Multi-Threading
-    result.pool = newThreadPool(6)
+    result.pool = createThreadPool()
     result.brush.pipe.pool = result.pool
     # XXX: demo textures meanwhile a picker is done
     result.tex0 = newPNGTexture(toDataPath "proof/tex0.png")
@@ -148,4 +147,4 @@ export
   texture,
   binary,
   canvas,
-  spmc
+  pool
