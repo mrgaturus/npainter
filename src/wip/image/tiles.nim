@@ -9,7 +9,7 @@ type
   NTileCells = ptr UncheckedArray[NTileCell]
   NTileBits = ptr UncheckedArray[uint32]
   # -- Tiled Grid --
-  NTileReserved = object
+  NTileReserved* = object
     x*, y*, w*, h*: cint
   NTileRegion = object
     x, y, w, h: cint

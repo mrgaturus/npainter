@@ -137,6 +137,30 @@ controller CXLayers:
     # Render Layer
     self.render(layer)
 
+  callback cbMergeLayer:
+    let
+      image {.cursor.} = self.image
+      layer = image.selected
+      target = layer.next
+    # Avoid Merge Invalid Layer
+    if isNil(target) or
+        target.kind == lkFolder or
+        layer.kind == lkFolder:
+      return
+    # Merge Layer and Attach
+    let la = image.mergeLayer(layer, target)
+    layer.attachPrev(la)
+    # Remove Merged Layers
+    layer.detach()
+    layer.destroy()
+    target.detach()
+    target.destroy()
+    # Update Layer Structure
+    force(self.onstructure)
+    self.select(la)
+    # Render Layer
+    self.render(la)
+
   callback cbClearLayer:
     let
       image = self.image

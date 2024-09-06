@@ -121,7 +121,7 @@ controller CXLayersDock:
         button(iconAddFolder, la.cbCreateFolder).clear()
         vseparator() # Layer Manipulation
         button(iconDuplicate, la.cbDuplicateLayer).clear()
-        button(iconMerge, cb).clear()
+        button(iconMerge, la.cbMergeLayer).clear()
         button(iconClear, la.cbClearLayer).clear()
         button(iconDelete, la.cbRemoveLayer).clear()
         # Layer Reordering Buttons

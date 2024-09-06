@@ -1,12 +1,15 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 # Copyright (c) 2023 Cristian Camilo Ruiz <mrgaturus>
 import ./image/[
-  context, 
-  layer, 
-  composite, 
+  context,
+  layer,
+  composite,
   blend,
   proxy,
-  tiles
+  tiles,
+  # Layer Merge
+  chunk,
+  ffi
 ]
 
 type
@@ -151,3 +154,77 @@ proc copyLayer*(img: NImage, layer: NLayer): NLayer =
       # Attach Created Layer
       result.attachInside(la)
       la0 = la0.prev
+
+# -----------------
+# Image Layer Merge
+# -----------------
+
+proc mergeRegion(src, dst: NLayer): NTileReserved =
+  var
+    r0 = src.tiles.region()
+    r1 = dst.tiles.region()
+  # Combine Reserved Region
+  r0.w += r0.x; r0.h += r0.y
+  r1.w += r1.x; r1.h += r1.y
+  # Extend Reserved Region
+  result.x = min(r0.x, r1.x)
+  result.y = min(r0.y, r1.y)
+  result.w = max(r0.w, r1.w)
+  result.h = max(r0.h, r1.h)
+
+proc mergeFill(dst: var NTile) =
+  var color {.align: 16.}: uint64
+  if dst.found:
+    color = dst.data.color
+  # Convert to Buffer
+  dst.toBuffer()
+  let c1 = dst.chunk()
+  var c0 = c1
+  # Fill Both Buffers
+  c0.buffer = addr color
+  var co = combine(c0, c1)
+  proxy_fill(addr co)
+
+proc mergeTile(src, dst: var NTile, co: ptr NImageComposite) =
+  if not src.found:
+    return
+  if dst.uniform:
+    dst.mergeFill()
+  # Blend Layer Tile
+  co.src = src.chunk()
+  co.dst = dst.chunk()
+  blendChunk(co)
+  # Check Layer Uniform
+  let co0 = cast[ptr NImageCombine](co)
+  co0.src = co0.dst
+  proxy_uniform(co0)
+  # Convert to Uniform if was Uniform
+  if co0.src.stride == co0.src.bpp:
+    let color = cast[ptr uint64](co.src.buffer)[]
+    dst.toColor(color)
+  # Generate Mipmaps
+  else: dst.mipmaps()
+
+proc mergeLayer*(img: NImage, src, dst: NLayer): NLayer =
+  result = img.copyLayer(dst)
+  let g0 = addr src.tiles
+  let g1 = addr result.tiles
+  # Ensure Layer Tiles
+  let r = mergeRegion(src, dst)
+  g1[].ensure(r.x, r.y,
+    r.w - r.x, r.h - r.y)
+  # Configure Layer Properties
+  var co: NImageComposite
+  let props = addr src.props
+  # Configure Layer Properties
+  co.alpha = cuint(props.opacity * 65535.0)
+  co.clip = cast[cuint](lpClipping in props.flags)
+  co.fn = blend_procs[props.mode]
+  # Blend Layer Tiles
+  for y in r.y ..< r.h:
+    for x in r.x ..< r.w:
+      var
+        t0 = g0[].find(x, y)
+        t1 = g1[].find(x, y)
+      # Merge Layer Tile
+      mergeTile(t0, t1, addr co)
