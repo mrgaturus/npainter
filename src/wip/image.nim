@@ -5,7 +5,8 @@ import ./image/[
   layer, 
   composite, 
   blend,
-  proxy
+  proxy,
+  tiles
 ]
 
 type
@@ -92,3 +93,17 @@ proc selectLayer*(img: NImage, layer: NLayer) =
   # Configure Proxy Selected
   img.selected = layer
   img.proxy.layer = layer
+
+proc markLayer*(img: NImage, layer: NLayer) =
+  let status = addr img.status
+  # Mark Tiles if is a Image Layer
+  if layer.kind == lkColor:
+    for tile in layer.tiles:
+      status[].mark32(tile.x, tile.y)
+  # Mark Recursive if is a Folder
+  elif layer.kind == lkFolder:
+    var la = layer.first
+    # Walk Folder Childrens
+    while not isNil(la):
+      img.markLayer(la)
+      la = la.next

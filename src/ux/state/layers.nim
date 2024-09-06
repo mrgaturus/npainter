@@ -48,6 +48,10 @@ controller CXLayers:
     self.mode.peek[] = layer.props.mode
     self.opacity.peek[].lerp opacity
 
+  # ----------------------------
+  # Layer Rendering Manipulation
+  # ----------------------------
+
   proc select*(layer: NLayer) =
     let
       u0 {.cursor.} = cast[GUIWidget](self.selected.user)
@@ -75,20 +79,25 @@ controller CXLayers:
     # Select New Layer
     force(self.onstructure)
     self.select(layer)
-    # Render Layer
-    send(self.cbRender)
+
+  # ----------------------------
+  # Layer Rendering Manipulation
+  # ----------------------------
+
+  callback cbRender:
+    self.canvas.update()
+
+  proc render(layer: NLayer) =
+    let image {.cursor.} = self.image
+    # TODO: Calculate AABB of Layer
+    complete(image.status.clip)
+    image.markLayer(layer)
+    # Send Rendering Callback
+    relax(self.cbRender)
 
   # --------------------------
   # Layer Control Manipulation
   # --------------------------
-
-  callback cbRender:
-    let image = self.image
-    # XXX: this is a proof of concept
-    # TODO: move this to engine side 
-    image.status.clip = mark(0, 0, 0, 0)
-    image.status.mark(0, 0, image.ctx.w, image.ctx.h)
-    self.canvas.update()
 
   callback cbUpdateLayer:
     let
@@ -105,9 +114,9 @@ controller CXLayers:
     props.flags = flags
     props.mode = self.mode.peek[]
     props.opacity = self.opacity.peek[].toRaw
-    # Render Layer
+    # Update Layer Widget
     user.send(wsLayout)
-    relax(self.cbRender)
+    self.render(layer)
 
   callback cbCreateLayer:
     self.create(lkColor)
@@ -120,16 +129,16 @@ controller CXLayers:
       image = self.image
       layer = image.selected
       tiles = addr layer.tiles
+    # Render Layer
+    self.render(layer)
     # XXX: this is a proof of concept
-    # TODO: move this to engine side 
+    # TODO: move this to engine side
     tiles[].destroy()
     tiles[] = createTileImage(4)
-    # Render Layer
-    send(self.cbRender)
 
   callback cbRemoveLayer:
     let
-      image =  self.image
+      image = self.image
       layer = image.selected
       root = image.root
     # Avoid Delete When is Unique
@@ -142,12 +151,13 @@ controller CXLayers:
       self.select(layer.prev)
     # Change Selected to Parent Folder
     else: self.select(layer.folder)
+    # Prepare Rendering
+    self.render(layer)
     # Layer Detach and Dealloc
     layer.detach()
     layer.destroy()
-    # Render Layer
+    # Update Layer Structure
     send(self.onstructure)
-    send(self.cbRender)
 
   callback cbOrderLayer(order: NLayerOrder):
     let
@@ -166,7 +176,7 @@ controller CXLayers:
     of ltAttachUnknown: discard
     # Render Layer
     force(self.onstructure)
-    send(self.cbRender)
+    self.render(layer)
 
   callback cbRaiseLayer:
     let target = self.selected
@@ -187,7 +197,7 @@ controller CXLayers:
     else: pivot.attachPrev(target)
     # Render Composition
     force(self.onstructure)
-    send(self.cbRender)
+    self.render(target)
 
   callback cbLowerLayer:
     let target = self.selected
@@ -205,7 +215,7 @@ controller CXLayers:
     else: pivot.attachNext(target)
     # Render Composition
     force(self.onstructure)
-    send(self.cbRender)
+    self.render(target)
 
   # ----------------------------
   # Layer Control Initialization
