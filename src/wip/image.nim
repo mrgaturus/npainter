@@ -107,3 +107,47 @@ proc markLayer*(img: NImage, layer: NLayer) =
     while not isNil(la):
       img.markLayer(la)
       la = la.next
+
+# ---------------------
+# Image Layer Duplicate
+# ---------------------
+
+proc copyLayerBase(img: NImage, layer: NLayer): NLayer =
+  result = createLayer(layer.kind, img.owner)
+  result.props = layer.props
+  result.props.code = img.ticket
+  # Step Layer Count
+  inc(img.ticket)
+
+proc copyTiles(src, dst: NLayer) =
+  let
+    g0 = addr src.tiles
+    g1 = addr dst.tiles
+  # Ensure Layer Tiles
+  let r = g0[].region()
+  g1[].ensure(r.x, r.y, r.w, r.h)
+  # Copy Tile Buffers
+  for t0 in g0[]:
+    var t1 = g1[].find(t0.x, t0.y)
+    # Copy Uniform Tile
+    if t0.uniform:
+      t1.data.color = t0.data.color
+      continue
+    # Copy Buffer Tile
+    t1.toBuffer()
+    copyMem(t1.data.buffer, 
+      t0.data.buffer, t0.bytes)
+
+proc copyLayer*(img: NImage, layer: NLayer): NLayer =
+  result = img.copyLayerBase(layer)
+  # Copy Buffer Color Tiles
+  if layer.kind == lkColor:
+    layer.copyTiles(result)
+  elif layer.kind == lkFolder:
+    var la0 = layer.last
+    # Walk Layer Childrens
+    while not isNil(la0):
+      let la = img.copyLayer(la0)
+      # Attach Created Layer
+      result.attachInside(la)
+      la0 = la0.prev

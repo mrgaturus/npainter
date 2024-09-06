@@ -120,7 +120,7 @@ controller CXLayersDock:
         button(iconAddMask, cb).clear()
         button(iconAddFolder, la.cbCreateFolder).clear()
         vseparator() # Layer Manipulation
-        button(iconDuplicate, cb).clear()
+        button(iconDuplicate, la.cbDuplicateLayer).clear()
         button(iconMerge, cb).clear()
         button(iconClear, la.cbClearLayer).clear()
         button(iconDelete, la.cbRemoveLayer).clear()

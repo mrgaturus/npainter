@@ -87,7 +87,7 @@ controller CXLayers:
   callback cbRender:
     self.canvas.update()
 
-  proc render(layer: NLayer) =
+  proc render*(layer: NLayer) =
     let image {.cursor.} = self.image
     # TODO: Calculate AABB of Layer
     complete(image.status.clip)
@@ -123,6 +123,19 @@ controller CXLayers:
 
   callback cbCreateFolder:
     self.create(lkFolder)
+
+  callback cbDuplicateLayer:
+    let
+      image {.cursor.} = self.image
+      layer = image.selected
+    # Copy Layer And Attach Prev
+    let la = image.copyLayer(layer)
+    layer.attachPrev(la)
+    # Select Created Layer
+    force(self.onstructure)
+    self.select(la)
+    # Render Layer
+    self.render(layer)
 
   callback cbClearLayer:
     let

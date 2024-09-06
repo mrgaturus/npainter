@@ -355,11 +355,11 @@ widget UXLayerItem:
       w = w.parent
     # Relayout Widget
     w.send(wsLayout)
-    send(self.layers.cbRender)
+    self.layers.render(layer)
 
   callback cbProps:
     self.send(wsLayout)
-    send(self.layers.cbRender)
+    self.layers.render(self.layer)
 
   callback cbFold:
     self.toggle(lpFolded)
