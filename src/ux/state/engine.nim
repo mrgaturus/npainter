@@ -7,7 +7,7 @@ import ../../wip/[brush, texture, binary, canvas]
 import ../../wip/image/[context, proxy]
 from ../../wip/image import createLayer, selectLayer
 # TODO: move to engine side
-import nogui/async/pool
+import nogui/core/async
 import nogui/libs/gl
 
 cursors 16:
@@ -23,10 +23,9 @@ controller NPainterEngine:
     # Engine Objects
     brush: NBrushStroke
     bucket: NBucketProof
-    canvas: NCanvasImage
-    # Canvas Manager
+    # Engine Canvas
     man: NCanvasManager
-    pool: NThreadPool
+    canvas: NCanvasImage
     # XXX: Proof Textures
     [tex0, tex1, tex2]: NTexture
 
@@ -116,14 +115,14 @@ controller NPainterEngine:
 
   # -- NPainter Constructor - proof of concept --
   new npainterengine(proof_W, proof_H: cint, checker = 0'i32):
-    result.man = createCanvasManager()
+    let pool = getAsync().pool
+    result.man = createCanvasManager(pool)
     result.canvas = result.man.createCanvas(proof_W, proof_H)
     # Proof of Concept Affine Transform
     result.bindBackground0proof(checker)
     result.bindAffine0proof()
     # Initialize Multi-Threading
-    result.pool = createThreadPool()
-    result.brush.pipe.pool = result.pool
+    result.brush.pipe.pool = pool
     # XXX: demo textures meanwhile a picker is done
     result.tex0 = newPNGTexture(toDataPath "proof/tex0.png")
     result.tex1 = newPNGTexture(toDataPath "proof/tex1.png")
@@ -147,4 +146,4 @@ export
   texture,
   binary,
   canvas,
-  pool
+  async

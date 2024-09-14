@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 # Copyright (c) 2024 Cristian Camilo Ruiz <mrgaturus>
+import nogui/async/pool
 import canvas/[matrix, render, copy]
 import image, image/[context]
 from image/composite import
@@ -9,6 +10,8 @@ type
   NCanvasManager* = ptr object
     render: NCanvasRenderer
     actives: seq[NCanvasImage]
+    # Multi-threading
+    pool: NThreadPool
   # -- Canvas Image --
   NCanvasInfo = object
     stamp*: uint64
@@ -34,8 +37,9 @@ type
 # Canvas Image Creation
 # ---------------------
 
-proc createCanvasManager*(): NCanvasManager =
+proc createCanvasManager*(pool: NThreadPool): NCanvasManager =
   result = create(result[].type)
+  result.pool = pool
   # Create Canvas Renderer
   result.render = createCanvasRenderer()
 
@@ -140,7 +144,11 @@ proc mark(image: NImage, tile: ptr NCanvasTile, level: cint) =
   # Restore Clipping
   status.clip = clip0
 
-proc stage(canvas: NCanvasImage) =
+# -------------------
+# Canvas Image Update
+# -------------------
+
+proc composite*(canvas: NCanvasImage) =
   let
     image = canvas.image
     view = addr canvas.view
@@ -150,22 +158,24 @@ proc stage(canvas: NCanvasImage) =
     mark(image, tile, level)
     view[].map(tile)
   # Dispatch Compositor
-  image.com.dispatch()
+  let pool = canvas.man.pool
+  image.com.dispatch(pool)
 
-# -------------------
-# Canvas Image Update
-# -------------------
-
-# Instant TODO: multithreading
-proc update*(canvas: NCanvasImage) =
+proc stream*(canvas: NCanvasImage) =
   let render = addr canvas.man.render
-  # Stage Canvas Changes
-  canvas.stage()
+  # Copy Canvas to GPU
   render[].map()
-  # Copy Changes to View
   for map in render[].maps:
     map.stream()
   render[].unmap()
+
+proc update*(canvas: NCanvasImage) =
+  let pool = canvas.man.pool
+  pool.start()
+  canvas.composite()
+  pool.stop()
+  # Stream to GPU
+  canvas.stream()
 
 proc transform*(canvas: NCanvasImage) =
   let

@@ -480,12 +480,17 @@ widget UXBrushDispatch:
 
   # -- Dispatch Callbacks --
   callback cbDispatchStroke:
-    let engine {.cursor.} = self.brush.engine
+    let
+      engine {.cursor.} = self.brush.engine
+      canvas = engine.canvas
+      pool = getAsync().pool
     # Dispath Stroke Path
-    engine.pool.start()
+    pool.start()
     engine.brush.dispatch()
-    engine.canvas.update()
-    engine.pool.stop()
+    canvas.composite()
+    pool.stop()
+    # Send Canvas to GPU
+    canvas.stream()
 
   callback cbCommitStroke:
     self.proxy[].commit()

@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 # Copyright (c) 2023 Cristian Camilo Ruiz <mrgaturus>
+import nogui/async/pool
 import ffi, context, layer
 
 type
@@ -426,9 +427,10 @@ proc mark*(com: var NCompositor, tx, ty: cint) =
 # Compositor Block Dispatching
 # ----------------------------
 
-# Instant TODO: Multithreading
-proc dispatch*(com: var NCompositor) =
+proc dispatch*(com: var NCompositor, pool: NThreadPool) =
   # Render Prepared Blocks
   for b in mitems(com.blocks):
     if b.dirty > 0:
-      render(addr b)
+      pool.spawn(render, addr b)
+  # Wait Thread Pool
+  pool.sync()
