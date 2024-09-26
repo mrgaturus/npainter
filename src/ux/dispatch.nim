@@ -101,11 +101,13 @@ widget UXPainterDispatch:
       engine {.cursor.} = state.engine
       m = engine.canvas.affine
       size = getWindow().rect
-    # Set Viewport Size
-    m.vw = size.w
-    m.vh = size.h
-    # Update View
-    state.canvas.update()
+    # Update Canvas Size
+    engine.secure.lock():
+      m.vw = size.w
+      m.vh = size.h
+      # Composite Again
+      state.canvas.update()
+      getWindow().fuse()
 
   method handle(reason: GUIHandle) =
     let win = getWindow()

@@ -156,13 +156,17 @@ proc composite*(canvas: NCanvasImage) =
   # Mark Canvas Tiles
   for tile in view[].tiles:
     mark(image, tile, level)
-    view[].map(tile)
   # Dispatch Compositor
   let pool = canvas.man.pool
   image.com.dispatch(pool)
 
 proc stream*(canvas: NCanvasImage) =
-  let render = addr canvas.man.render
+  let
+    render = addr canvas.man.render
+    view = addr canvas.view
+  # Prepare Dirty Tiles
+  for tile in view[].tiles:
+    view[].map(tile)
   # Copy Canvas to GPU
   render[].map()
   for map in render[].maps:
@@ -181,18 +185,22 @@ proc transform*(canvas: NCanvasImage) =
   let
     view = addr canvas.view
     lod = addr canvas.affine.lod
+    clip = addr canvas.image.status.clip
     level = lod.level
   # Apply Transform
   view[].update()
   # Prepare Canvas Source
   canvas.source(lod.level)
-  canvas.image.status.clip = mark(0, 0, 0, 0)
+  # Backup Current Region
+  let clip0 = clip[]
+  clip[] = mark(0, 0, 0, 0)
   # React to LOD Changes
   if level != lod.level:
     for tile in view[].tiles:
       tile.whole()
   # Update Canvas
   canvas.update()
+  clip[] = clip0
 
 # ----------------------
 # Canvas Image Rendering

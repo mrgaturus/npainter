@@ -288,9 +288,9 @@ proc proof0default*(brush: CXBrush) =
 type
   BrushTask = object
     composite: uint64
+    secure: ptr NEngineSecure
     brush: ptr NBrushStroke
     canvas: NCanvasImage
-    pool: NThreadPool
     # Finalize Callback
     cbRelease: CoroCallback
     cbStream: CoroCallback
@@ -298,10 +298,10 @@ type
 proc step0coro(coro: Coroutine[BrushTask]) =
   let
     data = coro.data
-    pool = data.pool
+    secure = data.secure
     brush = data.brush
-  # Start Multi-Threading
-  pool.start()
+  # Start Secure Pool
+  secure.start()
   coro.keep(step0coro)
   # Calculate Steps
   var steps, takes: int
@@ -325,8 +325,8 @@ proc step0coro(coro: Coroutine[BrushTask]) =
   elif takes == 0:
     coro.send(data.cbRelease)
     coro.cancel()
-  # Stop Multi-Threading
-  pool.stop()
+  # Stop Secure Pool
+  secure.stop()
 
 # -----------------------------
 # Brush Engine Coroutine Widget
@@ -343,6 +343,7 @@ widget UXBrushTask:
 
   proc prepare(proxy: ptr NImageProxy) =
     let brush = addr self.engine.brush
+    # Prepare Brush Proxy
     self.proxy = proxy
     brush.proxy = proxy
     brush[].prepare()
@@ -362,11 +363,13 @@ widget UXBrushTask:
       else: getWindow().send(wsUnHold)
 
   callback cbStream:
-    self.engine.canvas.stream()
-    getWindow().fuse()
-    # Restore Composite Flag
     let data = self.coro.data
+    if data.composite == 0:
+      return
+    # Stream to Canvas and Present Frame
+    self.engine.canvas.stream()
     data.composite = 0
+    getWindow().fuse()
 
   proc finalize() =
     self.engine.canvas.update()
@@ -381,9 +384,9 @@ widget UXBrushTask:
     result.engine = engine
     # Configure Coroutine
     let task = result.coro.data
+    task.secure = addr engine.secure
     task.brush = addr engine.brush
     task.canvas = engine.canvas
-    task.pool = getAsync().pool
     # Configure Coroutine Callbacks
     task.cbRelease = result.cbRelease
     task.cbStream = result.cbStream
@@ -440,6 +443,8 @@ widget UXBrushDispatch:
 
   new uxbrushdispatch(brush: CXBrush):
     result.task = uxbrushtask(brush.engine)
+    result.rect.w = 65535
+    result.rect.h = 65535
     result.brush = brush
 
   # -- Basic State -> Engine --
@@ -620,10 +625,6 @@ widget UXBrushDispatch:
     of ckBlendSmudge: brush.blend = bnSmudge
     # Prepare Brush Dispatch
     self.prepareColor()
-
-  # -- Dispatch Event --
-  method layout =
-    self.task.rect = getWindow().rect
 
   method event(state: ptr GUIState) =
     if state.kind == evCursorClick:
