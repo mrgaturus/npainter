@@ -1,5 +1,8 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 # Copyright (c) 2021 Cristian Camilo Ruiz <mrgaturus>
+import deques # <- this module is not good enough D:
+              #    TODO: create a simple ring deque with less re-allocations
+              #          when split stroke path to other module
 import texture
 import brush/pipe
 import image/proxy
@@ -138,10 +141,11 @@ type
     texture*: NStrokeTexture
     # Blending Mode Config
     data*: NStrokeBlend
-    # Continuous Stroke
+    # --MOVE TO ANOTHER MODULE--
     step, prev_t: float32
     generic: NStrokeGeneric
-    points: seq[NStrokePoint]
+    points: Deque[NStrokePoint]
+    a, b: NStrokePoint
     # --TEMPORALY PUBLIC--
     # Brush Engine Pipeline
     pipe*: NBrushPipeline
@@ -152,9 +156,8 @@ type
 # ----------------------
 
 proc clear*(path: var NBrushStroke) =
-  # Reset Path
   path.prev_t = 0.0
-  setLen(path.points, 0)
+  clear(path.points)
 
 proc color*(path: var NBrushStroke, r, g, b: cint, glass: bool) =
   if not glass:
@@ -686,21 +689,42 @@ proc point*(path: var NBrushStroke; x, y, press, angle: cfloat) =
     else: p.angle = 2.0
   # Avoid 0.0 Infinite Loop
   p.press = max(press, 0.0001)
-  # Add New Point
-  path.points.add(p)
+  # Push new Point to Deque
+  path.points.addLast(p)
+
+proc skip*(path: var NBrushStroke) =
+  let a = NStrokePoint(press: 2.0)
+  path.points.addLast(a)
+
+# -------------------
+# Small State Machine
+# -------------------
+
+proc steps*(path: var NBrushStroke): int =
+  result = len(path.points)
+  # Priority Brush instead Compositing
+  if result > 0:
+    let factor = float(result)
+    result = int log2(factor)
+    result = max(result, 1)
+
+proc take*(path: var NBrushStroke): bool =
+  var l = len(path.points)
+  # Take Two Points
+  while l > 1:
+    let a = path.points.popFirst()
+    let b = path.points.peekFirst()
+    # Prepare Brush Line
+    if a.press != 2.0 and b.press != 2.0:
+      path.a = a
+      path.b = b
+      # Found Line
+      return true
+    # Skip Last Point
+    path.prev_t = 0.0
+    discard path.points.popFirst()
+    l = len(path.points)
 
 proc dispatch*(path: var NBrushStroke) =
-  let count = len(path.points)
-  # Draw Point Line
-  if count > 1:
-    var a, b: NStrokePoint
-    # Draw Each Line
-    for i in 1 ..< count:
-      a = path.points[i - 1]
-      b = path.points[i]
-      # Draw Brush Line
-      path.prev_t = path.line(
-        a, b, path.prev_t)
-    # Set Last Point to First
-    path.points[0] = path.points[^1]
-    setLen(path.points, 1)
+  path.prev_t = path.line(
+    path.a, path.b, path.prev_t)

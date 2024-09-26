@@ -9,6 +9,8 @@ type
   NTileCells = ptr UncheckedArray[NTileCell]
   NTileBits = ptr UncheckedArray[uint32]
   # -- Tiled Grid --
+  NTileReserved* = object
+    x*, y*, w*, h*: cint
   NTileRegion = object
     x, y, w, h: cint
     ox, oy: cint
@@ -224,6 +226,14 @@ proc createTileImage*(bpp: 0..4): NTileImage =
   # Store Tile Image Bytes
   result.bpp = bpp * bits
   result.bytes = bpp * size
+
+proc region*(tiles: var NTileImage): NTileReserved =
+  let grid = addr tiles.grid
+  # Return Reserved Grid Region
+  result.x = grid.ox
+  result.y = grid.oy
+  result.w = grid.w
+  result.h = grid.h
 
 proc destroy*(tiles: var NTileImage) =
   if tiles.grid.len > 0:

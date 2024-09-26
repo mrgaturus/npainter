@@ -1,4 +1,5 @@
 import nogui/builder
+import nogui/core/async
 import nogui/ux/prelude
 import nogui/ux/values/[linear, dual, chroma]
 # Import NPainter Engine
@@ -280,6 +281,155 @@ proc proof0default*(brush: CXBrush) =
   # Configure Blur Amount
   lorp blend.blur.size.peek[], 20
 
+# ----------------------
+# Brush Engine Coroutine
+# ----------------------
+
+type
+  BrushTask = object
+    composite: uint64
+    secure: ptr NEngineSecure
+    brush: ptr NBrushStroke
+    canvas: NCanvasImage
+    # Finalize Callback
+    cbRelease: CoroCallback
+    cbStream: CoroCallback
+
+proc step0coro(coro: Coroutine[BrushTask]) =
+  let
+    data = coro.data
+    secure = data.secure
+    brush = data.brush
+  # Start Secure Pool
+  secure.start()
+  coro.keep(step0coro)
+  # Calculate Steps
+  var steps, takes: int
+  coro.lock():
+    steps = brush[].steps()
+  # Renderize Steps
+  while steps > 0:
+    var check: bool
+    coro.lock():
+      check = brush[].take()
+    if check: brush[].dispatch()
+    # Next Step
+    takes += int(check)
+    dec(steps)
+  # Composite Canvas
+  if takes > 0 and data.composite == 0:
+    data.canvas.composite()
+    data.composite = high(uint64)
+    coro.send(data.cbStream)
+  # Check Cancelation
+  elif takes == 0:
+    coro.send(data.cbRelease)
+    coro.cancel()
+  # Stop Secure Pool
+  secure.stop()
+
+# -----------------------------
+# Brush Engine Coroutine Widget
+# -----------------------------
+
+widget UXBrushTask:
+  attributes:
+    coro: Coroutine[BrushTask]
+    {.cursor.}:
+      engine: NPainterEngine
+    # Current Canvas Instance
+    proxy: ptr NImageProxy
+    stabilizer: NBrushStabilizer
+
+  proc prepare(proxy: ptr NImageProxy) =
+    let brush = addr self.engine.brush
+    # Prepare Brush Proxy
+    self.proxy = proxy
+    brush.proxy = proxy
+    brush[].prepare()
+    # Forward Widget Grab
+    self.send(wsForward)
+    self.send(wsHold)
+
+  callback cbRelease:
+    let coro = self.coro
+    var steps: int
+    # Check if there are points available
+    coro.lock():
+      steps = coro.data.brush[].steps()
+      if steps > 0 or self.test(wGrab):
+        coro.spawn()
+      # Release Widget Holding
+      else: getWindow().send(wsUnHold)
+
+  callback cbStream:
+    let data = self.coro.data
+    if data.composite == 0:
+      return
+    # Stream to Canvas and Present Frame
+    self.engine.canvas.stream()
+    data.composite = 0
+    getWindow().fuse()
+
+  proc finalize() =
+    self.engine.canvas.update()
+    getWindow().fuse()
+    # Commit Changes
+    self.proxy[].commit()
+    self.engine.clearProxy()
+
+  new uxbrushtask(engine: NPainterEngine):
+    result.coro = coroutine(step0coro)
+    result.flags = {wMouse, wKeyboard, wVisible}
+    result.engine = engine
+    # Configure Coroutine
+    let task = result.coro.data
+    task.secure = addr engine.secure
+    task.brush = addr engine.brush
+    task.canvas = engine.canvas
+    # Configure Coroutine Callbacks
+    task.cbRelease = result.cbRelease
+    task.cbStream = result.cbStream
+
+  method event(state: ptr GUIState) =
+    let
+      engine {.cursor.} = self.engine
+      stable = addr self.stabilizer
+      brush = addr engine.brush
+      affine = engine.canvas.affine
+      # Transfrom Point to Canvas Coordinates
+      p = affine[].forward(state.px, state.py)
+      press = state.pressure
+      capacity = stable.capacity
+    # TODO: move stabilizer logic to engine
+    let coro = self.coro
+    coro.lock():
+      if state.kind == evCursorClick:
+        reset(self.stabilizer, self.stabilizer.capacity)
+      if self.test(wGrab):
+        if capacity > 0:
+          let ps = stable[].smooth(p.x, p.y, press, 0.0)
+          brush[].point(ps.x, ps.y, ps.press, 0.0)
+        else: brush[].point(p.x, p.y, press, 0.0)
+      # Terminate Brush Stroke
+      elif state.kind == evCursorRelease:
+        for _ in 0 ..< capacity:
+          let ps = stable[].smooth(p.x, p.y, press, 0.0)
+          brush[].point(ps.x, ps.y, ps.press, 0.0)
+        brush[].skip()
+
+  method handle(reason: GUIHandle) =
+    let coro = self.coro
+    # Spawn/Cancel Coroutine
+    case reason
+    of inHold:
+      coro.pass(step0coro)
+      coro.spawn()
+    of outHold:
+      coro.wait()
+      self.finalize()
+    else: discard
+
 # ---------------------
 # Brush Engine Dispatch
 # TODO: move stabilizer logic to engine
@@ -289,10 +439,12 @@ widget UXBrushDispatch:
   attributes:
     {.cursor.}:
       brush: CXBrush
-    proxy: ptr NImageProxy
-    stabilizer: NBrushStabilizer
+    task: UXBrushTask
 
   new uxbrushdispatch(brush: CXBrush):
+    result.task = uxbrushtask(brush.engine)
+    result.rect.w = 65535
+    result.rect.h = 65535
     result.brush = brush
 
   # -- Basic State -> Engine --
@@ -311,8 +463,8 @@ widget UXBrushDispatch:
     # Configure Basics Dynamics
     b1.amp_size = toFloat b0.sizeAmp.peek[]
     b1.amp_alpha = toFloat b0.opacityAmp.peek[]
-    # Configure Stabilizer
-    reset(self.stabilizer, toInt b0.stabilizer.peek[])
+    # Configure Stabilizer, TODO: move to engine side
+    reset(self.task.stabilizer, toInt b0.stabilizer.peek[])
 
   proc prepareColor() =
     let
@@ -430,7 +582,7 @@ widget UXBrushDispatch:
       avg1 = addr brush.data.marker
     # Configure Marker
     avg1.blending = toRaw avg0.blending.peek[]
-    avg1.persistence = toRaw avg0.dilution.peek[]
+    avg1.persistence = toRaw avg0.persistence.peek[]
     avg1.p_blending = avg0.pBlending.peek[]
     # Configure Marker Mode
     brush.blend = bnMarker
@@ -452,9 +604,6 @@ widget UXBrushDispatch:
       brush0 {.cursor.} = self.brush
       engine {.cursor.} = brush0.engine
       brush = addr engine.brush
-    # Prepare Brush Proxy
-    self.proxy = engine.proxyBrush0proof()
-    brush.proxy = self.proxy
     # Configure Basics
     self.prepareBasics()
     # Configure Shape
@@ -476,59 +625,14 @@ widget UXBrushDispatch:
     of ckBlendSmudge: brush.blend = bnSmudge
     # Prepare Brush Dispatch
     self.prepareColor()
-    brush[].prepare()
 
-  # -- Dispatch Callbacks --
-  callback cbDispatchStroke:
-    let engine {.cursor.} = self.brush.engine
-    # Dispath Stroke Path
-    engine.pool.start()
-    engine.brush.dispatch()
-    engine.canvas.update()
-    engine.pool.stop()
-
-  callback cbCommitStroke:
-    self.proxy[].commit()
-    self.brush.engine.clearProxy()
-
-  # -- Dispatch Event --
   method event(state: ptr GUIState) =
-    let
-      engine {.cursor.} = self.brush.engine
-      stable = addr self.stabilizer
-      brush = addr engine.brush
-      affine = engine.canvas.affine
-    # Prepare Brush Dispatch
     if state.kind == evCursorClick:
       self.prepareDispatch()
       state.pressure = 0.0
-    # Start Dragging Brush Stroke
-    if self.test(wGrab):
-      let
-        # Transfrom Point to Canvas Coordinates
-        p = affine[].forward(state.px, state.py)
-        press = state.pressure
-      # TODO: move stabilizer logic to engine
-      if stable.capacity > 0:
-        let ps = stable[].smooth(p.x, p.y, press, 0.0)
-        brush[].point(ps.x, ps.y, ps.press, 0.0)
-      else: brush[].point(p.x, p.y, press, 0.0)
-      # Send Dispatch Stroke
-      relax(self.cbDispatchStroke)
-    # Terminate Brush Stroke
-    elif state.kind == evCursorRelease:
-      let
-        # Transfrom Point to Canvas Coordinates
-        p = affine[].forward(state.px, state.py)
-        press = state.pressure
-        cap = stable.capacity
-      # TODO: move stabilizer logic to engine
-      for _ in 0 ..< cap:
-        let ps = stable[].smooth(p.x, p.y, press, 0.0)
-        brush[].point(ps.x, ps.y, ps.press, 0.0)
-      # Send Dispatch Stroke
-      relax(self.cbDispatchStroke)
-      relax(self.cbCommitStroke)
+      # Prepare Brush Proxy
+      let proxy = proxyBrush0proof(self.task.engine)
+      self.task.prepare(proxy)
 
   method handle(reason: GUIHandle) =
     echo "brush reason: ", reason

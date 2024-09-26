@@ -8,13 +8,14 @@ export NBlendMode
 # -------------------
 
 type
-  # Layer Binding
+  # Layer Owner Definition
+  NLayerOwner* = distinct pointer
+  NLayerUser* = distinct pointer
+  # Layer Compositing Hook
   NLayerProc* = distinct pointer
   NLayerHook* = object
     fn*: NLayerProc
     ext*: pointer
-  NLayerOwner* {.borrow.} =
-    distinct ptr cint
   # Layer Properties
   NLayerKind* = enum
     lkColor
@@ -22,41 +23,50 @@ type
     lkStencil
     # Layer Tree
     lkFolder
-  NLayerFlags* = enum
+  NLayerFlag* = enum
     lpVisible
-    # Clipping
-    lpProtectAlpha
+    # Layer Props
     lpClipping
-    # GUI Hint
-    lpDraft
+    lpProtectAlpha
     lpTarget
     lpLock
+    # Layer Tree
+    lpDraft
+    lpFolded
   NLayerProps* = object
+    code*: cint
     opacity*: cfloat
     mode*: NBlendMode
-    flags*: set[NLayerFlags]
-    # GUI Hint
+    flags*: set[NLayerFlag]
+    # GUI Labeling
     label*: string
-  # Layer Properties Tag
-  NLayerTagMode = enum
+  NLayerLevel* = object
+    depth*: cint
+    # Visible Checks
+    hidden*: bool
+    folded*: bool
+  # Layer Properties Attaching
+  NLayerAttach* = enum
+    ltAttachUnknown
+    # Attach Sides
     ltAttachNext
     ltAttachPrev
     ltAttachFolder
-    ltUnknown
   NLayerTag* = object
-    id, loc: cint
-    mode: NLayerTagMode
+    code: cint
+    mode: NLayerAttach
+  NLayerOrder* = object
+    target*, layer*: NLayer
+    mode*: NLayerAttach
   # -- Layer Tree Object --
   NLayer* = ptr object
     next*, prev*: NLayer
-    # Folder Nesting
     folder*: NLayer
-    level*: cint
     # Layer Properties
-    hook*: NLayerHook
     owner*: NLayerOwner
+    user*: NLayerUser
+    hook*: NLayerHook
     props*: NLayerProps
-    tag*: NLayerTag
     # Layer Data
     case kind*: NLayerKind
     of lkColor, lkMask, lkStencil:
@@ -81,9 +91,6 @@ proc createLayer*(kind: NLayerKind, owner: NLayerOwner): NLayer =
   # Define Initial Properties
   result.owner = owner
   result.kind = kind
-  # Define Layer ID from Owner
-  let own = cast[ptr cint](owner)
-  result.tag.id = own[]
 
 # -----------------
 # Layer Destruction
@@ -118,48 +125,60 @@ proc destroy*(layer: NLayer) =
   layer.deallocBase()
 
 # -------------------
-# Layer Tree Updating
+# Layer Tree Location
 # -------------------
 
-proc updateTag(layer: NLayer) =
+proc tag*(layer: NLayer): NLayerTag =
   let
     next = layer.next
     prev = layer.prev
     folder = layer.folder
-    tag = addr layer.tag
   # Attach Prev
   if not isNil(next):
-    tag.loc = next.tag.id
-    tag.mode = ltAttachPrev
+    result.code = next.props.code
+    result.mode = ltAttachPrev
   # Attach Next
   elif not isNil(prev):
-    tag.loc = prev.tag.id
-    tag.mode = ltAttachNext
+    result.code = prev.props.code
+    result.mode = ltAttachNext
   # Inside Folder
   elif not isNil(folder):
-    tag.loc = folder.tag.id
-    tag.mode = ltAttachFolder
-  else: # unreached
-    tag.loc = tag.id
-    tag.mode = ltUnknown
+    result.code = folder.props.code
+    result.mode = ltAttachFolder
+  else: # Invalid Attach
+    result.code = layer.props.code
+    result.mode = ltAttachUnknown
 
-proc updateLevel(layer: NLayer) =
-  var level: cint
-  # Update Folder Status
+proc level*(layer: NLayer): NLayerLevel =
+  var folder = layer.folder
+  # Walk to Outermost Levels
+  while not isNil(folder):
+    inc(result.depth)
+    # Check Folder Status
+    let flags = folder.props.flags
+    if lpVisible notin flags:
+      result.hidden = true
+    if lpFolded in flags:
+      result.folded = true
+    # Next Outside Folder
+    folder = folder.folder
+
+# -----------------
+# Layer Tree Folder
+# -----------------
+
+proc updateFolder(layer: NLayer) =
   let folder = layer.folder
-  if not isNil(folder):
-    let
-      first = folder.first
-      last = folder.last
-    # Check Ending Points
-    if isNil(first) or first.prev == layer:
-      folder.first = layer
-    if isNil(last) or last.next == layer:
-      folder.last = layer
-    # Set Next Nesting
-    level = folder.level + 1
-  # Set Current Level
-  layer.level = level
+  if isNil(folder): return
+  # Update Folder Endpoints
+  let
+    first = folder.first
+    last = folder.last
+  # Check Ending Points
+  if isNil(first) or first.prev == layer:
+    folder.first = layer
+  if isNil(last) or last.next == layer:
+    folder.last = layer
 
 # --------------------
 # Layer Tree Attaching
@@ -176,8 +195,7 @@ proc attachPrev*(pivot, layer: NLayer) =
   layer.prev = prev
   # Update Layer Status
   layer.folder = pivot.folder
-  layer.updateLevel()
-  layer.updateTag()
+  layer.updateFolder()
 
 proc attachNext*(pivot, layer: NLayer) =
   let next = pivot.next
@@ -190,8 +208,7 @@ proc attachNext*(pivot, layer: NLayer) =
   layer.next = next
   # Update Layer Status
   layer.folder = pivot.folder
-  layer.updateLevel()
-  layer.updateTag()
+  layer.updateFolder()
 
 proc attachInside*(folder, layer: NLayer) =
   assert folder.kind == lkFolder
@@ -201,8 +218,26 @@ proc attachInside*(folder, layer: NLayer) =
     first.attachPrev(layer)
   else: # Configure First
     layer.folder = folder
-    layer.updateLevel()
-    layer.updateTag()
+    layer.updateFolder()
+
+proc attachCheck*(pivot, layer: NLayer, mode: NLayerAttach): bool =
+  var outer {.cursor.} = pivot
+  if mode == ltAttachNext:
+    outer = outer.prev
+  elif mode == ltAttachPrev:
+    outer = outer.next
+  # Check quick self-attachments
+  if pivot == layer or outer == layer:
+    return false
+  # Check deep self-attachments
+  outer = layer.folder
+  while not isNil(outer):
+    if outer == pivot:
+      return false
+    # Next Outermost
+    outer = outer.folder
+  # This is Attachable
+  return true
 
 # --------------------
 # Layer Tree Detaching
@@ -229,4 +264,3 @@ proc detach*(layer: NLayer) =
     folder.last = prev
   # Remove Folder
   layer.folder = nil
-  layer.level = 0

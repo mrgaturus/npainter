@@ -6,13 +6,48 @@ import nogui/data {.all.}
 import ../../wip/[brush, texture, binary, canvas]
 import ../../wip/image/[context, proxy]
 from ../../wip/image import createLayer, selectLayer
-# Import Multithreading
-import nogui/spmc
 # TODO: move to engine side
+import nogui/core/async
 import nogui/libs/gl
+import locks
 
 cursors 16:
   basic *= "basic.svg" (0, 0)
+
+# ---------------------------
+# NPainter Engine Secure-Lock
+# ---------------------------
+
+type
+  NEngineSecure* = object
+    latch {.align: 64.}: uint64
+    pool: NThreadPool
+
+proc createSecure(pool: NThreadPool): NEngineSecure =
+  result.pool = pool
+
+proc acquire(s: var NEngineSecure) =
+  const e = high(uint64)
+  while true:
+    if atomicExchangeN(addr s.latch, e, ATOMIC_ACQUIRE) == 0: return
+    while atomicLoadN(addr s.latch, ATOMIC_RELAXED) == e:
+      cpuRelax()
+
+proc release(s: var NEngineSecure) =
+  atomicStoreN(addr s.latch, 0, ATOMIC_RELEASE)
+
+proc start*(s: ptr NEngineSecure) =
+  s[].acquire()
+  s.pool.start()
+
+proc stop*(s: ptr NEngineSecure) =
+  s.pool.stop()
+  s[].release()
+
+template lock*(s: var NEngineSecure, body: untyped) =
+  block secure:
+    s.acquire(); body
+    s.release()
 
 # --------------------------
 # NPainter Engine Controller
@@ -20,14 +55,14 @@ cursors 16:
 
 controller NPainterEngine:
   attributes: {.public.}:
+    secure: NEngineSecure
     pivot: GUIStatePivot
     # Engine Objects
     brush: NBrushStroke
     bucket: NBucketProof
-    canvas: NCanvasImage
-    # Canvas Manager
+    # Engine Canvas
     man: NCanvasManager
-    pool: NThreadPool
+    canvas: NCanvasImage
     # XXX: Proof Textures
     [tex0, tex1, tex2]: NTexture
 
@@ -117,14 +152,15 @@ controller NPainterEngine:
 
   # -- NPainter Constructor - proof of concept --
   new npainterengine(proof_W, proof_H: cint, checker = 0'i32):
-    result.man = createCanvasManager()
+    let pool = getAsync().pool
+    result.secure = createSecure(pool)
+    result.man = createCanvasManager(pool)
     result.canvas = result.man.createCanvas(proof_W, proof_H)
     # Proof of Concept Affine Transform
     result.bindBackground0proof(checker)
     result.bindAffine0proof()
     # Initialize Multi-Threading
-    result.pool = newThreadPool(6)
-    result.brush.pipe.pool = result.pool
+    result.brush.pipe.pool = pool
     # XXX: demo textures meanwhile a picker is done
     result.tex0 = newPNGTexture(toDataPath "proof/tex0.png")
     result.tex1 = newPNGTexture(toDataPath "proof/tex1.png")
@@ -148,4 +184,4 @@ export
   texture,
   binary,
   canvas,
-  spmc
+  async

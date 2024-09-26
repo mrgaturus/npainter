@@ -1,4 +1,4 @@
-import list
+import item, list
 # Import Builder
 import nogui/pack
 import nogui/ux/prelude
@@ -11,22 +11,20 @@ import nogui/ux/separator
 # Import Layer State
 import ../../state/layers
 
+proc comboitem(mode: NBlendMode): UXComboItem =
+  comboitem($blendname[mode], ord mode)
+
 # -----------
 # Layers Dock
 # -----------
 
 icons "dock/layers", 16:
   layers := "layers.svg"
-  # Layer Flags
-  clipping := "clipping.svg"
-  alpha := "alpha.svg"
-  lock := "lock.svg"
-  wand := "wand.svg"
-  # Layer Addition
+  # Layer Button Addition
   addLayer := "add_layer.svg"
   addMask := "add_mask.svg"
   addFolder := "add_folder.svg"
-  # Layer Manipulation
+  # Layer Button Manipulation
   delete := "delete.svg"
   duplicate := "layers.svg"
   merge := "merge.svg"
@@ -52,10 +50,9 @@ controller CXLayersDock:
   callback cbChangeMode:
     let m = react(self.layers.mode)
     m[] = NBlendMode(self.mode.selected.value)
-    echo "Selected Value:", self.mode.selected.value
 
   callback cbStructure:
-    self.list.reloadProofLayerList()
+    self.list.reload()
 
   callback cbDummy:
     discard
@@ -63,36 +60,36 @@ controller CXLayersDock:
   proc createCombo() =
     self.mode = 
       combomodel(): menu("").child:
-        comboitem("Normal", ord bmNormal)
+        comboitem(bmNormal)
         menuseparator("Dark")
-        comboitem("Multiply", ord bmMultiply)
-        comboitem("Darken", ord bmDarken)
-        comboitem("Color Burn", ord bmColorBurn)
-        comboitem("Linear Burn", ord bmLinearBurn)
-        comboitem("Darker Color", ord bmDarkerColor)
+        comboitem(bmMultiply)
+        comboitem(bmDarken)
+        comboitem(bmColorBurn)
+        comboitem(bmLinearBurn)
+        comboitem(bmDarkerColor)
         menuseparator("Light")
-        comboitem("Screen", ord bmScreen)
-        comboitem("Lighten", ord bmLighten)
-        comboitem("Color Dodge", ord bmColorDodge)
-        comboitem("Linear Dodge", ord bmLinearDodge)
-        comboitem("Lighter Color", ord bmLighterColor)
+        comboitem(bmScreen)
+        comboitem(bmLighten)
+        comboitem(bmColorDodge)
+        comboitem(bmLinearDodge)
+        comboitem(bmLighterColor)
         menuseparator("Contrast")
-        comboitem("Overlay", ord bmOverlay)
-        comboitem("Soft Light", ord bmSoftLight)
-        comboitem("Hard Light", ord bmHardLight)
-        comboitem("Vivid Light", ord bmVividLight)
-        comboitem("Linear Light", ord bmLinearLight)
-        comboitem("Pin Light", ord bmPinLight)
+        comboitem(bmOverlay)
+        comboitem(bmSoftLight)
+        comboitem(bmHardLight)
+        comboitem(bmVividLight)
+        comboitem(bmLinearLight)
+        comboitem(bmPinLight)
         menuseparator("Comprare")
-        comboitem("Difference", ord bmDifference)
-        comboitem("Exclusion", ord bmExclusion)
-        comboitem("Substract", ord bmSubstract)
-        comboitem("Divide", ord bmDivide)
+        comboitem(bmDifference)
+        comboitem(bmExclusion)
+        comboitem(bmSubstract)
+        comboitem(bmDivide)
         menuseparator("Composite")
-        comboitem("Hue", ord bmHue)
-        comboitem("Saturation", ord bmSaturation)
-        comboitem("Color", ord bmColor)
-        comboitem("Luminosity", ord bmLuminosity)
+        comboitem(bmHue)
+        comboitem(bmSaturation)
+        comboitem(bmColor)
+        comboitem(bmLuminosity)
     # Change Blending Callback
     self.mode.onchange = self.cbChangeMode
 
@@ -102,7 +99,7 @@ controller CXLayersDock:
       la = self.layers
     # Create Layer List
     self.list = layerlist(self.layers)
-    self.list.reloadProofLayerList()
+    self.list.reload()
     # Create Layouts
     vertical().child:
       # Layer Quick Properties
@@ -121,15 +118,15 @@ controller CXLayersDock:
         # Layer Creation
         button(iconAddLayer, la.cbCreateLayer).clear()
         button(iconAddMask, cb).clear()
-        button(iconAddFolder, cb).clear()
+        button(iconAddFolder, la.cbCreateFolder).clear()
         vseparator() # Layer Manipulation
-        button(iconDelete, la.cbRemoveLayer).clear()
-        button(iconDuplicate, cb).clear()
-        button(iconMerge, cb).clear()
+        button(iconDuplicate, la.cbDuplicateLayer).clear()
+        button(iconMerge, la.cbMergeLayer).clear()
         button(iconClear, la.cbClearLayer).clear()
-        # Misc Buttons
-        tail: button(iconUp, cb).clear()
-        tail: button(iconDown, cb).clear()
+        button(iconDelete, la.cbRemoveLayer).clear()
+        # Layer Reordering Buttons
+        tail: button(iconUp, la.cbRaiseLayer).clear()
+        tail: button(iconDown, la.cbLowerLayer).clear()
       # Layer Item
       scrollview():
         self.list
@@ -143,6 +140,6 @@ controller CXLayersDock:
     # Create Docks
     result.createCombo()
     result.createDock()
-    # Configure Callbacks
+    # Configure Layer Controller Callbacks
     result.layers.onselect = result.cbUpdate
     result.layers.onstructure = result.cbStructure

@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 // Copyright (c) 2023 Cristian Camilo Ruiz <mrgaturus>
 #include "image.h"
-#include <string.h>
 
 static inline __m128i _mm_blend_color(__m128i src, __m128i dst) {
   __m128i xmm0, xmm1;
