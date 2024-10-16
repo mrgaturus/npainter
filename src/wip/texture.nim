@@ -139,33 +139,36 @@ proc newTexture*(w, h: cint, buffer: seq[uint8]): NTexture =
 # ------------------------------------
 # DEBUG PROOF OF CONCEPT TESTING PROCS
 # ------------------------------------
-import nimPNG
+import nogui/libs/png
 
 proc newPNGTexture*(file: string): NTexture =
-  let 
-    b = loadPNG32(file)
-    w = cast[cint](b.width)
-    h = cast[cint](b.height)
+  let png = createReadPNG(file)
+  if not png.readRGBA():
+    return
+  let
+    w = cast[cint](png.w)
+    h = cast[cint](png.h)
   var
     cursor, calc: cint
     buffer: seq[uint8]
   # Convert Image to BlackWhite
-  buffer.setLen(b.data.len shr 2)
+  buffer.setLen(png.bytes shr 2)
   for p in mitems(buffer):
     let
-      r = cast[cint](b.data[cursor + 0])
-      g = cast[cint](b.data[cursor + 1])
-      b = cast[cint](b.data[cursor + 2])
-    # Calculate Grayscale Count
+      r = cast[cint](png.buffer[cursor + 0])
+      g = cast[cint](png.buffer[cursor + 1])
+      b = cast[cint](png.buffer[cursor + 2])
+    # Calculate Grayscale Count and Store
     calc = r * 13932 + g * 46870 + b * 4733
     calc = (calc + 65535) shr 16
-    # Store Grayscaled
     p = cast[uint8](calc)
     # Step Four Pixels
     cursor += 4
-  # Create New Texture
+  # Create New Texture and Close PNG
   result = newTexture(w, h, buffer)
+  png.close()
 
+#[
 proc debug*(tex: NTexture, file: string) =
   var buffer: seq[uint8]
   buffer.setLen(tex.bytes shl 2)
@@ -186,3 +189,4 @@ proc debug*(tex: NTexture, file: string) =
       cursor += 4
     # Store PNG File
     discard savePNG32($id & file, buffer, w, h)
+]#
