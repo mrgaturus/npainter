@@ -21,5 +21,5 @@ if ! command -v nimble > /dev/null; then
 fi
 
 # Compile NPainter Binary
-nimble build -d:danger
+nimble build -d:danger $1
 nopack
