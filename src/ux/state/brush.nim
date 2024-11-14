@@ -371,13 +371,6 @@ widget UXBrushTask:
     data.composite = 0
     getWindow().fuse()
 
-  proc finalize() =
-    self.engine.canvas.update()
-    getWindow().fuse()
-    # Commit Changes
-    self.proxy[].commit()
-    self.engine.clearProxy()
-
   new uxbrushtask(engine: NPainterEngine):
     result.coro = coroutine(step0coro)
     result.flags = {wMouse, wKeyboard, wVisible}
@@ -427,7 +420,7 @@ widget UXBrushTask:
       coro.spawn()
     of outHold:
       coro.wait()
-      self.finalize()
+      self.engine.commit0proof()
     else: discard
 
 # ---------------------

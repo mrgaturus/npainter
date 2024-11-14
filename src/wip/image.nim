@@ -14,7 +14,15 @@ import ./image/[
 ]
 
 type
+  NImageInfo* = object
+    hash*: uint64
+    w*, h*, bpp*: cint
+    # Background Information
+    r0*, g0*, b0*, a0: uint8
+    r1*, g1*, b1*, a1: uint8
+    checker*: cint
   NImage* = ptr object
+    info*: NImageInfo
     ctx*: NImageContext
     status*: NImageStatus
     com*: NCompositor
@@ -55,7 +63,7 @@ proc configure(img: NImage) =
   img.proxy.configure()
 
 proc createImage*(w, h: cint): NImage =
-  result = create(result[].type)
+  result = create(result[].typeof)
   result.owner.configure()
   # Create Image Root Layer
   let root = createLayer(lkFolder)

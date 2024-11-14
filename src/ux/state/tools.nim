@@ -1,10 +1,9 @@
 import nogui/ux/prelude
 import nogui/builder
 # Import Values
+import ../../wip/canvas/matrix
 import nogui/ux/values/linear
 import engine, color
-import ../../wip/canvas/matrix
-from ../../wip/image/proxy import commit
 
 # ----------------------
 # Bucket Tool Controller
@@ -71,14 +70,14 @@ widget UXBucketDispatch:
     let
       fill = addr engine.bucket
       canvas = addr engine.canvas
-      proxy = engine.proxyBucket0proof()
       # Map Current Position
       affine = canvas[].affine
       p = affine[].forward(state.px, state.py)
       # Integer Position
       x = int32 p.x
       y = int32 p.y
-    # Configure Bucket
+    # Configure Bucket - proof of concept
+    discard engine.proxyBucket0proof()
     fill.tolerance = cint(bucket.threshold.peek[].toRaw * 255)
     fill.gap = cint(bucket.gap.peek[].toRaw * 255)
     fill.check = bucket.modecheck
@@ -90,9 +89,7 @@ widget UXBucketDispatch:
     else: fill[].similar(x, y)
     fill[].blend()
     # Update Render Region
-    canvas[].update()
-    proxy[].commit()
-    engine.clearProxy()
+    engine.commit0proof()
 
   method handle(reason: GUIHandle) =
     echo "bucket reason: ", reason
