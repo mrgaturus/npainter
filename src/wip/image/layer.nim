@@ -93,7 +93,7 @@ proc deallocBase(layer: NLayer) =
     discard remove(code.tree[], code)
   # Dealloc Tiles and Layer
   if layer.kind != lkFolder:
-    destroy(layer.tiles)
+    clear(layer.tiles)
   # Dealloc Layer
   `=destroy`(layer[])
   dealloc(layer)

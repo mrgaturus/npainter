@@ -166,10 +166,7 @@ controller CXLayers:
       tiles = addr layer.tiles
     # Render Layer
     self.render(layer)
-    # XXX: this is a proof of concept
-    # TODO: move this to engine side
-    tiles[].destroy()
-    tiles[] = createTileImage(4)
+    tiles[].clear()
 
   callback cbRemoveLayer:
     let

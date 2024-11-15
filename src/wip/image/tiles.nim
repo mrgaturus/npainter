@@ -235,9 +235,10 @@ proc region*(tiles: var NTileImage): NTileReserved =
   result.w = grid.w
   result.h = grid.h
 
-proc destroy*(tiles: var NTileImage) =
+proc clear*(tiles: var NTileImage) =
   if tiles.grid.len > 0:
     destroy(tiles.grid)
+    wasMoved(tiles.grid)
 
 # ---------------------
 # Tile Image Dimensions
