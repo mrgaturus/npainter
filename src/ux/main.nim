@@ -1,5 +1,6 @@
 import nogui/ux/layouts/base
 from nogui/builder import widget, controller, child
+import nogui/core/shortcut
 import nogui/ux/prelude
 # Import Controllers
 import main/[menu, tools, frame]
@@ -36,6 +37,16 @@ controller NCMainFrame:
       session = self.docks.session
     mainframe title, mainbody(tools, session)
 
+  proc proof0shortcuts() =
+    let shorts = getWindow().shorts
+    let state {.cursor.} = self.state
+    shorts[].register shortcut(state.layers.cbClearLayer, NK_Delete)
+    # XXX: for now both ctrl + shift + z or ctrl + y works
+    #      but one will be the default winner
+    shorts[].register shortcut(state.cbUndo, NK_Z + {Mod_Control})
+    shorts[].register shortcut(state.cbRedo, NK_Z + {Mod_Control, Mod_Shift})
+    shorts[].register shortcut(state.cbRedo, NK_Y + {Mod_Control})
+
   new cxnpainter0proof(w, h: int32, checker = 0'i32):
     let state = npainterstate0proof(w, h, checker)
     state.tool.cb = result.cbSelectTool
@@ -55,4 +66,4 @@ controller NCMainFrame:
     result.frame = frame
     # XXX: proof of concept
     docks.proof0arrange()
-
+    result.proof0shortcuts()

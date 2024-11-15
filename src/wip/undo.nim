@@ -5,6 +5,7 @@ import image/layer
 import image
 # Export Undo Command Enum
 export NUndoCommand
+export NUndoEffect
 
 type
   NUndoChain = enum
@@ -184,6 +185,7 @@ proc undo*(undo: NImageUndo): set[NUndoEffect] =
     return
   # Step Undo Chain
   while true:
+    result.incl effect(step.cmd)
     undo.state0.step = step
     undo.state0.undo()
     if step.chain in {chainNone, chainStart}: break
@@ -200,6 +202,7 @@ proc redo*(undo: NImageUndo): set[NUndoEffect] =
     return
   # Step Undo Chain
   while true:
+    result.incl effect(step.cmd)
     undo.state0.step = step
     undo.state0.redo()
     if step.chain in {chainNone, chainEnd}: break

@@ -14,8 +14,8 @@ type
     buffer*: NUndoBuffer
     swap*: NUndoBuffer
 
-proc builtin_clz*(x: uint32): int32
-  {.importc: "__builtin_clz", cdecl.}
+proc builtin_ctz*(x: uint32): int32
+  {.importc: "__builtin_ctz", cdecl.}
 
 # --------------------------------
 # Undo Stream Creation/Destruction
@@ -25,7 +25,7 @@ proc configure*(stream: var NUndoStream) =
   let
     bytes0 = uint32 ZSTD_CStreamInSize()
     bytes1 = uint32 ZSTD_DStreamOutSize()
-    shift = builtin_clz max(bytes0, bytes1)
+    shift = builtin_ctz max(bytes0, bytes1)
     bytes = 1 shl shift
     mask = bytes - 1
   # Configure Stream Buffer Sizes

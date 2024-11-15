@@ -106,12 +106,19 @@ proc nextList(codec: var NBookWrite) =
   let cap = (bpt - sizeof NUndoIndex) div sizeof(NUndoTile)
   let list = cast[ptr NUndoIndex](codec.chunk)
   # Replace Current List
+  zeroMem(list, bpt)
   list.cap = int32(cap)
   codec.list = list
 
-proc writeBook(stream: ptr NUndoStream, book: ptr NUndoBook): NBookWrite =
-  let bytes = stream.bytes
-  let cap = bytes div book.bpt
+proc writeBook(stage: ptr NUndoStage, book: ptr NUndoBook): NBookWrite =
+  let
+    stream = stage.stream
+    tiles = stage.tiles
+    bytes = stream.bytes
+    cap = bytes div tiles.bytes
+  # Define Book Properties
+  book.bpt = tiles.bytes
+  book.bpp = tiles.bpp
   # Define Writer Properties
   result.bytes = bytes
   result.cap = cap
@@ -134,9 +141,11 @@ proc write(codec: var NBookWrite, tile: NTile) =
   # Add Tile to List
   let idx = list.count
   let t0 = addr list.tiles[idx]
-  # Configure Tile
   t0.point(tile.x, tile.y)
-  if not tile.uniform:
+  # Define Tile Data
+  if not tile.found:
+    discard
+  elif not tile.uniform:
     let idx = codec.nextSlab()
     t0.asIndex(uint64 idx)
     # Copy Tile Buffer
@@ -151,7 +160,7 @@ proc writeCopy0*(stage: ptr NUndoStage) =
   assert book == stage.before
   assert book.slabs == 0
   # Prepare Tile Book Codec
-  var codec = writeBook(stage.stream, book)
+  var codec = writeBook(stage, book)
   let tiles = stage.tiles
   # Copy Tiles to Codec
   for tile in tiles[]:
@@ -162,7 +171,7 @@ proc writeMark0*(stage: ptr NUndoStage) =
   assert book != stage.after
   assert book.slabs == 0
   # Prepare Tile Book Codec
-  var codec = writeBook(stage.stream, book)
+  var codec = writeBook(stage, book)
   let tiles = stage.tiles
   let status = stage.status
   # Copy Dirty Tiles to Codec
@@ -176,7 +185,7 @@ proc writeMark1*(stage: ptr NUndoStage) =
   assert book != before
   assert book.slabs == 0
   # Prepare Tile Book Codec
-  var codec = writeBook(stage.stream, book)
+  var codec = writeBook(stage, book)
   let tiles = stage.tiles
   # Copy Marked Tiles to Codec
   var page = before.pages[0]
@@ -229,7 +238,7 @@ proc nextTile(codec: var NBookRead): ptr NUndoTile =
   var idx = codec.idx
   var list = codec.list
   # Jump To Next List
-  if idx >= list.cap:
+  if idx >= list.count:
     if list.next == 0:
       return
     codec.nextList(list.next)
