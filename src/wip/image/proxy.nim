@@ -232,11 +232,9 @@ proc ensure(proxy: var NImageProxy) =
     tiles = proxy.stream.tiles
   # Status Clip Region
   var m = status.clip
-  m = status[].region(m)
-  # Status Clip Relative to Tiles
-  m.x1 -= m.x0
-  m.y1 -= m.y0
+  m = status[].scale(m)
   # Ensure Tile Region
+  m.x1 -= m.x0; m.y1 -= m.y0
   tiles[].ensure(m.x0, m.y0, m.x1, m.y1)
 
 # Instant TODO: multithreading
