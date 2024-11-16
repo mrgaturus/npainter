@@ -10,11 +10,8 @@ type
     kind: NLayerKind
     props: NLayerProps
     tag: NLayerTag
-    # Layer Tiles Copy
-    region: NUndoRegion
     book: NUndoBook
   NUndoMark = object
-    region: NUndoRegion
     before: NUndoBook
     after: NUndoBook
   NUndoProps = object
@@ -141,12 +138,18 @@ proc capture*(state: var NUndoState) =
   # Layer Capture Commands
   of ucLayerCreate: discard
   of ucLayerDelete: discard
-  of ucLayerTiles: discard
+  of ucLayerTiles:
+    let mark = addr step.data.mark
+    stage.before = addr mark.before
+    stage.after = addr mark.after
+    if step.stage == 1:
+      swap(stage.before, stage.after)
+    elif step.stage > 1:
+      return
+    # Dispatch Tiles Capture
+    stage.writeCopy0()
   of ucLayerMark:
     let mark = addr step.data.mark
-    copyMem(addr mark.region,
-      addr stage.status.clip,
-      sizeof NUndoRegion)
     stage.before = addr mark.before
     stage.after = addr mark.after
     # Dispatch Tiles Capture
@@ -166,16 +169,30 @@ proc capture*(state: var NUndoState) =
 # Undo Command RAM: Dispatch
 # --------------------------
 
-proc layer(state: var NUndoState, id: uint32): NLayer =
+proc layer(state: var NUndoState, id: uint32) =
   let node = search(state.image.owner, id)
+  # Configure Layer Tiles
   if not isNil(node):
-    result = node.layer()
+    let la = node.layer()
+    state.tiles(la)
+
+proc read0mark(state: var NUndoState) =
+  let
+    step = addr state.step
+    stage = addr state.stage
+    mark = addr step.data.mark
+  # Prepare Mark Clipping
+  if step.cmd == ucLayerTiles:
+    stage.tiles[].clear()
+  # Prepare Before/After
+  stage.before = addr mark.before
+  stage.after = addr mark.after
 
 proc undo*(state: var NUndoState) =
   let
     step = addr state.step
     stage = addr state.stage
-    layer = state.layer(step.layer)
+  state.layer(step.layer)
   # Canvas Undo Commands
   case step.cmd
   of ucCanvasNone: discard
@@ -184,14 +201,7 @@ proc undo*(state: var NUndoState) =
   of ucLayerCreate: discard
   of ucLayerDelete: discard
   of ucLayerTiles, ucLayerMark:
-    let mark = addr step.data.mark
-    copyMem(addr stage.status.clip,
-      addr mark.region,
-      sizeof NUndoRegion)
-    stage.before = addr mark.before
-    stage.after = addr mark.after
-    # Dispatch Layer Mark
-    state.tiles(layer)
+    state.read0mark()
     stage.readBefore()
   of ucLayerProps: discard
   of ucLayerReorder: discard
@@ -200,7 +210,7 @@ proc redo*(state: var NUndoState) =
   let
     step = addr state.step
     stage = addr state.stage
-    layer = state.layer(step.layer)
+  state.layer(step.layer)
   # Canvas Redo Commands
   case step.cmd
   of ucCanvasNone: discard
@@ -209,14 +219,7 @@ proc redo*(state: var NUndoState) =
   of ucLayerCreate: discard
   of ucLayerDelete: discard
   of ucLayerTiles, ucLayerMark:
-    let mark = addr step.data.mark
-    copyMem(addr stage.status.clip,
-      addr mark.region,
-      sizeof NUndoRegion)
-    stage.before = addr mark.before
-    stage.after = addr mark.after
-    # Dispatch Layer Mark
-    state.tiles(layer)
+    state.read0mark()
     stage.readAfter()
   of ucLayerProps: discard
   of ucLayerReorder: discard

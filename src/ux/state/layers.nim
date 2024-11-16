@@ -1,7 +1,7 @@
 import nogui/core/[value, callback]
 import nogui/ux/values/linear
 import nogui/builder
-import ../../wip/image
+import ../../wip/[image, undo]
 import ../../wip/image/[layer, tiles, context]
 import ../../wip/canvas
 # TODO: Move many parts to engine side
@@ -162,11 +162,18 @@ controller CXLayers:
   callback cbClearLayer:
     let
       image = self.image
+      undo = self.canvas.undo
+      # Current Layer Selected
       layer = image.selected
       tiles = addr layer.tiles
-    # Render Layer
+    # Capture Before Tiles
+    let step = undo.push(ucLayerTiles)
+    step.capture(layer)
     self.render(layer)
+    # Clear Layer Tiles
     tiles[].clear()
+    step.capture(layer)
+    undo.flush()
 
   callback cbRemoveLayer:
     let

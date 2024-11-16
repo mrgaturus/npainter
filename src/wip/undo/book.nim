@@ -4,8 +4,6 @@ import ../image/[tiles, context]
 import stream
 
 type
-  NUndoRegion* = object
-    x*, y*, w*, h*: int32
   NUndoTile = object
     ux, uy: int32
     cell: uint64
@@ -14,10 +12,12 @@ type
     count, cap: int32
     tiles: UncheckedArray[NUndoTile]
   # Undo Buffer Pagination
+  NUndoRegion = NTileReserved
   NUndoBook* = object
     slabs: int64 # slabs count
     bpp: int32 # bytes per pixel
     bpt: int32 # bytes per tile
+    region: NUndoRegion
     pages: seq[NUndoBuffer]
   # Undo Book Codec
   NUndoStage* = object
@@ -43,6 +43,33 @@ type
     stream: ptr NUndoStream
     book: ptr NUndoBook
     idx, count: int
+
+# ------------------------
+# Undo Book Region Manager
+# ------------------------
+
+proc regionTiles(stage: ptr NUndoStage): NUndoRegion =
+  stage.tiles[].region()
+
+proc regionMark(stage: ptr NUndoStage): NUndoRegion =
+  let s = stage.status
+  let c = s[].scale(s.clip)
+  # Calculate Region Mark
+  result.x = c.x0
+  result.y = c.y0
+  result.w = c.x1 - c.x0
+  result.h = c.y1 - c.y0
+
+proc regionTiles(stage: ptr NUndoStage, r: NUndoRegion) =
+  stage.tiles[].ensure(r.x, r.y, r.w, r.h)
+
+proc regionMark(stage: ptr NUndoStage, r: NUndoRegion) =
+  let c = addr stage.status.clip
+  # Set Status Clipping
+  c.x0 = r.x shl 5
+  c.y0 = r.y shl 5
+  c.x1 = c.x0 + (r.w shl 5)
+  c.y1 = c.y0 + (r.h shl 5)
 
 # ----------------------
 # Undo Book Tile Manager
@@ -156,10 +183,10 @@ proc write(codec: var NBookWrite, tile: NTile) =
   inc(list.count)
 
 proc writeCopy0*(stage: ptr NUndoStage) =
-  let book = stage.after
-  assert book == stage.before
+  let book = stage.before
   assert book.slabs == 0
   # Prepare Tile Book Codec
+  book.region = stage.regionTiles()
   var codec = writeBook(stage, book)
   let tiles = stage.tiles
   # Copy Tiles to Codec
@@ -171,6 +198,7 @@ proc writeMark0*(stage: ptr NUndoStage) =
   assert book != stage.after
   assert book.slabs == 0
   # Prepare Tile Book Codec
+  book.region = stage.regionMark()
   var codec = writeBook(stage, book)
   let tiles = stage.tiles
   let status = stage.status
@@ -185,6 +213,7 @@ proc writeMark1*(stage: ptr NUndoStage) =
   assert book != before
   assert book.slabs == 0
   # Prepare Tile Book Codec
+  book.region = before.region
   var codec = writeBook(stage, book)
   let tiles = stage.tiles
   # Copy Marked Tiles to Codec
@@ -291,10 +320,32 @@ proc commit(codec: var NBookRead, stage: ptr NUndoStage) =
     # Apply Dirty Changes
     status[].mark32(x, y)
 
+proc readBook(stage: ptr NUndoStage, book: ptr NUndoBook) =
+  if book.slabs > 0:
+    stage.regionTiles(book.region)
+    stage.regionMark(book.region)
+    # Commit Book Tiles to Stage Tiles
+    var codec = readBook(stage.stream, book)
+    commit(codec, stage)
+
+proc readRegion(stage: ptr NUndoStage) =
+  let r0 = stage.before.region
+  let r1 = stage.after.region
+  # Check Stage Region
+  if r0 != r1:
+    var m: NImageMark
+    m.expand(r0.x, r0.y, r0.w, r0.h)
+    m.expand(r1.x, r1.y, r1.w, r1.h)
+    m.x0 *= 32; m.y0 *= 32
+    m.x1 *= 32; m.y1 *= 32
+    # Mark Status Tiles
+    stage.status[].clip = m
+    stage.status[].mark(m)
+
 proc readBefore*(stage: ptr NUndoStage) =
-  var codec = readBook(stage.stream, stage.before)
-  commit(codec, stage)
+  stage.readBook(stage.before)
+  stage.readRegion()
 
 proc readAfter*(stage: ptr NUndoStage) =
-  var codec = readBook(stage.stream, stage.after)
-  commit(codec, stage)
+  stage.readBook(stage.after)
+  stage.readRegion()
