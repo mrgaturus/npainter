@@ -52,8 +52,8 @@ type
     ltAttachPrev
     ltAttachFolder
   NLayerTag* = object
-    code: uint32
-    mode: NLayerAttach
+    code*: uint32
+    mode*: NLayerAttach
   NLayerOrder* = object
     target*: NLayer
     layer*: NLayer

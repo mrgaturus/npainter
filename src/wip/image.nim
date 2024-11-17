@@ -99,6 +99,23 @@ proc createLayer*(img: NImage, kind: NLayerKind): NLayer =
       props.label = "Folder " & $img.t1
       inc(img.t1)
 
+proc attachLayer*(img: NImage, layer: NLayer, tag: NLayerTag) =
+  let owner = addr img.owner
+  let code = addr layer.code
+  # Register Layer to Owner
+  if code.tree != owner:
+    discard owner[].insert(code)
+  let node = owner[].search(tag.code)
+  assert not isNil(node) and
+    tag.mode != ltAttachUnknown
+  # Attach Layer Using Mode
+  let la = node.layer()
+  case tag.mode
+  of ltAttachUnknown: discard
+  of ltAttachNext: la.attachNext(layer)
+  of ltAttachPrev: la.attachPrev(layer)
+  of ltAttachFolder: la.attachInside(layer)
+
 proc selectLayer*(img: NImage, layer: NLayer) =
   let check = layer.code.tree == addr img.owner
   assert check, "layer owner mismatch"
