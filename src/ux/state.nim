@@ -59,12 +59,18 @@ controller NPainterState:
 
   # XXX: proof of concept undo
   proc reactUndo(flags: set[NUndoEffect]) =
+    let layers {.cursor.} = self.layers
     if ueLayerTiles in flags:
       update(self.engine.canvas)
     if ueLayerProps in flags:
-      force(self.layers.onselect)
+      let layer {.cursor.} = layers.selected
+      let user {.cursor.} = cast[GUIWidget](layer.user)
+      # Reflect Props Changes to Widget
+      if ueLayerList notin flags:
+        send(user.parent, wsLayout)
+      layers.reflect(layer)
     if ueLayerList in flags:
-      force(self.layers.onstructure)
+      force(layers.onstructure)
 
   callback cbUndo:
     let canvas = self.engine.canvas

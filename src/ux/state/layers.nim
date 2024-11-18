@@ -33,7 +33,7 @@ controller CXLayers:
   proc selected*: NLayer =
     self.image.selected
 
-  proc reflect(layer: NLayer) =
+  proc reflect*(layer: NLayer) =
     let
       flags = layer.props.flags
       opacity = layer.props.opacity
@@ -45,6 +45,8 @@ controller CXLayers:
     # Reflect Mode and Opacity
     self.mode.peek[] = layer.props.mode
     self.opacity.peek[].lerp opacity
+    # Reflect Callback
+    send(self.onselect)
 
   # ----------------------------
   # Layer Rendering Manipulation
@@ -58,7 +60,6 @@ controller CXLayers:
     self.image.selectLayer(layer)
     self.reflect(layer)
     # Update Widgets
-    send(self.onselect)
     u0.send(wsLayout)
     u1.send(wsLayout)
 
@@ -67,6 +68,9 @@ controller CXLayers:
       image = self.image
       layer = image.createLayer(kind)
       target = image.selected
+      # Undo Step Capture
+      undo = self.canvas.undo
+      step = undo.push(ucLayerCreate)
     # Put Next to Selected or Inside a Folder
     if target.kind != lkFolder or kind == lkFolder:
       target.attachPrev(layer)
@@ -77,6 +81,9 @@ controller CXLayers:
     # Select New Layer
     force(self.onstructure)
     self.select(layer)
+    # Capture Undo Step
+    step.capture(layer)
+    undo.flush()
 
   # ----------------------------
   # Layer Rendering Manipulation
@@ -178,6 +185,7 @@ controller CXLayers:
   callback cbRemoveLayer:
     let
       image = self.image
+      undo = self.canvas.undo
       layer = image.selected
       root = image.root
     # Avoid Delete When is Unique
@@ -192,7 +200,11 @@ controller CXLayers:
     else: self.select(layer.folder)
     # Prepare Rendering
     self.render(layer)
-    # Layer Detach and Dealloc
+    # Capture Undo Command
+    let step = undo.push(ucLayerDelete)
+    step.capture(layer)
+    undo.flush()
+    # Destroy Layer
     layer.detach()
     layer.destroy()
     # Update Layer Structure
@@ -268,28 +280,11 @@ controller CXLayers:
     # Change Layer Properties
     layer.props.flags.incl(lpVisible)
     layer.props.opacity = 1.0
-    # Select Current Layer
     img.root.attachInside(layer)
-    img.root.attachInside img.createLayer(lkColor)
-    img.root.attachInside img.createLayer(lkColor)
-    let folder0 = img.createLayer(lkFolder)
-    let folder1 = img.createLayer(lkFolder)
-    let folder2 = img.createLayer(lkFolder)
-    let folder3 = img.createLayer(lkFolder)
-    img.root.attachInside(folder0)
-    folder0.attachInside img.createLayer(lkColor)
-    folder0.attachInside img.createLayer(lkColor)
-    folder0.attachInside folder2
-    folder0.attachInside folder3
-    folder0.attachInside folder1
-    folder1.attachInside img.createLayer(lkColor)
-    folder1.attachInside img.createLayer(lkColor)
-    folder1.attachInside img.createLayer(lkColor)
-    folder2.props.flags.incl(lpFolded)
-    folder3.props.flags.incl(lpFolded)
+    # Select Current Layer
     img.selectLayer(layer)
-    # Update Strcuture
     self.reflect(layer)
+    # Update Structure
     send(self.cbUpdateLayer)
     send(self.onselect)
     send(self.onstructure)

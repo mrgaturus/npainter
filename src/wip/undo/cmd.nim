@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 # Copyright (c) 2024 Cristian Camilo Ruiz <mrgaturus>
-from nogui/bst import search
 import book, stream, swap
+from nogui/bst import insert, search
 import ../image/[layer, tiles, context]
 import ../image
 
@@ -27,7 +27,7 @@ type
     ueLayerProps
     ueLayerTiles
     ueLayerList
-  NUndoCommand* {.pure.} = enum
+  NUndoCommand* {.pure, size: 4.} = enum
     ucCanvasNone
     ucCanvasProps
     # Layer Commands
@@ -46,8 +46,10 @@ type
 
 type
   NUndoTarget* = object
+    node: NLayer
     layer*: uint32
     stage*: uint8
+    weak*: bool
     # Undo Step Data
     cmd*: NUndoCommand
     data*: ptr NUndoData
@@ -76,17 +78,17 @@ proc destroy*(data: var NUndoData, cmd: NUndoCommand) =
     `=destroy`(data.props)
   else: discard
 
-proc effect*(cmd: NUndoCommand): NUndoEffect =
+proc effect*(cmd: NUndoCommand): set[NUndoEffect] =
   const effects = [
-    ucCanvasNone: ueCanvasProps,
-    ucCanvasProps: ueCanvasProps,
+    ucCanvasNone: {ueCanvasProps},
+    ucCanvasProps: {ueCanvasProps},
     # Layer Commands Effects
-    ucLayerCreate: ueLayerList,
-    ucLayerDelete: ueLayerList,
-    ucLayerTiles: ueLayerTiles,
-    ucLayerMark: ueLayerTiles,
-    ucLayerProps: ueLayerProps,
-    ucLayerReorder: ueLayerList
+    ucLayerCreate: {ueLayerTiles, ueLayerList, ueLayerProps},
+    ucLayerDelete: {ueLayerTiles, ueLayerList, ueLayerProps},
+    ucLayerTiles: {ueLayerTiles},
+    ucLayerMark: {ueLayerTiles},
+    ucLayerProps: {ueLayerProps},
+    ucLayerReorder: {ueLayerList}
   ]; effects[cmd]
 
 # -----------------------
@@ -106,9 +108,9 @@ proc configure*(state: var NUndoTransfer,
     stream: ptr NUndoStream) =
   state.stream = stream
 
-# -------------------------
-# Undo Command RAM: Capture
-# -------------------------
+# --------------------
+# Undo Command Prepare
+# --------------------
 
 proc stencil*(state: var NUndoState, mask: NUndoTarget) =
   let stage = addr state.stage
@@ -125,8 +127,42 @@ proc tiles*(state: var NUndoState, layer: NLayer) =
   let stage = addr state.stage
   wasMoved(stage.tiles)
   # Configure Layer Tiles
+  state.step.node = layer
   if not isNil(layer) and layer.kind != lkFolder:
     stage.tiles = addr layer.tiles
+
+proc layer(state: var NUndoState, id: uint32) =
+  let node = search(state.image.owner, id)
+  # Lookup Layer Node
+  var no: NLayer
+  if not isNil(node):
+    no = node.layer()
+  # Configure Layer Tiles
+  state.tiles(no)
+
+# -------------------------
+# Undo Command RAM: Capture
+# -------------------------
+
+proc capture0copy(state: var NUndoState) =
+  let
+    step = addr state.step
+    stage = addr state.stage
+    copy = addr step.data.copy
+    layer = step.node
+  # Copy Basic Layer Attributes
+  copy.kind = layer.kind
+  copy.props = layer.props
+  # Copy Layer Tag
+  if step.weak:
+    copy.tag.code = layer.folder.code.id
+    copy.tag.mode = ltAttachFolder
+  else: copy.tag = layer.tag()
+  # Copy Layer Tiles
+  if step.stage == 0 and layer.kind != lkFolder:
+    stage.before = addr copy.book
+    stage.after = addr copy.book
+    stage.writeCopy0()
 
 proc capture*(state: var NUndoState) =
   let step = addr state.step
@@ -136,8 +172,8 @@ proc capture*(state: var NUndoState) =
   of ucCanvasNone: discard
   of ucCanvasProps: discard
   # Layer Capture Commands
-  of ucLayerCreate: discard
-  of ucLayerDelete: discard
+  of ucLayerCreate, ucLayerDelete:
+    state.capture0copy()
   of ucLayerTiles:
     let mark = addr step.data.mark
     stage.before = addr mark.before
@@ -169,14 +205,7 @@ proc capture*(state: var NUndoState) =
 # Undo Command RAM: Dispatch
 # --------------------------
 
-proc layer(state: var NUndoState, id: uint32) =
-  let node = search(state.image.owner, id)
-  # Configure Layer Tiles
-  if not isNil(node):
-    let la = node.layer()
-    state.tiles(la)
-
-proc read0mark(state: var NUndoState) =
+proc commit0mark(state: var NUndoState) =
   let
     step = addr state.step
     stage = addr state.stage
@@ -188,6 +217,45 @@ proc read0mark(state: var NUndoState) =
   stage.before = addr mark.before
   stage.after = addr mark.after
 
+proc commit0create(state: var NUndoState) =
+  let
+    step = addr state.step
+    copy = addr step.data.copy
+    layer = createLayer(copy.kind)
+    image = state.image
+  # Configure Layer
+  layer.code.id = step.layer
+  layer.props = copy.props
+  image.attachLayer(layer, copy.tag)
+  # Transfer Layer Tiles
+  state.tiles(layer)
+  let stage = addr state.stage
+  if not isNil(stage.tiles):
+    stage.before = addr copy.book
+    stage.after = addr copy.book
+    stage.readBefore()
+  # Select Created Layer
+  if not step.weak:
+    image.selectLayer(layer)
+  else: complete(image.status.clip)
+
+proc commit0delete(state: var NUndoState) =
+  let step = addr state.step
+  let image = state.image
+  state.layer(step.layer)
+  # Destroy Layer and React
+  let layer = step.node
+  if not isNil(layer):
+    complete(image.status.clip)
+    image.markLayer(layer)
+    # Select Previous Layer
+    if not step.weak:
+      let node = image.owner.search(layer.tag.code)
+      image.selectLayer(node.layer)
+    # Destroy Layer
+    layer.detach()
+    layer.destroy()
+
 proc undo*(state: var NUndoState) =
   let
     step = addr state.step
@@ -198,10 +266,10 @@ proc undo*(state: var NUndoState) =
   of ucCanvasNone: discard
   of ucCanvasProps: discard
   # Layer Undo Commands
-  of ucLayerCreate: discard
-  of ucLayerDelete: discard
+  of ucLayerCreate: state.commit0delete()
+  of ucLayerDelete: state.commit0create()
   of ucLayerTiles, ucLayerMark:
-    state.read0mark()
+    state.commit0mark()
     stage.readBefore()
   of ucLayerProps: discard
   of ucLayerReorder: discard
@@ -216,10 +284,10 @@ proc redo*(state: var NUndoState) =
   of ucCanvasNone: discard
   of ucCanvasProps: discard
   # Layer Redo Commands
-  of ucLayerCreate: discard
-  of ucLayerDelete: discard
+  of ucLayerCreate: state.commit0create()
+  of ucLayerDelete: state.commit0delete()
   of ucLayerTiles, ucLayerMark:
-    state.read0mark()
+    state.commit0mark()
     stage.readAfter()
   of ucLayerProps: discard
   of ucLayerReorder: discard

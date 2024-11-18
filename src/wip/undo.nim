@@ -23,6 +23,7 @@ type
     msg: uint32
     swap: bool
     stage: uint8
+    weak: bool
     # Command Descriptor
     chain: NUndoChain
     cmd: NUndoCommand
@@ -98,9 +99,9 @@ proc cutdown(step: NUndoStep) =
     trunk.destroy()
     trunk = next
 
-# ------------------
-# Undo Step Creation
-# ------------------
+# ---------------------------
+# Undo Step Capture: Creation
+# ---------------------------
 
 proc push*(undo: NImageUndo, cmd: NUndoCommand): NUndoStep =
   result = create(result[].typeof)
@@ -124,34 +125,99 @@ proc push*(undo: NImageUndo, cmd: NUndoCommand): NUndoStep =
   undo.cursor = result
   undo.last = result
 
-proc chain*(undo: NImageUndo, cmd: NUndoCommand): NUndoStep =
-  result = undo.push(cmd)
-  # Check Chain Step
-  let prev = result.prev
+proc chained(step: NUndoStep, rev: bool) =
+  let prev = if not rev: step.prev else: step.next
   if isNil(prev) or prev.chain notin
       {chainStart, chainStep}:
-    prev.chain = chainStart
-  else: prev.chain = chainStep
+    step.chain = chainStart
+  elif rev:
+    prev.chain = chainStep
+    step.chain = chainStart
+  else: step.chain = chainStep
 
-# -----------------
-# Undo Step Capture
-# -----------------
+proc chain*(undo: NImageUndo, cmd: NUndoCommand): NUndoStep =
+  result = undo.push(cmd)
+  result.chained(rev = false)
+
+# ----------------------------
+# Undo Step Capture: Recursive
+# ----------------------------
 
 converter target(step: NUndoStep): NUndoTarget =
-  result.layer = step.layer
-  result.stage = step.stage
-  result.cmd = step.cmd
-  result.data = addr step.data
-  # Next Stage Dispatch
-  inc(step.stage)
+  result = NUndoTarget(
+    layer: step.layer,
+    stage: step.stage,
+    weak: step.weak,
+    # Command Data
+    cmd: step.cmd,
+    data: addr step.data
+  ); inc(step.stage)
 
-proc capture*(step: NUndoStep, layer: NLayer) =
+proc capture0(step: NUndoStep, layer: NLayer) =
   let state0 = addr step.undo.state0
   step.layer = layer.code.id
   # Dispatch Capture Stage
   state0.step = step
   state0[].tiles(layer)
   state0[].capture()
+
+proc child(step: NUndoStep, layer: NLayer, rev: bool): NUndoStep =
+  result = create(result[].typeof)
+  let undo = step.undo
+  result.undo = undo
+  result.cmd = step.cmd
+  result.weak = true
+  # Attach to Step
+  if not rev:
+    let next = step.next
+    result.prev = step
+    result.next = next
+    if not isNil(next):
+      next.prev = result
+    step.next = result
+    # Replace Undo Manager Cursors
+    if undo.cursor == step: undo.cursor = result
+    if undo.last == step: undo.last = result
+  elif rev:
+    let prev = step.prev
+    result.next = step
+    result.prev = prev
+    if not isNil(prev):
+      prev.next = result
+    step.prev = result
+  # Dispatch Capture
+  result.capture0(layer)
+  result.chained(rev)
+
+proc childs(step0: NUndoStep, root: NLayer, rev: bool) =
+  var step = step0
+  var layer = root.last
+  while not isNil(layer):
+    step = step.child(layer, rev)
+    # Enter/Leave Folder
+    if layer.kind == lkFolder:
+      if not isNil(layer.last):
+        layer = layer.last
+        continue
+    while isNil(layer.prev) and layer != root:
+      layer = layer.folder
+    # Step Previous Layer
+    if layer != root:
+      layer = layer.prev
+    else: break
+
+# -----------------
+# Undo Step Capture
+# -----------------
+
+proc capture*(step: NUndoStep, layer: NLayer) =
+  step.capture0(layer)
+  # Capture Layer Childrens
+  let check0 = step.cmd == ucLayerCreate
+  let check1 = step.cmd == ucLayerDelete
+  if layer.kind == lkFolder and (check0 or check1):
+    step.chained(check1)
+    step.childs(layer, check1)
 
 proc stencil*(step, mask: NUndoStep, layer: NLayer) =
   let state0 = addr step.undo.state0
