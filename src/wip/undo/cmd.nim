@@ -87,8 +87,8 @@ proc effect*(cmd: NUndoCommand): set[NUndoEffect] =
     ucLayerDelete: {ueLayerTiles, ueLayerList, ueLayerProps},
     ucLayerTiles: {ueLayerTiles},
     ucLayerMark: {ueLayerTiles},
-    ucLayerProps: {ueLayerProps},
-    ucLayerReorder: {ueLayerList}
+    ucLayerProps: {ueLayerTiles, ueLayerProps},
+    ucLayerReorder: {ueLayerTiles, ueLayerList}
   ]; effects[cmd]
 
 # -----------------------
@@ -198,8 +198,16 @@ proc capture*(state: var NUndoState) =
         stage.writeMark1()
     elif step.stage == 1:
       stage.writeMark1()
-  of ucLayerProps: discard
-  of ucLayerReorder: discard
+  of ucLayerProps:
+    let props0 = addr step.node.props
+    let props = addr step.data.props
+    if step.stage == 0: props.before = props0[]
+    elif step.stage == 1: props.after = props0[]
+  of ucLayerReorder:
+    let tag = step.node.tag()
+    let reorder = addr step.data.reorder
+    if step.stage == 0: reorder.before = tag
+    elif step.stage == 1: reorder.after = tag
 
 # --------------------------
 # Undo Command RAM: Dispatch
@@ -256,6 +264,40 @@ proc commit0delete(state: var NUndoState) =
     layer.detach()
     layer.destroy()
 
+proc commit0props(state: var NUndoState, redo: bool) =
+  let
+    step = addr state.step
+    props = addr step.data.props
+    image = state.image
+  # Lookup Current Layer
+  state.layer(step.layer)
+  let layer = step.node
+  let pro = addr layer.props
+  let folded = layer.props.flags * {lpFolded}
+  # Apply Layer Props and Adjust Flags
+  if redo: pro[] = props.after
+  else: pro[] = props.before
+  pro.flags = pro.flags - {lpFolded} + folded
+  # Mark Layer to Status
+  complete(image.status.clip)
+  image.markLayer(layer)
+
+proc commit0reorder(state: var NUndoState, redo: bool) =
+  let
+    step = addr state.step
+    reorder = addr step.data.reorder
+    image = state.image
+  # Lookup Current Layer
+  state.layer(step.layer)
+  let layer = step.node
+  layer.detach()
+  # Apply Layer Reordering
+  if redo: image.attachLayer(layer, reorder.after)
+  else: image.attachLayer(layer, reorder.before)
+  # Mark Layer to Status
+  complete(image.status.clip)
+  image.markLayer(layer)
+
 proc undo*(state: var NUndoState) =
   let
     step = addr state.step
@@ -271,8 +313,8 @@ proc undo*(state: var NUndoState) =
   of ucLayerTiles, ucLayerMark:
     state.commit0mark()
     stage.readBefore()
-  of ucLayerProps: discard
-  of ucLayerReorder: discard
+  of ucLayerProps: state.commit0props(false)
+  of ucLayerReorder: state.commit0reorder(false)
 
 proc redo*(state: var NUndoState) =
   let
@@ -289,5 +331,5 @@ proc redo*(state: var NUndoState) =
   of ucLayerTiles, ucLayerMark:
     state.commit0mark()
     stage.readAfter()
-  of ucLayerProps: discard
-  of ucLayerReorder: discard
+  of ucLayerProps: state.commit0props(true)
+  of ucLayerReorder: state.commit0reorder(true)

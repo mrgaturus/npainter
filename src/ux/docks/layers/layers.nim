@@ -44,8 +44,13 @@ controller CXLayersDock:
       dock: UXDockContent
 
   callback cbUpdate:
-    let m = peek(self.layers.mode)[]
-    self.mode.select(ord m)
+    let
+      m = peek(self.layers.mode)[]
+      mode {.cursor.} = self.mode
+    # Select Without Callback
+    wasMoved(mode.onchange)
+    mode.select(ord m)
+    mode.onchange = self.cbChangeMode
 
   callback cbChangeMode:
     let m = react(self.layers.mode)
