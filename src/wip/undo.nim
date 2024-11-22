@@ -27,7 +27,6 @@ type
     # Command Descriptor
     chain: NUndoChain
     cmd: NUndoCommand
-    seek: NUndoSeek
     data: NUndoData
   # Undo Step Manager
   NImageUndo* = ptr object
@@ -49,10 +48,12 @@ type
 
 proc createImageUndo*(image: NImage): NImageUndo =
   result = create(result[].typeof)
-  configure(result.swap)
-  configure(result.stream)
-  # Configure Dispatchers
+  let swap = addr result.swap
   let stream = addr result.stream
+  # Configure Streaming
+  swap[].configure()
+  stream[].configure(swap)
+  # Configure Dispatchers
   configure(result.state0, stream, image)
   configure(result.state1, stream)
 

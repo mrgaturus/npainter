@@ -201,11 +201,13 @@ proc capture*(state: var NUndoState) =
   of ucLayerProps:
     let props0 = addr step.node.props
     let props = addr step.data.props
+    # Capture Layer Props
     if step.stage == 0: props.before = props0[]
     elif step.stage == 1: props.after = props0[]
   of ucLayerReorder:
     let tag = step.node.tag()
     let reorder = addr step.data.reorder
+    # Capture Layer Reordering 
     if step.stage == 0: reorder.before = tag
     elif step.stage == 1: reorder.after = tag
 
