@@ -17,18 +17,18 @@ type
     seekWrite: NUndoSeek
     stampWrite0: NUndoSkip
     stampWrite: NUndoSkip
-    stampRead: NUndoSkip
     # Swap Seeking
     posWrite: int64
     posRead: int64
     side: NUndoSide
+    chain: bool
 
 # ------------------------------
 # Undo Swap Creation/Destruction
 # ------------------------------
 
 proc configure*(swap: var NUndoSwap) =
-  if not open(swap.file, "undo.bin", fmWrite):
+  if not open(swap.file, "undo.bin", fmReadWrite):
     echo "[ERROR]: failed creating swap file"
     quit(1)
   # Write Padding Header
@@ -53,25 +53,29 @@ proc makeCurrent(swap: var NUndoSwap, side: NUndoSide) =
   if swap.side == side:
     return
   # Change Current Seek
-  case swap.side:
+  case side:
   of sideWrite:
     swap.posRead = getFilePos(swap.file)
     setFilePos(swap.file, swap.posWrite)
   of sideRead:
     swap.posWrite = getFilePos(swap.file)
     setFilePos(swap.file, swap.posRead)
+  swap.side = side
 
 # ------------------
 # Undo Swap Writting
 # ------------------
 
 proc skipWrite(swap: var NUndoSwap, skip: ptr NUndoSkip) =
+  let pos = skip.pos
   const bytes = sizeof(NUndoSkip)
-  setFilePos(swap.file, skip.pos)
+  setFilePos(swap.file, pos)
   # Write Swap Seeking Header
   if writeBuffer(swap.file, skip, bytes) != bytes:
-    echo "[WARNING] corrupted stamp write at: ", skip.pos
-  swap.posWrite += bytes
+    echo "[WARNING] corrupted stamp write at: ", pos
+  # Set Write Position
+  swap.posWrite = pos + bytes
+  swap.chain = true
 
 proc setWrite*(swap: var NUndoSwap, skip: NUndoSkip) =
   swap.makeCurrent(sideWrite)
@@ -80,6 +84,7 @@ proc setWrite*(swap: var NUndoSwap, skip: NUndoSkip) =
   swap.posWrite = skip.pos
   swap.stampWrite0 = skip
   swap.stampWrite = skip
+  swap.chain = false
 
 proc startWrite*(swap: var NUndoSwap) =
   swap.makeCurrent(sideWrite)
@@ -91,9 +96,9 @@ proc startWrite*(swap: var NUndoSwap) =
   stamp.next = pos
   stamp.bytes = 0
   # Check Previous Seeking
-  if stamp.prev <= 0:
+  if stamp.prev == 0:
     stamp.prev = pos
-  if stamp.pos != stamp0.pos:
+  elif swap.chain:
     stamp.prev = stamp0.pos
     stamp0.next = pos
     swap.skipWrite(stamp0)
@@ -113,35 +118,40 @@ proc startSeek*(swap: var NUndoSwap) =
   let seek = addr swap.seekWrite
   seek.pos = swap.posWrite
   # Write Current Seek
-  const bytes = sizeof(NUndoSeek)
-  swap.write(seek, bytes)
+  const head = sizeof(NUndoSeek)
+  swap.write(seek, head)
 
 proc endSeek*(swap: var NUndoSwap): NUndoSeek =
   swap.makeCurrent(sideWrite)
   result = move swap.seekWrite
   let pos = swap.posWrite
   # Calculate Seek Bytes
-  const bytes = sizeof(NUndoSeek)
-  result.bytes = pos - (result.pos + bytes)
+  const head = sizeof(NUndoSeek)
+  result.bytes = pos - result.pos - head
   # Write Current Seek Again
   setFilePos(swap.file, result.pos)
-  swap.write(addr result, bytes)
+  swap.write(addr result, head)
   setFilePos(swap.file, pos)
+  swap.posWrite = pos
 
 proc endWrite*(swap: var NUndoSwap): NUndoSkip =
   swap.makeCurrent(sideWrite)
-  # Current Write Stamp
-  const head = sizeof(NUndoSkip)
+  let stamp0 = addr swap.stampWrite0
   let stamp = addr swap.stampWrite
+  # Current Write Position
   let pos = swap.posWrite
   let pos0 = stamp.pos
   # Update Current Write Stamp
+  const head = sizeof(NUndoSkip)
   stamp.bytes = pos - (pos0 + head)
   swap.skipWrite(stamp)
+  # Restore File Position
+  swap.posWrite = pos
   setFilePos(swap.file, pos)
   flushFile(swap.file)
-  # Return Current Seeking
+  # Update Stamp
   result = stamp[]
+  stamp0[] = result
 
 # -----------------
 # Undo Swap Reading
@@ -153,7 +163,6 @@ proc setRead*(swap: var NUndoSwap, skip: NUndoSkip) =
   # Locate Swap to Seeking
   let pos = skip.pos + head
   setFilePos(swap.file, pos)
-  swap.stampRead = skip
   swap.posRead = pos
 
 proc setRead*(swap: var NUndoSwap, skip: int64): NUndoSkip =
@@ -171,25 +180,9 @@ proc setRead*(swap: var NUndoSwap, seek: NUndoSeek) =
   swap.makeCurrent(sideRead)
   const head = sizeof(NUndoSeek)
   # Check Seeking Bounds
-  var pos = seek.pos + head
+  let pos = seek.pos + head
   setFilePos(swap.file, pos)
   swap.posRead = pos
-
-proc readSeek*(swap: var NUndoSwap): NUndoSeek =
-  swap.makeCurrent(sideRead)
-  const head = sizeof(NUndoSeek)
-  # Read Current Seeking
-  if readBuffer(swap.file, addr result, head) != head:
-    echo "[WARNING] corrupted seek read at: ", swap.posRead
-  # Step Current Seeking
-  assert result.pos == swap.posRead
-  swap.posRead += head
-
-proc skipSeek*(swap: var NUndoSwap): NUndoSeek =
-  result = swap.readSeek()
-  # Skip Seeking Bytes
-  swap.posRead += result.bytes
-  setFilePos(swap.file, swap.posRead)
 
 proc read*(swap: var NUndoSwap, data: pointer, size: int) =
   swap.makeCurrent(sideRead)
@@ -197,3 +190,20 @@ proc read*(swap: var NUndoSwap, data: pointer, size: int) =
   # Read Buffer From Current Swap Seeking
   if readBuffer(swap.file, data, size) != size:
     echo "[WARNING] corrupted read at: ", swap.posRead
+    assert false
+
+proc readSkip*(swap: var NUndoSwap): NUndoSkip =
+  const head = sizeof(NUndoSkip)
+  swap.read(addr result, head)
+  assert result.pos == swap.posRead - head
+
+proc readSeek*(swap: var NUndoSwap): NUndoSeek =
+  const head = sizeof(NUndoSeek)
+  swap.read(addr result, head)
+  assert result.pos == swap.posRead - head
+
+proc skipSeek*(swap: var NUndoSwap): NUndoSeek =
+  result = swap.readSeek()
+  # Skip Seeking Bytes
+  swap.posRead += result.bytes
+  setFilePos(swap.file, swap.posRead)

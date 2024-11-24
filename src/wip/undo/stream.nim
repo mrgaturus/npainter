@@ -34,6 +34,10 @@ type
 proc builtin_ctz*(x: uint32): int32
   {.importc: "__builtin_ctz", cdecl.}
 
+proc `=destroy`(raw: NUndoRaw) =
+  if not isNil(raw.buffer):
+    dealloc(raw.buffer)
+
 # --------------------------------
 # Undo Stream Creation/Destruction
 # --------------------------------
@@ -69,19 +73,17 @@ proc destroy*(stream: var NUndoStream) =
 # Undo Raw Buffer
 # ---------------
 
-proc createRaw*(src: pointer, bytes: int): NUndoRaw =
+proc createRaw*(bytes: int): NUndoRaw =
   let raw0 = alloc(bytes)
-  copyMem(raw0, src, bytes)
-  # Store Raw Buffer
   result.buffer = cast[NUndoBuffer](raw0)
   result.bytes = bytes
 
+proc createRaw*(src: pointer, bytes: int): NUndoRaw =
+  result = createRaw(bytes)
+  copyMem(result.buffer, src, bytes)
+
 proc read*(raw: NUndoRaw, dst: pointer) =
   copyMem(dst, raw.buffer, raw.bytes)
-
-proc `=destroy`(raw: NUndoRaw) =
-  if not isNil(raw.buffer):
-    dealloc(raw.buffer)
 
 # --------------------
 # Undo Streaming Write
@@ -95,7 +97,7 @@ proc writeObject*[T: object](stream: ptr NUndoStream, value: T) =
 proc writeNumber*(stream: ptr NUndoStream, value: NUndoNumber) =
   stream.swap[].write(addr value, sizeof value)
 
-proc writeString*(stream: ptr NUndoStream, value: string): string =
+proc writeString*(stream: ptr NUndoStream, value: string) =
   let swap = stream.swap
   swap[].startSeek()
   swap[].write(cstring value, value.len)
@@ -176,6 +178,7 @@ proc compressEnd*(stream: ptr NUndoStream,
   discard stream.swap[].endSeek()
 
 proc compressRaw*(stream: ptr NUndoStream, raw: NUndoRaw) =
+  stream.writeNumber(raw.bytes)
   stream.compressStart()
   stream.compressEnd(
     raw.buffer, raw.bytes)
@@ -231,3 +234,16 @@ proc decompressBlock*(stream: ptr NUndoStream): NUndoBlock =
         result.pos = seek.pos
         seek.pos += dst.pos
         return result
+
+proc decompressRaw*(stream: ptr NUndoStream): NUndoRaw =
+  let bytes = readNumber[int64](stream)
+  let raw0 = cast[NUndoBuffer](alloc bytes)
+  result.bytes = bytes
+  result.buffer = raw0
+  # Decompress Blocks
+  stream.decompressStart(); while true:
+    let chunk = stream.decompressBlock()
+    if chunk.bytes == 0: break
+    # Copy Decompress to Data
+    copyMem(addr raw0[chunk.pos],
+      chunk.buffer, chunk.bytes)
