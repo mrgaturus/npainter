@@ -8,7 +8,7 @@ import ../../wip/[undo, brush, texture, binary, canvas]
 import ../../wip/image/[context, proxy]
 from ../../wip/image import createLayer, selectLayer
 # TODO: move to engine side
-import nogui/core/async
+import nogui/async/core as async
 import nogui/libs/gl
 import locks
 
@@ -166,7 +166,7 @@ controller NPainterEngine:
 
   # -- NPainter Constructor - proof of concept --
   new npainterengine(proof_W, proof_H: cint, checker = 0'i32):
-    let pool = getAsync().pool
+    let pool = async.getPool()
     result.secure = createSecure(pool)
     result.man = createCanvasManager(pool)
     result.canvas = result.man.createCanvas(proof_W, proof_H)

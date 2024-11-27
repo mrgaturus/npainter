@@ -1,5 +1,4 @@
 import nogui/builder
-import nogui/core/async
 import nogui/ux/prelude
 import nogui/ux/values/[linear, dual, chroma]
 # Import NPainter Engine
@@ -372,7 +371,7 @@ widget UXBrushTask:
     getWindow().fuse()
 
   new uxbrushtask(engine: NPainterEngine):
-    result.coro = coroutine(step0coro)
+    result.coro = coroutine(BrushTask)
     result.flags = {wMouse, wKeyboard, wVisible}
     result.engine = engine
     # Configure Coroutine
