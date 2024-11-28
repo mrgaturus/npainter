@@ -8,8 +8,8 @@ import ../image
 type
   NUndoCopy = object
     kind: NLayerKind
-    props: NLayerProps
     tag: NLayerTag
+    props: NLayerProps
     book: NUndoBook
   NUndoMark = object
     before: NUndoBook
@@ -61,12 +61,9 @@ type
     stage: NUndoStage
     image: NImage
   NUndoTransfer* = object
-    target*: NUndoTarget
-    stream: ptr NUndoStream
-    # Undo Internal State
-    codec: NBookTransfer
-    buffer: NUndoBuffer
-    idx, bytes: int
+    step*: NUndoTarget
+    stream*: ptr NUndoStream
+    codec*: NBookStream
 
 proc destroy*(data: var NUndoData, cmd: NUndoCommand) =
   case cmd # Manual Destroy
@@ -140,9 +137,9 @@ proc layer(state: var NUndoState, id: uint32) =
   # Configure Layer Tiles
   state.tiles(no)
 
-# -------------------------
-# Undo Command RAM: Capture
-# -------------------------
+# ---------------------
+# Undo Command: Capture
+# ---------------------
 
 proc capture0copy(state: var NUndoState) =
   let
@@ -211,9 +208,65 @@ proc capture*(state: var NUndoState) =
     if step.stage == 0: reorder.before = tag
     elif step.stage == 1: reorder.after = tag
 
-# --------------------------
-# Undo Command RAM: Dispatch
-# --------------------------
+# -----------------------------
+# Undo Command: Streaming Write
+# -----------------------------
+
+proc writeProps(stream: ptr NUndoStream, props: NLayerProps) =
+  stream.writeNumber cast[uint16](props.mode)
+  stream.writeNumber cast[uint16](props.flags)
+  stream.writeNumber(props.opacity)
+  stream.writeString(props.label)
+
+proc writeCopy(stream: ptr NUndoStream, copy: ptr NUndoCopy) =
+  stream.writeNumber(uint64 copy.kind)
+  stream.writeObject(copy.tag)
+  stream.writeProps(copy.props)
+
+proc swap0write*(state: var NUndoTransfer): bool =
+  let stream = state.stream
+  let step = addr state.step
+  let data = addr step.data
+  case step.cmd
+  of ucCanvasNone: discard
+  of ucCanvasProps: discard
+  # Layer Undo Commands
+  of ucLayerCreate, ucLayerDelete:
+    if step.stage > 0:
+      return result
+    let copy = addr data.copy
+    let book = addr copy.book
+    # Prepare Book Stream
+    stream.writeCopy(copy)
+    state.codec = streamBook(stream, book)
+    result = step.stage == 0
+  of ucLayerTiles, ucLayerMark:
+    let mark = addr data.mark
+    # Prepare Book Stream
+    state.codec = case step.stage
+    of 0: streamBook(stream, addr mark.before)
+    of 1: streamBook(stream, addr mark.after)
+    else: default(NBookStream)
+    result = step.stage < 2
+  of ucLayerProps:
+    result = step.stage == 0; if result:
+      stream.writeProps(data.props.before)
+      stream.writeProps(data.props.after)
+  of ucLayerReorder:
+    result = step.stage == 0; if result:
+      stream.writeObject(data.reorder.before)
+      stream.writeObject(data.reorder.after)
+
+# ----------------------------
+# Undo Command: Streaming Read
+# ----------------------------
+
+proc swap0read*(state: var NUndoState) =
+  discard
+
+# ----------------------
+# Undo Command: Dispatch
+# ----------------------
 
 proc commit0mark(state: var NUndoState) =
   let

@@ -20,7 +20,7 @@ type
     bytes*: int64
     pos*: int64
   NUndoStream* = object
-    swap: ptr NUndoSwap
+    swap*: ptr NUndoSwap
     bytes*, shift*, mask*: int
     # ZSTD Streaming
     seekRead: NUndoSeek
@@ -175,7 +175,8 @@ proc compressEnd*(stream: ptr NUndoStream,
     data: pointer, size: int) =
   # Stream Last Block and End Compress Seeking
   stream.compressBlock(data, size, ZSTD_e_end)
-  discard stream.swap[].endSeek()
+  let seek = stream.swap[].endSeek()
+  echo "compressed: ", float(seek.bytes) / 1024, " kb"
 
 proc compressRaw*(stream: ptr NUndoStream, raw: NUndoRaw) =
   stream.writeNumber(raw.bytes)

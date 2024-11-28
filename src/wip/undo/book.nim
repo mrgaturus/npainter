@@ -1,7 +1,8 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 # Copyright (c) 2024 Cristian Camilo Ruiz <mrgaturus>
+from ../image/chunk import mipmaps
 import ../image/[tiles, context]
-import stream
+import stream, swap
 
 type
   NUndoTile = object
@@ -18,6 +19,7 @@ type
     bpp: int32 # bytes per pixel
     bpt: int32 # bytes per tile
     region: NUndoRegion
+    seek: NUndoSeek
     pages: seq[NUndoBuffer]
   # Undo Book Codec
   NUndoStage* = object
@@ -39,10 +41,15 @@ type
     chunk: pointer
   NBookWrite {.borrow.} = distinct NUndoCodec
   NBookRead {.borrow.} = distinct NUndoCodec
-  NBookTransfer* = object
+  NBookStream* = object
+    idx, step, count: int
     stream: ptr NUndoStream
     book: ptr NUndoBook
-    idx, count: int
+
+proc `=destroy`(book: NUndoBook) =
+  for page in book.pages:
+    dealloc(page)
+  `=destroy`(book.pages)
 
 # ------------------------
 # Undo Book Region Manager
@@ -237,6 +244,51 @@ proc writeMark1*(stage: ptr NUndoStage) =
     list = cast[ptr NUndoIndex](
       page[idxChunk * book.bpt].addr)
 
+# ----------------------------
+# Undo Book Writter: Streaming
+# ----------------------------
+
+proc streamBook*(stream: ptr NUndoStream, book: ptr NUndoBook): NBookStream =  
+  result = NBookStream(
+    step: stream.bytes div book.bpt,
+    count: book.slabs,
+    stream: stream,
+    book: book
+  )
+  # Write Book Header
+  stream.writeNumber(book.slabs)
+  stream.writeNumber(book.bpp)
+  stream.writeNumber(book.bpt)
+  stream.writeObject(book.region)
+  # Prepare Book Streaming
+  if result.count > 0:
+    stream.compressStart()
+  else: stream.swap[].startWrite()
+
+proc compressPage*(codec: var NBookStream): bool =
+  let
+    stream = codec.stream
+    book = codec.book
+    # Current Index
+    step = codec.step
+    count = codec.count
+  result = count > 0
+  if not result:
+    return result
+  # Calculate Byte Size
+  let dabs = min(step, count)
+  let bytes = dabs * book.bpt
+  let page = book.pages[codec.idx]
+  # Compress Current Page
+  if count > dabs:
+    stream.compressBlock(page, bytes)
+  else:
+    stream.compressEnd(page, bytes)
+    echo "original: ", float(book.slabs * book.bpt) / 1024.0, " kb"
+  # Next Book Page
+  codec.count -= step
+  inc(codec.idx)
+
 # -----------------------------
 # Undo Book Reading: Pagination
 # -----------------------------
@@ -316,6 +368,7 @@ proc commit(codec: var NBookRead, stage: ptr NUndoStage) =
       tile.toBuffer()
       copyMem(tile.data.buffer,
         codec.chunk, tile.bytes)
+      tile.mipmaps()
     else: tile.toColor(t0.cell)
     # Apply Dirty Changes
     status[].mark32(x, y)
