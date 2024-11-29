@@ -255,16 +255,11 @@ proc stencil*(step, mask: NUndoStep, layer: NLayer) =
 # Undo Step Coroutine: Write
 # --------------------------
 
-proc startWrite(task: ptr NUndoTask) =
-  let
-    stream = task.state.stream
-    swap = stream.swap
-    step = task.cursor
-  # Step Current Stage
-  let stage = step.stage
-  task.state.step = step
-  if stage > 0: return
-  # Check Step Position
+proc stageHeader(task: ptr NUndoTask) =
+  let stream = task.state.stream
+  let swap = stream.swap
+  let step = task.cursor
+  # Locate to Current Skip
   if step.skip.bytes > 0:
     swap[].setWrite(step.skip)
   # Write Undo Step Header
@@ -275,12 +270,20 @@ proc startWrite(task: ptr NUndoTask) =
   stream.writeNumber(uint16 step.weak)
   stream.writeNumber(uint16 step.chain)
 
-proc endWrite(task: ptr NUndoTask): bool =
-  let stream = task.state.stream
+proc stageWrite(task: ptr NUndoTask): bool =
+  let step = task.cursor
+  let stage = step.stage
+  task.state.step = step
+  # Dispatch Write Stage
+  if stage == 0: task.stageHeader()
+  result = task.state.swap0write()
+
+proc nextWrite(task: ptr NUndoTask): bool =
+  let swap = task.state.stream.swap
   let step = task.cursor
   let next = step.nex0
   # Write Seeking and Step Cursor
-  step.skip = stream.swap[].endWrite()
+  step.skip = swap[].endWrite()
   result = not isNil(next)
   if result: task.cursor = next
 
@@ -352,10 +355,9 @@ proc swap0book(coro: Coroutine[NUndoTask]) =
 proc swap0coro(coro: Coroutine[NUndoTask]) =
   let task = coro.data
   coro.lock():
-    task.startWrite()
-    if task.state.swap0write():
+    if task.stageWrite():
       coro.pass(swap0book)
-    elif task.endWrite():
+    elif task.nextWrite():
       coro.pass(swap0coro)
     # Send Termination Callback
     else: coro.send CoroCallback(
