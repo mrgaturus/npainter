@@ -131,16 +131,24 @@ proc cutswap(swap, step: NUndoStep): NUndoStep =
   result = swap
   if isNil(result) or result.where != inSwap:
     return result
-  # Yield Skip to Step
+  # Cutdown Swap to Step
   let skip = addr swap.skip
-  step.skip = skip[]
-  if skip.pos != skip.prev:
-    skip.next = skip.pos
-    skip.pos = skip.prev
-    return result
-  # Destroy Swap
-  result.destroy()
-  wasMoved(result)
+  if swap.undo.swipe:
+    step.skip = skip[]
+    if skip.pos != skip.prev:
+      skip.next = skip.pos
+      skip.pos = skip.prev
+      return result
+    # Destroy Swap
+    result.destroy()
+    return nil
+  # Redirect Swap to Step
+  if skip.pos != skip.next:
+    let s = addr step.skip
+    s.next = skip.next
+    s.prev = skip.pos
+    s.pos = skip.next
+    s.bytes = skip.bytes
 
 # ---------------------------
 # Undo Step Capture: Creation
@@ -154,9 +162,9 @@ proc push*(undo: NImageUndo, cmd: NUndoCommand): NUndoStep =
   var cursor = undo.cursor
   if undo.swipe:
     cursor = cutdown(cursor)
-    cursor = cutswap(cursor, result)
   elif cursor != undo.last:
     cursor = cutdown(cursor.next)
+  cursor = cutswap(cursor, result)
   # Add Step After Cursor
   if not isNil(cursor):
     cursor.next = result
