@@ -74,6 +74,9 @@ proc destroy*(data: var NUndoData, cmd: NUndoCommand) =
   of ucLayerProps:
     `=destroy`(data.props)
   else: discard
+  # Zero Fill Data
+  zeroMem(addr data,
+    sizeof NUndoData)
 
 proc effect*(cmd: NUndoCommand): set[NUndoEffect] =
   const effects = [

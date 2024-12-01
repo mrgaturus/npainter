@@ -410,12 +410,10 @@ proc swap0clean(undo: NImageUndo) =
 # Undo Step Coroutine
 # -------------------
 
-from os import sleep
 proc swap0book(coro: Coroutine[NUndoTask]) =
   let data = addr coro.data.state
   var more: bool; coro.lock():
     more = compressPage(data.codec)
-    sleep(8)
   # Check if Streaming is Finalized
   if more: coro.pass(swap0book)
   else: coro.pass(swap0coro)
@@ -445,6 +443,7 @@ proc preload(step: NUndoStep) =
   let skip = addr step.skip
   skip[] = swap[].setRead(skip.pos)
   # Preload Step Description
+  destroy(step.data, step.cmd)
   step.layer = readNumber[uint32](stream)
   step.msg = readNumber[uint32](stream)
   step.cmd = cast[NUndoCommand](readNumber[uint32](stream))
