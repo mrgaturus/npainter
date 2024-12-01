@@ -261,8 +261,40 @@ proc swap0write*(state: var NUndoTransfer): bool =
 # Undo Command: Streaming Read
 # ----------------------------
 
+proc readProps(stream: ptr NUndoStream, props: ptr NLayerProps) =
+  props.mode = cast[typeof props.mode](readNumber[uint16](stream))
+  props.flags = cast[typeof props.flags](readNumber[uint16](stream))
+  props.opacity = readNumber[float32](stream)
+  props.label = stream.readString()
+
+proc readCopy(stream: ptr NUndoStream, copy: ptr NUndoCopy) =
+  copy.kind = cast[NLayerKind](readNumber[uint64](stream))
+  copy.tag = readObject[NLayerTag](stream)
+  stream.readProps(addr copy.props)
+  stream.peekBook(addr copy.book)
+
 proc swap0read*(state: var NUndoState) =
-  discard
+  let stream = state.stream
+  let step = addr state.step
+  let data = addr step.data
+  case step.cmd
+  of ucCanvasNone: discard
+  of ucCanvasProps: discard
+  # Layer Undo Commands
+  of ucLayerCreate, ucLayerDelete:
+    stream.readCopy(addr data.copy)
+  of ucLayerTiles, ucLayerMark:
+    let mark = addr data.mark
+    stream.peekBook(addr mark.before)
+    stream.peekBook(addr mark.after)
+  of ucLayerProps:
+    let props = addr data.props
+    stream.readProps(addr props.before)
+    stream.readProps(addr props.after)
+  of ucLayerReorder:
+    let reorder = addr data.reorder
+    reorder.before = readObject[NLayerTag](stream)
+    reorder.after = readObject[NLayerTag](stream)
 
 # ----------------------
 # Undo Command: Dispatch

@@ -263,7 +263,7 @@ proc streamBook*(stream: ptr NUndoStream, book: ptr NUndoBook): NBookStream =
   # Prepare Book Streaming
   if result.count > 0:
     stream.compressStart()
-  else: stream.swap[].startWrite()
+  else: stream.swap[].startSeek()
 
 proc compressPage*(codec: var NBookStream): bool =
   let
@@ -282,9 +282,7 @@ proc compressPage*(codec: var NBookStream): bool =
   # Compress Current Page
   if count > dabs:
     stream.compressBlock(page, bytes)
-  else:
-    stream.compressEnd(page, bytes)
-    echo "original: ", float(book.slabs * book.bpt) / 1024.0, " kb"
+  else: stream.compressEnd(page, bytes)
   # Next Book Page
   codec.count -= step
   inc(codec.idx)
@@ -297,19 +295,34 @@ proc nextPage(codec: var NBookRead) =
   let
     idx = codec.count
     book = codec.book
+  # Lookup Current Page
   if book.slabs == 0: return
-  let page = book.pages[idx]
-  # Read Book Page
-  codec.buffer = page
-  codec.count = idx + 1
+  elif len(book.pages) > 0:
+    codec.buffer = book.pages[idx]
+    codec.count = idx + 1
+  elif book.seek.bytes > 0:
+    let chunk = codec.stream.decompressBlock()
+    codec.buffer = chunk.buffer
+    codec.count = idx + 1
 
 proc nextList(codec: var NBookRead, next: int64) =
   let cap = codec.cap
   if next >= codec.count * cap:
     codec.nextPage()
   # Lookup List from Current Page
-  let loc = (next mod cap) * codec.book.bpt
-  let chunk = addr codec.buffer[loc]
+  let book = codec.book
+  let bpt = book.bpt
+  let loc = (next mod cap) * bpt
+  var chunk = addr codec.buffer[loc]
+  # Copy List when Streaming
+  if book.seek.bytes > 0:
+    let stream = codec.stream
+    let idx = stream.bytes * 2 - bpt
+    let ensure = addr stream.aux[idx]
+    # Copy List in Stream Buffer
+    copyMem(ensure, chunk, bpt)
+    chunk = ensure
+  # Define Current List
   codec.list = cast[ptr NUndoIndex](chunk)
   codec.chunk = chunk
   codec.idx = 0
@@ -345,6 +358,9 @@ proc readBook(stream: ptr NUndoStream, book: ptr NUndoBook): NBookRead =
   result.cap = cap
   result.book = book
   result.stream = stream
+  # Start Decompression if Stream
+  if book.seek.bytes > 0:
+    stream.decompressStart(book.seek)
   # Locate First Page and List
   assert book.slabs >= 0
   result.nextList(0)
@@ -402,3 +418,15 @@ proc readBefore*(stage: ptr NUndoStage) =
 proc readAfter*(stage: ptr NUndoStage) =
   stage.readBook(stage.after)
   stage.readRegion()
+
+# ----------------------------
+# Undo Book Reading: Streaming
+# ----------------------------
+
+proc peekBook*(stream: ptr NUndoStream, book: ptr NUndoBook) =
+  book.slabs = readNumber[int64](stream)
+  book.bpp = readNumber[int32](stream)
+  book.bpt = readNumber[int32](stream)
+  # Peek Book Buffer Streaming
+  book.region = readObject[NUndoRegion](stream)
+  book.seek = stream.swap[].skipSeek()

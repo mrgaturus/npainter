@@ -58,6 +58,7 @@ proc makeCurrent(swap: var NUndoSwap, side: NUndoSide) =
     swap.posRead = getFilePos(swap.file)
     setFilePos(swap.file, swap.posWrite)
   of sideRead:
+    flushFile(swap.file)
     swap.posWrite = getFilePos(swap.file)
     setFilePos(swap.file, swap.posRead)
   swap.side = side
@@ -117,6 +118,7 @@ proc startSeek*(swap: var NUndoSwap) =
   swap.makeCurrent(sideWrite)
   let seek = addr swap.seekWrite
   seek.pos = swap.posWrite
+  seek.bytes = 0
   # Write Current Seek
   const head = sizeof(NUndoSeek)
   swap.write(seek, head)
