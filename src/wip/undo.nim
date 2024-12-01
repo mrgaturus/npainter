@@ -232,6 +232,8 @@ proc child(step: NUndoStep, layer: NLayer, rev: bool): NUndoStep =
     if undo.cursor == step: undo.cursor = result
     if undo.last == step: undo.last = result
   elif rev:
+    result.skip = move(step.skip)
+    # Attach Previous to Step
     let prev = step.prev
     result.next = step
     result.prev = prev

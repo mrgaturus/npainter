@@ -241,8 +241,9 @@ proc swap0write*(state: var NUndoTransfer): bool =
     let book = addr copy.book
     # Prepare Book Stream
     stream.writeCopy(copy)
-    state.codec = streamBook(stream, book)
-    result = step.stage == 0
+    if copy.kind != lkFolder:
+      state.codec = streamBook(stream, book)
+      result = step.stage == 0
   of ucLayerTiles, ucLayerMark:
     let mark = addr data.mark
     # Prepare Book Stream
@@ -274,7 +275,9 @@ proc readCopy(stream: ptr NUndoStream, copy: ptr NUndoCopy) =
   copy.kind = cast[NLayerKind](readNumber[uint64](stream))
   copy.tag = readObject[NLayerTag](stream)
   stream.readProps(addr copy.props)
-  stream.peekBook(addr copy.book)
+  # Preload Tile Book
+  if copy.kind != lkFolder:
+    stream.peekBook(addr copy.book)
 
 proc swap0read*(state: var NUndoState) =
   let stream = state.stream
