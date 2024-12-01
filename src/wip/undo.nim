@@ -10,8 +10,8 @@ export NUndoEffect
 
 type
   NUndoWhere = enum
-    inRAM, inStage, inTrash
-    inSwap, inSkip
+    inRAM, inStage
+    inTrash, inSwap
   NUndoChain = enum
     chainNone
     chainStart
@@ -36,7 +36,9 @@ type
   NUndoTask = object
     undo: NImageUndo
     cursor: NUndoStep
+    # Current Stage
     state: NUndoTransfer
+    stage: uint8
   NImageUndo* = ptr object
     swap: NUndoSwap
     stream: NUndoStream
@@ -89,6 +91,8 @@ proc detach(step: NUndoStep) =
     undo.first = step.next
   if step == undo.last:
     undo.last = step.prev
+  if step == undo.firs0:
+    wasMoved(undo.firs0)
   # Detach From Undo
   let prev = step.prev
   let next = step.next
@@ -117,12 +121,26 @@ proc cutdown(step: NUndoStep): NUndoStep =
     if trunk.where == inStage:
       trunk.where = inTrash
       trunk.detach()
-    elif trunk.where in {inSwap, inSkip}:
-      trunk.where = inSkip
+    elif trunk.where == inSwap:
       result = trunk
     else: trunk.destroy()
     # Next Step Trunk
     trunk = next
+
+proc cutswap(swap, step: NUndoStep): NUndoStep =
+  result = swap
+  if isNil(result) or result.where != inSwap:
+    return result
+  # Yield Skip to Step
+  let skip = addr swap.skip
+  step.skip = skip[]
+  if skip.pos != skip.prev:
+    skip.next = skip.pos
+    skip.pos = skip.prev
+    return result
+  # Destroy Swap
+  result.destroy()
+  wasMoved(result)
 
 # ---------------------------
 # Undo Step Capture: Creation
@@ -136,8 +154,7 @@ proc push*(undo: NImageUndo, cmd: NUndoCommand): NUndoStep =
   var cursor = undo.cursor
   if undo.swipe:
     cursor = cutdown(cursor)
-    if cursor.where == inSkip:
-      result.skip = cursor.skip
+    cursor = cutswap(cursor, result)
   elif cursor != undo.last:
     cursor = cutdown(cursor.next)
   # Add Step After Cursor
@@ -168,21 +185,24 @@ proc chain*(undo: NImageUndo, cmd: NUndoCommand): NUndoStep =
 # Undo Step Capture: Recursive
 # ----------------------------
 
-converter target(step: NUndoStep): NUndoTarget =
-  result = NUndoTarget(
+proc pass0(step: NUndoStep): NUndoPass =
+  result = NUndoPass(
     layer: step.layer,
     stage: step.stage,
     weak: step.weak,
     # Command Data
     cmd: step.cmd,
-    data: addr step.data
-  ); inc(step.stage)
+    data: addr step.data)
+
+proc pass(step: NUndoStep): NUndoPass =
+  result = step.pass0()
+  inc(step.stage)
 
 proc capture0(step: NUndoStep, layer: NLayer) =
   let state0 = addr step.undo.state
   step.layer = layer.code.id
   # Dispatch Capture Stage
-  state0.step = step
+  state0.step = step.pass()
   state0[].tiles(layer)
   state0[].capture()
 
@@ -246,9 +266,8 @@ proc capture*(step: NUndoStep, layer: NLayer) =
 
 proc stencil*(step, mask: NUndoStep, layer: NLayer) =
   let state0 = addr step.undo.state
-  var target = mask.target()
+  var target = mask.pass0()
   state0[].stencil(target)
-  dec(mask.stage)
   # Dispatch Capture Stage
   step.capture(layer)
   target.cmd = ucCanvasNone
@@ -275,11 +294,14 @@ proc stageHeader(task: ptr NUndoTask) =
 
 proc stageWrite(task: ptr NUndoTask): bool =
   let step = task.cursor
-  let stage = step.stage
-  task.state.step = step
+  let state = addr task.state
+  let stage = task.stage
+  state[].step = step.pass0()
+  state[].step.stage = stage
   # Dispatch Write Stage
   if stage == 0: task.stageHeader()
-  result = task.state.swap0write()
+  result = state[].swap0write()
+  inc(task.stage)
 
 proc nextWrite(task: ptr NUndoTask): bool =
   let swap = task.state.stream.swap
@@ -288,7 +310,8 @@ proc nextWrite(task: ptr NUndoTask): bool =
   # Write Seeking and Step Cursor
   step.skip = swap[].endWrite()
   result = not isNil(next)
-  if result: task.cursor = next
+  task.cursor = next
+  task.stage = 0
 
 # -----------------------------
 # Undo Step Coroutine: Ghosting
@@ -305,13 +328,13 @@ proc swap0stage(undo: NImageUndo) =
     step.nex0 = step.next
     step.pre0 = step.prev
     step.where = inStage
-    step.stage = 0
     # Next Undo Step
     step = step.next
   # Configure Coroutine
-  let data = undo.coro.data
-  data.cursor = undo.curso0
-  wasMoved(data.cursor.pre0)
+  wasMoved(undo.curso0.pre0)
+  let task = undo.coro.data
+  task.cursor = undo.curso0
+  task.stage = 0
   # Execute Coroutine
   undo.coro.pass(swap0coro)
   undo.coro.spawn()
@@ -334,7 +357,6 @@ proc swap0check(undo: NImageUndo) =
   undo.busy = false
   undo.curso0 = step
   if not isNil(step):
-    echo step.where
     undo.swap0stage()
 
 proc swap0ghost(undo: NImageUndo) =
@@ -388,10 +410,12 @@ proc swap0clean(undo: NImageUndo) =
 # Undo Step Coroutine
 # -------------------
 
+from os import sleep
 proc swap0book(coro: Coroutine[NUndoTask]) =
   let data = addr coro.data.state
   var more: bool; coro.lock():
     more = compressPage(data.codec)
+    sleep(8)
   # Check if Streaming is Finalized
   if more: coro.pass(swap0book)
   else: coro.pass(swap0coro)
@@ -420,7 +444,6 @@ proc preload(step: NUndoStep) =
   # Preload Step Position
   let skip = addr step.skip
   skip[] = swap[].setRead(skip.pos)
-  echo skip[].repr
   # Preload Step Description
   step.layer = readNumber[uint32](stream)
   step.msg = readNumber[uint32](stream)
@@ -428,54 +451,47 @@ proc preload(step: NUndoStep) =
   step.chain = cast[NUndoChain](readNumber[uint16](stream))
   step.weak = cast[bool](readNumber[uint16](stream))
   # Preload Step Command
-  undo.state.step = step
+  undo.state.step = step.pass0()
   undo.state.swap0read()
-  step.stage = 0
 
 proc prevStep(undo: NImageUndo): NUndoStep =
-  let cursor = undo.cursor
   let swipe = undo.swipe
-  result = cursor
+  result = undo.cursor
   # Check Step Found
   undo.swipe = true
   if isNil(result) or not swipe:
     return result
   # Check Step Swap
-  if cursor.where == inSwap:
-    let skip = addr cursor.skip
-    skip.pos = skip.prev
-    return cursor
-  # Check Step Target
-  result = cursor.prev
-  if isNil(result):
-    return cursor
-  elif result.where == inSkip:
+  if result.where == inSwap:
     let skip = addr result.skip
     if skip.pos != skip.prev:
       skip.pos = skip.prev
-      result.where = inSwap
-    else: return cursor
-  # Change Current Cursor
-  undo.cursor = result
+      return result
+    return nil
+  # Check Step Target
+  result = result.prev
+  if not isNil(result):
+    undo.cursor = result
 
 proc nextStep(undo: NImageUndo): NUndoStep =
-  let cursor = undo.cursor
   let swipe = undo.swipe
-  result = cursor
+  result = undo.cursor
   # Check Step Found
   undo.swipe = false
   if isNil(result) or swipe:
     return result
   # Check Step Swap
-  if cursor.where == inSwap:
+  let next = result.next
+  if result.where == inSwap:
     let skip = addr result.skip
-    if skip.pos != skip.next:
-      skip.pos = skip.next
-    else: result = result.next
-  else: result = result.next
+    if isNil(next) or skip.next != next.skip.pos:
+      if skip.pos != skip.next:
+        skip.pos = skip.next
+        return result
   # Change Current Cursor
+  result = next
   if not isNil(result):
-    undo.cursor = cursor
+    undo.cursor = result
 
 # -----------------
 # Undo Step Manager
@@ -503,13 +519,13 @@ proc undo*(undo: NImageUndo): set[NUndoEffect] =
     # Process Undo Step
     if step.where != inSwap:
       result.incl effect(step.cmd)
-      undo.state.step = step
-      undo.state.redo()
+      undo.state.step = step.pass0()
+      undo.state.undo()
     else: coro.lock():
       step.preload()
       # Process Undo Step
       result.incl effect(step.cmd)
-      undo.state.step = step
+      undo.state.step = step.pass0()
       undo.state.undo()
     # Check Undo Step Chain
     if step.chain in {chainNone, chainStart}:
@@ -525,13 +541,13 @@ proc redo*(undo: NImageUndo): set[NUndoEffect] =
     # Process Redo Step
     if step.where != inSwap:
       result.incl effect(step.cmd)
-      undo.state.step = step
+      undo.state.step = step.pass0()
       undo.state.redo()
     else: coro.lock():
       step.preload()
       # Process Redo Step
       result.incl effect(step.cmd)
-      undo.state.step = step
+      undo.state.step = step.pass0()
       undo.state.redo()
     # Check Redo Step Chain
     if step.chain in {chainNone, chainEnd}:

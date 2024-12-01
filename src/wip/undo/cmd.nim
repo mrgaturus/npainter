@@ -45,7 +45,7 @@ type
     reorder: NUndoReorder
 
 type
-  NUndoTarget* = object
+  NUndoPass* = object
     node: NLayer
     layer*: uint32
     stage*: uint8
@@ -55,13 +55,13 @@ type
     data*: ptr NUndoData
   # Undo State Machine
   NUndoState* = object
-    step*: NUndoTarget
+    step*: NUndoPass
     stream: ptr NUndoStream
     # Undo Internal State
     stage: NUndoStage
     image: NImage
   NUndoTransfer* = object
-    step*: NUndoTarget
+    step*: NUndoPass
     stream*: ptr NUndoStream
     codec*: NBookStream
 
@@ -109,7 +109,7 @@ proc configure*(state: var NUndoTransfer,
 # Undo Command Prepare
 # --------------------
 
-proc stencil*(state: var NUndoState, mask: NUndoTarget) =
+proc stencil*(state: var NUndoState, mask: NUndoPass) =
   let stage = addr state.stage
   let data = mask.data
   # Decide Stencil Book
