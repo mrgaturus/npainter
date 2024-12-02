@@ -87,7 +87,7 @@ nopack
     - [ ] Mesh
     - [ ] Liquify
   - [ ] Selection Tools
-  - [ ] Infinite Undo using Compressed Files
+  - [x] Infinite Undo using Compressed Files
   - [ ] Fundamental Filters
   - [ ] Intuitive and Professional UI/UX
   - [x] Multi Platform Support
