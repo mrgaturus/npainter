@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 # Copyright (c) 2023 Cristian Camilo Ruiz <mrgaturus>
+import nogui/bst
 import tiles, ffi
 export NBlendMode
 
@@ -8,10 +9,10 @@ export NBlendMode
 # -------------------
 
 type
-  # Layer Owner Definition
-  NLayerOwner* = distinct pointer
+  NLayerCode* = NBinaryKey
+  NLayerOwner* = NBinaryTree
+  # Layer Properties Hook
   NLayerUser* = distinct pointer
-  # Layer Compositing Hook
   NLayerProc* = distinct pointer
   NLayerHook* = object
     fn*: NLayerProc
@@ -34,10 +35,9 @@ type
     lpDraft
     lpFolded
   NLayerProps* = object
-    code*: cint
-    opacity*: cfloat
     mode*: NBlendMode
     flags*: set[NLayerFlag]
+    opacity*: cfloat
     # GUI Labeling
     label*: string
   NLayerLevel* = object
@@ -46,24 +46,24 @@ type
     hidden*: bool
     folded*: bool
   # Layer Properties Attaching
-  NLayerAttach* = enum
+  NLayerAttach* {.size: 4, pure.} = enum
     ltAttachUnknown
-    # Attach Sides
     ltAttachNext
     ltAttachPrev
     ltAttachFolder
   NLayerTag* = object
-    code: cint
-    mode: NLayerAttach
+    code*: uint32
+    mode*: NLayerAttach
   NLayerOrder* = object
-    target*, layer*: NLayer
+    target*: NLayer
+    layer*: NLayer
     mode*: NLayerAttach
   # -- Layer Tree Object --
   NLayer* = ptr object
     next*, prev*: NLayer
     folder*: NLayer
     # Layer Properties
-    owner*: NLayerOwner
+    code*: NLayerCode
     user*: NLayerUser
     hook*: NLayerHook
     props*: NLayerProps
@@ -78,28 +78,22 @@ type
 # Layer Creation/Deallocation
 # ---------------------------
 
-proc createLayer*(kind: NLayerKind, owner: NLayerOwner): NLayer =
-  # Alloc New Layer
-  result = create(result[].type)
-  result[] = default(result[].type)
+proc createLayer*(kind: NLayerKind): NLayer =
+  result = create(result[].typeof)
+  result.kind = kind
   # Prepare Tiled Image
   if kind != lkFolder:
     let bpp: cint = # Bytes-per-pixel
       if kind == lkColor: 4 else: 1
-    # Create Tiled Image
     result.tiles = createTileImage(bpp)
-  # Define Initial Properties
-  result.owner = owner
-  result.kind = kind
-
-# -----------------
-# Layer Destruction
-# -----------------
 
 proc deallocBase(layer: NLayer) =
+  let code = addr layer.code
+  if not isNil(code.tree):
+    discard remove(code.tree[], code)
   # Dealloc Tiles and Layer
   if layer.kind != lkFolder:
-    destroy(layer.tiles)
+    clear(layer.tiles)
   # Dealloc Layer
   `=destroy`(layer[])
   dealloc(layer)
@@ -118,36 +112,40 @@ proc deallocFolder(folder: NLayer) =
     c = next
 
 proc destroy*(layer: NLayer) =
-  # Dealloc Recursive
   if layer.kind == lkFolder:
     layer.deallocFolder()
-  # Dealloc Base
   layer.deallocBase()
 
 # -------------------
 # Layer Tree Location
 # -------------------
 
+proc layer*(code: ptr NLayerCode): NLayer =
+  let p0 = cast[uint](addr result.code)
+  let p1 = cast[uint](code) - p0
+  # Return Layer from Code
+  result = cast[NLayer](p1)
+
 proc tag*(layer: NLayer): NLayerTag =
   let
     next = layer.next
     prev = layer.prev
     folder = layer.folder
+  # Invalid Attachment
+  result.code = layer.code.id
+  result.mode = ltAttachUnknown
   # Attach Prev
   if not isNil(next):
-    result.code = next.props.code
+    result.code = next.code.id
     result.mode = ltAttachPrev
   # Attach Next
   elif not isNil(prev):
-    result.code = prev.props.code
+    result.code = prev.code.id
     result.mode = ltAttachNext
   # Inside Folder
   elif not isNil(folder):
-    result.code = folder.props.code
+    result.code = folder.code.id
     result.mode = ltAttachFolder
-  else: # Invalid Attach
-    result.code = layer.props.code
-    result.mode = ltAttachUnknown
 
 proc level*(layer: NLayer): NLayerLevel =
   var folder = layer.folder

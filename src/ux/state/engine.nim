@@ -1,13 +1,14 @@
-import nogui/[builder, pack]
+import nogui/pack
+import nogui/ux/prelude
 import nogui/ux/pivot
 # XXX: This is a proof of concept
 import nogui/data {.all.}
 # Import NPainter Engine
-import ../../wip/[brush, texture, binary, canvas]
+import ../../wip/[undo, brush, texture, binary, canvas]
 import ../../wip/image/[context, proxy]
 from ../../wip/image import createLayer, selectLayer
 # TODO: move to engine side
-import nogui/core/async
+import nogui/async/core as async
 import nogui/libs/gl
 import locks
 
@@ -77,7 +78,7 @@ controller NPainterEngine:
     let
       ctx = addr canvas.image.ctx
       target = addr self.brush.pipe.canvas
-      # TODO: overhaul brush engine to use less physical pages
+      # TODO: rewrite brush engine to use less physical pages
       mapColor = ctx[].mapAux(bpp * 4)
       mapShape = ctx[].mapAux(bpp * 4)
     # Target Dimensions
@@ -116,7 +117,7 @@ controller NPainterEngine:
     result[].stream()
 
   proc bindBackground0proof(checker: cint) =
-    let info = addr self.canvas.info
+    let info = addr self.canvas.image.info
     # Primary Color
     info.r0 = 255
     info.g0 = 255
@@ -147,12 +148,25 @@ controller NPainterEngine:
     # Update Canvas
     canvas.transform()
 
-  proc clearProxy*() =
-    clearAux(self.canvas.image.ctx)
+  proc commit0proof*() =
+    let
+      image = self.canvas.image
+      undo = self.canvas.undo
+      layer = image.selected
+    self.canvas.update()
+    getWindow().fuse()
+    # Prepare Undo Step
+    let step = undo.push(ucLayerMark)
+    step.capture(layer)
+    # Commit Changes
+    commit(image.proxy)
+    clearAux(image.ctx)
+    step.capture(layer)
+    undo.flush()
 
   # -- NPainter Constructor - proof of concept --
   new npainterengine(proof_W, proof_H: cint, checker = 0'i32):
-    let pool = getAsync().pool
+    let pool = async.getPool()
     result.secure = createSecure(pool)
     result.man = createCanvasManager(pool)
     result.canvas = result.man.createCanvas(proof_W, proof_H)

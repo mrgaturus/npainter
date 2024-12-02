@@ -2,7 +2,7 @@
 # Copyright (c) 2024 Cristian Camilo Ruiz <mrgaturus>
 import nogui/async/pool
 import canvas/[matrix, render, copy]
-import image, image/[context]
+import image, image/[context], undo
 from image/composite import
   mark, dispatch
 
@@ -10,44 +10,34 @@ type
   NCanvasManager* = ptr object
     render: NCanvasRenderer
     actives: seq[NCanvasImage]
-    # Multi-threading
     pool: NThreadPool
-  # -- Canvas Image --
-  NCanvasInfo = object
-    stamp*: uint64
-    w*, h*, bpp*: cint
-    # Background Colors
-    r0*, g0*, b0*, a0: uint8
-    r1*, g1*, b1*, a1: uint8
-    # Background Pattern Size
-    checker*: cint
   NCanvasImage* = ptr object
-    image*: NImage
-    # Canvas Viewport
-    view: NCanvasViewport
-    affine*: ptr NCanvasAffine
-    data: NCanvasData
-    # Canvas Info
-    path*: string
-    info*: NCanvasInfo
-    # Canvas Manager
     man: NCanvasManager
+    undo*: NImageUndo
+    image*: NImage
+    path*: string
+    # Canvas Viewport
+    affine*: ptr NCanvasAffine
+    view: NCanvasViewport
+    data: NCanvasData
 
 # ---------------------
 # Canvas Image Creation
 # ---------------------
 
 proc createCanvasManager*(pool: NThreadPool): NCanvasManager =
-  result = create(result[].type)
-  result.pool = pool
-  # Create Canvas Renderer
+  result = create(result[].typeof)
   result.render = createCanvasRenderer()
+  result.pool = pool
 
 proc createCanvas*(man: NCanvasManager, w, h: cint): NCanvasImage =
-  result = create(result[].type)
+  result = create(result[].typeof)
   # Create Canvas Image
-  result.image = createImage(w, h)
-  # Create Canvas View
+  let image = createImage(w, h)
+  let undo = createImageUndo(image)
+  result.image = image
+  result.undo = undo
+  # Create Canvas Viewport
   result.view = createCanvasViewport(man.render, w, h)
   result.view.data = addr result.data
   result.affine = addr result.view.affine
@@ -60,6 +50,7 @@ proc createCanvas*(man: NCanvasManager, w, h: cint): NCanvasImage =
 # -----------------------
 
 proc destroy(canvas: NCanvasImage) =
+  destroy(canvas.undo)
   destroy(canvas.image)
   destroy(canvas.data.bg)
   # Destroy Canvas
@@ -89,12 +80,11 @@ proc destroy*(man: NCanvasManager) =
 
 proc background*(canvas: NCanvasImage) =
   let
-    info = addr canvas.info
+    info = addr canvas.image.info
     bg = addr canvas.data.bg
-  # Set Background Colors
+  # Set Background Colors and Pattern
   bg[].color0(info.r0, info.g0, info.b0)
   bg[].color1(info.r1, info.g1, info.b1)
-  # Set Background Pattern
   bg[].pattern(info.checker)
 
 proc source(canvas: NCanvasImage, level: cint) =

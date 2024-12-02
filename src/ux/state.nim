@@ -1,6 +1,6 @@
-import nogui/builder
-import nogui/core/value
+import nogui/ux/prelude
 import nogui/ux/values/dual
+import ../wip/undo
 # Import State Objects
 import ./state/[
   color,
@@ -57,6 +57,32 @@ controller NPainterState:
     result.brush = cxbrush(engine, color)
     result.bucket = cxbucket(engine, color)
 
+  # XXX: proof of concept undo
+  proc reactUndo(flags: set[NUndoEffect]) =
+    let layers {.cursor.} = self.layers
+    if ueLayerTiles in flags:
+      update(self.engine.canvas)
+    if ueLayerProps in flags:
+      let layer {.cursor.} = layers.selected
+      let user {.cursor.} = cast[GUIWidget](layer.user)
+      # Reflect Props Changes to Widget
+      if ueLayerList notin flags:
+        send(user.parent, wsLayout)
+      layers.reflect(layer)
+    if ueLayerList in flags:
+      force(layers.onstructure)
+
+  callback cbUndo:
+    let canvas = self.engine.canvas
+    let flags = undo(canvas.undo)
+    self.reactUndo(flags)
+
+  callback cbRedo:
+    let canvas = self.engine.canvas
+    let flags = redo(canvas.undo)
+    self.reactUndo(flags)
+
+  # XXX: proof of concept defaults
   proc proof0default*() =
     # Locate Canvas to Center
     let engine {.cursor.} = self.engine

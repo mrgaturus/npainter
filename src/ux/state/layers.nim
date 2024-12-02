@@ -1,19 +1,20 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+# Copyright (c) 2024 Cristian Camilo Ruiz <mrgaturus>
 import nogui/core/[value, callback]
 import nogui/ux/values/linear
 import nogui/builder
-import ../../wip/image
+import ../../wip/[image, undo]
 import ../../wip/image/[layer, tiles, context]
 import ../../wip/canvas
-# This is a proof of concept
-import nogui/core/shortcut
+# TODO: Move many parts to engine side
 import nogui/ux/prelude
-# Move many parts to engine side
 export layer
 
 controller CXLayers:
   attributes:
     canvas: NCanvasImage
     image: NImage
+    step: NUndoStep
     # Current State
     {.public.}:
       mode: @ NBlendMode
@@ -35,7 +36,7 @@ controller CXLayers:
   proc selected*: NLayer =
     self.image.selected
 
-  proc reflect(layer: NLayer) =
+  proc reflect*(layer: NLayer) =
     let
       flags = layer.props.flags
       opacity = layer.props.opacity
@@ -47,6 +48,7 @@ controller CXLayers:
     # Reflect Mode and Opacity
     self.mode.peek[] = layer.props.mode
     self.opacity.peek[].lerp opacity
+    send(self.onselect)
 
   # ----------------------------
   # Layer Rendering Manipulation
@@ -60,7 +62,6 @@ controller CXLayers:
     self.image.selectLayer(layer)
     self.reflect(layer)
     # Update Widgets
-    send(self.onselect)
     u0.send(wsLayout)
     u1.send(wsLayout)
 
@@ -69,6 +70,9 @@ controller CXLayers:
       image = self.image
       layer = image.createLayer(kind)
       target = image.selected
+      # Undo Step Capture
+      undo = self.canvas.undo
+      step = undo.push(ucLayerCreate)
     # Put Next to Selected or Inside a Folder
     if target.kind != lkFolder or kind == lkFolder:
       target.attachPrev(layer)
@@ -79,6 +83,9 @@ controller CXLayers:
     # Select New Layer
     force(self.onstructure)
     self.select(layer)
+    # Capture Undo Step
+    step.capture(layer)
+    undo.flush()
 
   # ----------------------------
   # Layer Rendering Manipulation
@@ -118,6 +125,52 @@ controller CXLayers:
     user.send(wsLayout)
     self.render(layer)
 
+  callback cbPropLayer:
+    let undo = self.canvas.undo
+    let layer = self.image.selected
+    let step = undo.push(ucLayerProps)
+    step.capture(layer)
+    # Dispatch Layer Update
+    force(self.cbUpdateLayer)
+    # Capture Undo Step
+    step.capture(layer)
+    undo.flush()
+
+  callback cbSliderLayer:
+    let event = getApp().state.kind
+    let undo = self.canvas.undo
+    let layer = self.image.selected
+    # Prepare Undo Step
+    if event == evCursorClick:
+      self.step = undo.push(ucLayerProps)
+      capture(self.step, layer)
+    # Dispatch Layer Update
+    force(self.cbUpdateLayer)
+    # Capture Undo Step
+    if event == evCursorRelease:
+      capture(self.step, layer)
+      undo.flush()
+
+  proc cbVisibleLayer*(layer: NLayer) =
+    let event = getApp().state.kind
+    let undo = self.canvas.undo
+    # Flush Undo Steps
+    if event == evCursorRelease:
+      undo.flush()
+      return
+    # Capture Toggle Visible
+    let step = undo.chain(ucLayerProps)
+    step.capture(layer)
+    var flags = cast[uint32](layer.props.flags)
+    flags = flags xor cast[uint32]({lpVisible})
+    layer.props.flags = cast[set[NLayerFlag]](flags)
+    step.capture(layer)
+    self.render(layer)
+
+  # ----------------------
+  # Layer Control Creating
+  # ----------------------
+
   callback cbCreateLayer:
     self.create(lkColor)
 
@@ -126,20 +179,25 @@ controller CXLayers:
 
   callback cbDuplicateLayer:
     let
+      undo = self.canvas.undo
       image {.cursor.} = self.image
       layer = image.selected
     # Copy Layer And Attach Prev
     let la = image.copyLayer(layer)
     layer.attachPrev(la)
-    # Select Created Layer
+    # Capture Layer Undo
+    let step = undo.push(ucLayerCreate)
+    step.capture(la)
+    undo.flush()
+    # Select and Render Layer
     force(self.onstructure)
     self.select(la)
-    # Render Layer
     self.render(layer)
 
   callback cbMergeLayer:
     let
       image {.cursor.} = self.image
+      undo = self.canvas.undo
       layer = image.selected
       target = layer.next
     # Avoid Merge Invalid Layer
@@ -147,35 +205,43 @@ controller CXLayers:
         target.kind == lkFolder or
         layer.kind == lkFolder:
       return
-    # Merge Layer and Attach
-    let la = image.mergeLayer(layer, target)
+    # Create Undo Steps
+    let
+      la = image.mergeLayer(layer, target)
+      step0 = undo.chain(ucLayerCreate)
+      step1 = undo.chain(ucLayerDelete)
+      step2 = undo.chain(ucLayerDelete)
+    # Dispatch Layer Merge
     layer.attachPrev(la)
-    # Remove Merged Layers
-    layer.detach()
-    layer.destroy()
-    target.detach()
-    target.destroy()
+    step1.capture(layer); layer.detach(); layer.destroy()
+    step2.capture(target); target.detach(); target.destroy()
+    step0.capture(la)
     # Update Layer Structure
     force(self.onstructure)
     self.select(la)
-    # Render Layer
     self.render(la)
+    undo.flush()
 
   callback cbClearLayer:
     let
       image = self.image
+      undo = self.canvas.undo
+      # Current Layer Selected
       layer = image.selected
       tiles = addr layer.tiles
-    # Render Layer
+    # Capture Before Tiles
+    let step = undo.push(ucLayerTiles)
+    step.capture(layer)
     self.render(layer)
-    # XXX: this is a proof of concept
-    # TODO: move this to engine side
-    tiles[].destroy()
-    tiles[] = createTileImage(4)
+    # Clear Layer Tiles
+    tiles[].clear()
+    step.capture(layer)
+    undo.flush()
 
   callback cbRemoveLayer:
     let
       image = self.image
+      undo = self.canvas.undo
       layer = image.selected
       root = image.root
     # Avoid Delete When is Unique
@@ -190,7 +256,11 @@ controller CXLayers:
     else: self.select(layer.folder)
     # Prepare Rendering
     self.render(layer)
-    # Layer Detach and Dealloc
+    # Capture Undo Command
+    let step = undo.push(ucLayerDelete)
+    step.capture(layer)
+    undo.flush()
+    # Destroy Layer
     layer.detach()
     layer.destroy()
     # Update Layer Structure
@@ -198,12 +268,15 @@ controller CXLayers:
 
   callback cbOrderLayer(order: NLayerOrder):
     let
+      undo = self.canvas.undo
       target = order.target
       layer = order.layer
     # Avoid Unknown Attach
     if order.mode == ltAttachUnknown:
       return
     # Dettach Layer First
+    let step = undo.push(ucLayerReorder)
+    step.capture(layer)
     layer.detach()
     # Attach Layer to Target
     case order.mode
@@ -211,11 +284,14 @@ controller CXLayers:
     of ltAttachPrev: target.attachPrev(layer)
     of ltAttachFolder: target.attachInside(layer)
     of ltAttachUnknown: discard
+    step.capture(layer)
+    undo.flush()
     # Render Layer
     force(self.onstructure)
     self.render(layer)
 
   callback cbRaiseLayer:
+    let undo = self.canvas.undo
     let target = self.selected
     if target == self.root.first:
       return
@@ -224,6 +300,8 @@ controller CXLayers:
     let escape = isNil(pivot)
     if escape: pivot = target.folder
     # Detach Layer
+    let step = undo.push(ucLayerReorder)
+    step.capture(target)
     target.detach()
     # Attach Layer Inside Folder
     if pivot.kind == lkFolder and not escape:
@@ -232,11 +310,15 @@ controller CXLayers:
       else: pivot.attachInside(target)
     # Attach Layer Previous Pivot
     else: pivot.attachPrev(target)
+    # Capture Undo
+    step.capture(target)
+    undo.flush()
     # Render Composition
     force(self.onstructure)
     self.render(target)
 
   callback cbLowerLayer:
+    let undo = self.canvas.undo
     let target = self.selected
     if target == self.root.last:
       return
@@ -245,11 +327,16 @@ controller CXLayers:
     let escape = isNil(pivot)
     if escape: pivot = target.folder
     # Detach Layer
+    let step = undo.push(ucLayerReorder)
+    step.capture(target)
     target.detach()
     # Attach Layer Inside Folder or Next
     if pivot.kind == lkFolder and not escape:
       pivot.attachInside(target)
     else: pivot.attachNext(target)
+    # Capture Undo
+    step.capture(target)
+    undo.flush()
     # Render Composition
     force(self.onstructure)
     self.render(target)
@@ -266,46 +353,27 @@ controller CXLayers:
     # Change Layer Properties
     layer.props.flags.incl(lpVisible)
     layer.props.opacity = 1.0
-    # Select Current Layer
     img.root.attachInside(layer)
-    img.root.attachInside img.createLayer(lkColor)
-    img.root.attachInside img.createLayer(lkColor)
-    let folder0 = img.createLayer(lkFolder)
-    let folder1 = img.createLayer(lkFolder)
-    let folder2 = img.createLayer(lkFolder)
-    let folder3 = img.createLayer(lkFolder)
-    img.root.attachInside(folder0)
-    folder0.attachInside img.createLayer(lkColor)
-    folder0.attachInside img.createLayer(lkColor)
-    folder0.attachInside folder2
-    folder0.attachInside folder3
-    folder0.attachInside folder1
-    folder1.attachInside img.createLayer(lkColor)
-    folder1.attachInside img.createLayer(lkColor)
-    folder1.attachInside img.createLayer(lkColor)
-    folder2.props.flags.incl(lpFolded)
-    folder3.props.flags.incl(lpFolded)
+    # Select Current Layer
     img.selectLayer(layer)
-    # Update Strcuture
     self.reflect(layer)
+    # Update Structure
     send(self.cbUpdateLayer)
     send(self.onselect)
     send(self.onstructure)
-    # Delete Shortcut for Clear Layer
-    getWindow().shorts[].register:
-      shortcut(self.cbClearLayer, NK_Delete)
 
   new cxlayers(canvas: NCanvasImage):
     result.canvas = canvas
     result.image = canvas.image
     result.opacity = linear(0, 100)
     # Configure Attribute Callbacks
-    let cb = result.cbUpdateLayer
-    result.clipping.cb = cb
-    result.protect.cb = cb
-    result.lock.cb = cb
-    result.wand.cb = cb
-    result.opacity.cb = cb
-    result.mode.cb = cb
+    let cb0 = result.cbPropLayer
+    let cb1 = result.cbSliderLayer
+    result.clipping.cb = cb0
+    result.protect.cb = cb0
+    result.lock.cb = cb0
+    result.wand.cb = cb0
+    result.opacity.cb = cb1
+    result.mode.cb = cb0
     # Create Initial Layer
     result.bindLayer0proof()

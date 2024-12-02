@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 # Copyright (c) 2023 Cristian Camilo Ruiz <mrgaturus>
+import nogui/bst
 import ./image/[
   context,
   layer,
@@ -13,14 +14,20 @@ import ./image/[
 ]
 
 type
+  NImageInfo* = object
+    hash*: uint64
+    w*, h*, bpp*: cint
+    # Background Information
+    r0*, g0*, b0*, a0: uint8
+    r1*, g1*, b1*, a1: uint8
+    checker*: cint
   NImage* = ptr object
+    info*: NImageInfo
     ctx*: NImageContext
     status*: NImageStatus
     com*: NCompositor
-    # Image Ticket
-    ticket: cint
-    t0, t1: cint
     # Image Layering
+    t0*, t1*: cint
     owner*: NLayerOwner
     root*: NLayer
     # Image Proxy
@@ -56,16 +63,16 @@ proc configure(img: NImage) =
   img.proxy.configure()
 
 proc createImage*(w, h: cint): NImage =
-  result = create(result[].type)
-  result.ticket = 0
+  result = create(result[].typeof)
+  result.owner.configure()
   # Create Image Root Layer
-  let owner = cast[NLayerOwner](addr result.ticket)
-  result.root = createLayer(lkFolder, owner)
-  result.owner = owner
-  # Create Image Context
+  let root = createLayer(lkFolder)
+  if result.owner.insert(addr root.code):
+    result.root = root
+  # Create Image Context and Status
   result.ctx = createImageContext(w, h)
   result.status = createImageStatus(w, h)
-  # Configure Compositor and Proxy
+  # Configure Image
   result.configure()
 
 proc destroy*(img: NImage) =
@@ -81,17 +88,36 @@ proc destroy*(img: NImage) =
 # ------------------------
 
 proc createLayer*(img: NImage, kind: NLayerKind): NLayer =
-  result = createLayer(kind, img.owner)
-  # Define Layer Ticket
-  result.props.code = img.ticket
-  result.props.label = "Layer " & $img.t0
-  # Step Layer Count
-  inc(img.ticket)
-  inc(img.t0)
+  result = createLayer(kind)
+  # Register to Owner and Define Label
+  if img.owner.register(addr result.code):
+    let props = addr result.props
+    if kind != lkFolder:
+      props.label = "Layer " & $img.t0
+      inc(img.t0)
+    else: # Define Folder Label
+      props.label = "Folder " & $img.t1
+      inc(img.t1)
+
+proc attachLayer*(img: NImage, layer: NLayer, tag: NLayerTag) =
+  let owner = addr img.owner
+  let code = addr layer.code
+  # Register Layer to Owner
+  if code.tree != owner:
+    discard owner[].insert(code)
+  let node = owner[].search(tag.code)
+  assert not isNil(node) and
+    tag.mode != ltAttachUnknown
+  # Attach Layer Using Mode
+  let la = node.layer()
+  case tag.mode
+  of ltAttachUnknown: discard
+  of ltAttachNext: la.attachNext(layer)
+  of ltAttachPrev: la.attachPrev(layer)
+  of ltAttachFolder: la.attachInside(layer)
 
 proc selectLayer*(img: NImage, layer: NLayer) =
-  # Check if layer belongs to image
-  let check = pointer(layer.owner) == pointer(img.owner)
+  let check = layer.code.tree == addr img.owner
   assert check, "layer owner mismatch"
   # Configure Proxy Selected
   img.selected = layer
@@ -116,11 +142,10 @@ proc markLayer*(img: NImage, layer: NLayer) =
 # ---------------------
 
 proc copyLayerBase(img: NImage, layer: NLayer): NLayer =
-  result = createLayer(layer.kind, img.owner)
-  result.props = layer.props
-  result.props.code = img.ticket
-  # Step Layer Count
-  inc(img.ticket)
+  result = createLayer(layer.kind)
+  # Register to Owner and Copy Props
+  if img.owner.register(addr result.code):
+    result.props = layer.props
 
 proc copyTiles(src, dst: NLayer) =
   let

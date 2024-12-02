@@ -222,7 +222,7 @@ proc mask(grid: var NTileGrid, idx: cint): uint32 =
 proc createTileImage*(bpp: 0..4): NTileImage =
   const
     bits = cshort sizeof(cushort)
-    size = cshort 2048 * bits
+    size = cshort 1024 * bits
   # Store Tile Image Bytes
   result.bpp = bpp * bits
   result.bytes = bpp * size
@@ -235,9 +235,10 @@ proc region*(tiles: var NTileImage): NTileReserved =
   result.w = grid.w
   result.h = grid.h
 
-proc destroy*(tiles: var NTileImage) =
+proc clear*(tiles: var NTileImage) =
   if tiles.grid.len > 0:
     destroy(tiles.grid)
+    wasMoved(tiles.grid)
 
 # ---------------------
 # Tile Image Dimensions
@@ -368,7 +369,7 @@ proc toBuffer*(tile: var NTile) =
   assert not isNil(data)
   # Allocate Buffer
   if not tile.uniform: return
-  let p = allocShared(tile.bytes)
+  let p = allocShared(tile.bytes shl 1)
   data.buffer = p
   grid[].mark(data)
   # Update Tile Data

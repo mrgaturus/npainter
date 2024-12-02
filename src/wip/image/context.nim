@@ -184,22 +184,22 @@ proc complete*(m: var NImageMark) =
   # Reset Expand Count
   m.stride = 0
 
+# -----------------------
+# Image Status Mark: Grid
+# -----------------------
+
 proc scale(m: var NImageMark, w, h: cint) =
   m.x0 = clamp(m.x0 shr 5, 0, w)
   m.y0 = clamp(m.y0 shr 5, 0, h)
   m.x1 = clamp(m.x1 shr 5, 0, w)
   m.y1 = clamp(m.y1 shr 5, 0, h)
 
-# -----------------------
-# Image Status Mark: Grid
-# -----------------------
-
-proc region*(status: NImageStatus, m0: NImageMark): NImageMark =
+proc scale*(status: NImageStatus, m: NImageMark): NImageMark =
   let
     w32 = status.w
     h32 = status.h
   # Calculate Dirty Region
-  result = m0
+  result = m
   result.x1 += 0x1F
   result.y1 += 0x1F
   # Scale and Clamp Sizes
@@ -218,32 +218,33 @@ iterator cells(m: NImageMark): cint =
       # Lookup Current Flags
       yield ty * stride + tx
 
-proc mark*(status: var NImageStatus, x, y, w, h: cint) =
-  let
-    r0 = mark(x, y, w, h)
-    r = status.region(r0)
-  # Mark Dirty Grid
-  for idx in r.cells():
+proc mark32*(status: var NImageStatus, tx, ty: cint) =
+  let w32 = status.w
+  let h32 = status.h
+  # Mark if is Inside Boundaries
+  if tx >= 0 and ty >= 0 and tx < w32 and ty < h32:
+    let idx = ty * w32 + tx
+    let check = status.aux[idx]
+    status.aux[idx] += uint8(check == 0)
     status.flat[idx] = 0
-  # Mark Aux Grid
+
+proc mark*(status: var NImageStatus, m: NImageMark) =
+  let r = status.scale(m)
+  # Mark Dirty Grids
   for idx in r.cells():
     let check = status.aux[idx]
     status.aux[idx] += uint8(check == 0)
+    status.flat[idx] = 0
 
-proc mark32*(status: var NImageStatus, tx, ty: cint) =
-  let
-    # Scale to 32
-    x = tx shl 5
-    y = ty shl 5
-  # Mark 32x32 Region
-  status.mark(x, y, 32, 32)
+proc mark*(status: var NImageStatus, x, y, w, h: cint) =
+  status.mark mark(x, y, w, h)
 
 # ---------------------
 # Image Status Checking
 # ---------------------
 
 iterator checkFlat*(status: var NImageStatus, mipmap: cint): NImageCheck =
-  let r = status.region(status.clip)
+  let r = status.scale(status.clip)
   var idx0 = r.y0 * r.stride + r.x0
   # Check Tile Dirties
   let lvl = 1'u8 shl mipmap
@@ -260,7 +261,7 @@ iterator checkFlat*(status: var NImageStatus, mipmap: cint): NImageCheck =
     idx0 += r.stride
     
 iterator checkAux*(status: var NImageStatus): NImageCheck =
-  let r = status.region(status.clip)
+  let r = status.scale(status.clip)
   var idx0 = r.y0 * r.stride + r.x0
   # Check Tile Dirties
   for ty in r.y0 ..< r.y1:

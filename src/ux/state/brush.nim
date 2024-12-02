@@ -1,5 +1,4 @@
 import nogui/builder
-import nogui/core/async
 import nogui/ux/prelude
 import nogui/ux/values/[linear, dual, chroma]
 # Import NPainter Engine
@@ -371,15 +370,8 @@ widget UXBrushTask:
     data.composite = 0
     getWindow().fuse()
 
-  proc finalize() =
-    self.engine.canvas.update()
-    getWindow().fuse()
-    # Commit Changes
-    self.proxy[].commit()
-    self.engine.clearProxy()
-
   new uxbrushtask(engine: NPainterEngine):
-    result.coro = coroutine(step0coro)
+    result.coro = coroutine(BrushTask)
     result.flags = {wMouse, wKeyboard, wVisible}
     result.engine = engine
     # Configure Coroutine
@@ -427,7 +419,7 @@ widget UXBrushTask:
       coro.spawn()
     of outHold:
       coro.wait()
-      self.finalize()
+      self.engine.commit0proof()
     else: discard
 
 # ---------------------

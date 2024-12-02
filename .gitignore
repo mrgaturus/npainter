@@ -1,6 +1,8 @@
 npainter
 npainter.dump
 npainter.exe
+# Ignore Undo Swap
+undo.bin
 
 # Ignore Generated List
 icons.list
