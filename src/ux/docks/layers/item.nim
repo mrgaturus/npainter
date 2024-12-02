@@ -246,6 +246,8 @@ widget UXLayerVisible:
     if reason == inGrab:
       let flags = self.layer.props.flags
       self.mask = lpVisible in flags
+    elif reason == outGrab:
+      send(self.cb)
 
   method draw(ctx: ptr CTXRender) =
     let
@@ -348,14 +350,12 @@ widget UXLayerItem:
 
   callback cbVisible:
     let layer = self.layer
-    self.toggle(lpVisible)
-    # Check Layer as Folder
     var w {.cursor.} = cast[GUIWidget](self)
     if layer.kind == lkFolder:
       w = w.parent
-    # Relayout Widget
+    # Capture and Relayout
+    self.layers.cbVisibleLayer(layer)
     w.send(wsLayout)
-    self.layers.render(layer)
 
   callback cbProps:
     self.send(wsLayout)

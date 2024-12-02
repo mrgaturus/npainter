@@ -137,8 +137,8 @@ controller CXLayers:
     undo.flush()
 
   callback cbSliderLayer:
-    let undo = self.canvas.undo
     let event = getApp().state.kind
+    let undo = self.canvas.undo
     let layer = self.image.selected
     # Prepare Undo Step
     if event == evCursorClick:
@@ -150,6 +150,22 @@ controller CXLayers:
     if event == evCursorRelease:
       capture(self.step, layer)
       undo.flush()
+
+  proc cbVisibleLayer*(layer: NLayer) =
+    let event = getApp().state.kind
+    let undo = self.canvas.undo
+    # Flush Undo Steps
+    if event == evCursorRelease:
+      undo.flush()
+      return
+    # Capture Toggle Visible
+    let step = undo.chain(ucLayerProps)
+    step.capture(layer)
+    var flags = cast[uint32](layer.props.flags)
+    flags = flags xor cast[uint32]({lpVisible})
+    layer.props.flags = cast[set[NLayerFlag]](flags)
+    step.capture(layer)
+    self.render(layer)
 
   # ----------------------
   # Layer Control Creating

@@ -385,6 +385,7 @@ proc swap0ghost(undo: NImageUndo) =
   if cursor.where == inStage:
     let ghost = undo.first
     ghost.skip = cursor.skip
+    ghost.chain = cursor.chain
     ghost.where = inSwap
     # Destroy Cursor
     undo.cursor = ghost
