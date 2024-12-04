@@ -12,11 +12,13 @@ echo "------ INSTALLING DEPENDENCIES ------"
 echo ""
 
 # Configure MSYS2 Dependencies
-pacman -S --needed --noconfirm \
+pacman -Syu --needed --noconfirm \
   git \
   base-devel \
+  mingw-w64-x86_64-zstd \
   mingw-w64-x86_64-toolchain \
   mingw-w64-x86_64-gdk-pixbuf2 \
+  mingw-w64-x86_64-librsvg \
   mingw-w64-x86_64-freetype \
   mingw-w64-x86_64-wintab-sdk
 
@@ -25,7 +27,7 @@ echo "------ COMPILING NOPACK ------"
 echo ""
 
 # Append PATH to nimble folder
-NIMBLE_PATH="${HOMEPATH}\.nimble"
+NIMBLE_PATH="${USERPROFILE}\.nimble"
 export PATH="$PATH:$NIMBLE_PATH\bin"
 # XXX: nimble install don't create proper links for nim compile
 nimble install https://github.com/mrgaturus/nopack
@@ -43,11 +45,11 @@ nopack
 # Assemble Release Folder
 rm -rf release
 mkdir -p release
-mkdir -p release/npainter.shared
+mkdir -p release/npainter.libs
 cp npainter.exe release/npainter.exe
 cp -r data release/npainter.data
 
-SHARED="release/npainter.shared"
+SHARED="release/npainter.libs"
 SXS="" # Copy DLL Libraries and Prepare WinSXS DLLs
 DLLS=$(ldd "npainter.exe" | grep '=> /' | awk '{print $3}' | sort -u | grep ${MSYSTEM_PREFIX})
 for DLL in $DLLS
@@ -58,7 +60,7 @@ done
 
 # Assemble SXS Manifest from Template and Store on Shared
 SXS=$(cat pack/winsxs.manifest | sed "s@\[build_win32.sh\]@${SXS}@g")
-echo "$SXS" > ${SHARED}/npainter.shared.manifest
+echo "$SXS" > ${SHARED}/npainter.libs.manifest
 cp pack/win32.manifest ${SHARED}/win32.manifest
 
 # Create Resource File and Compile Again

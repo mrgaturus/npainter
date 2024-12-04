@@ -20,7 +20,7 @@
         <dependentAssembly>
             <assemblyIdentity
                 type="win32"
-                name="npainter.shared"
+                name="npainter.libs"
                 version="1.0.0.0"
             />
         </dependentAssembly>
