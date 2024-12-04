@@ -29,6 +29,9 @@ echo ""
 # Append PATH to nimble folder
 NIMBLE_PATH="${USERPROFILE}\.nimble"
 export PATH="$PATH:$NIMBLE_PATH\bin"
+# XXX: Remove old nimble packages
+find "$NIMBLE_PATH" -type d -name "nopack*" -exec rm -rf {} +
+find "$NIMBLE_PATH" -type d -name "nogui*" -exec rm -rf {} +
 # XXX: nimble install don't create proper links for nim compile
 nimble install https://github.com/mrgaturus/nopack
 NOPACK=$(find "$NIMBLE_PATH\pkgs2" -name "nopack.exe" | head -n 1)
