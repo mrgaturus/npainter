@@ -92,7 +92,7 @@ proc detach(step: NUndoStep) =
   if step == undo.last:
     undo.last = step.prev
   if step == undo.firs0:
-    wasMoved(undo.firs0)
+    undo.firs0 = step.nex0
   # Detach From Undo
   let prev = step.prev
   let next = step.next
