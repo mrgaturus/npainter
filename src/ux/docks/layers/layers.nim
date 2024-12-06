@@ -2,6 +2,7 @@ import item, list
 # Import Builder
 import nogui/pack
 import nogui/ux/prelude
+import nogui/ux/tooltip
 import nogui/builder
 # Import Widgets
 import nogui/ux/layouts/[box, level, form, misc, grid]
@@ -121,17 +122,17 @@ controller CXLayersDock:
       # Layer Control
       min: level().child:
         # Layer Creation
-        button(iconAddLayer, la.cbCreateLayer).clear()
-        button(iconAddMask, cb).clear()
-        button(iconAddFolder, la.cbCreateFolder).clear()
+        tooltip("Add Layer", button(iconAddLayer, la.cbCreateLayer).clear())
+        tooltip("Add Mask", button(iconAddMask, cb).clear())
+        tooltip("Add Folder", button(iconAddFolder, la.cbCreateFolder).clear())
         vseparator() # Layer Manipulation
-        button(iconDuplicate, la.cbDuplicateLayer).clear()
-        button(iconMerge, la.cbMergeLayer).clear()
-        button(iconClear, la.cbClearLayer).clear()
-        button(iconDelete, la.cbRemoveLayer).clear()
+        tooltip("Duplicate Layer", button(iconDuplicate, la.cbDuplicateLayer).clear())
+        tooltip("Merge Layer", button(iconMerge, la.cbMergeLayer).clear())
+        tooltip("Clear Layer", button(iconClear, la.cbClearLayer).clear())
+        tooltip("Delete Layer", button(iconDelete, la.cbRemoveLayer).clear())
         # Layer Reordering Buttons
-        tail: button(iconUp, la.cbRaiseLayer).clear()
-        tail: button(iconDown, la.cbLowerLayer).clear()
+        tail: tooltip("Raise Layer", button(iconUp, la.cbRaiseLayer).clear())
+        tail: tooltip("Lower Layer", button(iconDown, la.cbLowerLayer).clear())
       # Layer Item
       scrollview():
         self.list

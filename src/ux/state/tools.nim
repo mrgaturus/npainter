@@ -2,6 +2,7 @@ import nogui/ux/prelude
 import nogui/builder
 # Import Values
 import ../../wip/canvas/matrix
+import ../../wip/image/layer
 import nogui/ux/values/linear
 import engine, color
 
@@ -46,6 +47,7 @@ controller CXBucket:
     result.color = color
     # Configure Bucket Values
     let liBasic = linear(0, 100)
+    result.antialiasing = true
     result.threshold = liBasic
     result.gap = liBasic
 
@@ -65,6 +67,8 @@ widget UXBucketDispatch:
     let
       bucket {.cursor.} = self.bucket
       engine {.cursor.} = bucket.engine
+    if self.bucket.engine.canvas.image.selected.kind == lkFolder:
+      return
     if state.kind != evCursorClick:
       return
     let
@@ -95,6 +99,8 @@ widget UXBucketDispatch:
     echo "bucket reason: ", reason
     let win = getWindow()
     if reason == inHover:
-      win.cursor(cursorBasic)
+      if self.bucket.engine.canvas.image.selected.kind != lkFolder:
+        win.cursor(cursorBasic)
+      else: win.cursor(cursorForbidden)
     elif reason == outHover:
       win.cursorReset()
