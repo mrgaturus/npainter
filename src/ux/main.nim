@@ -43,6 +43,9 @@ controller NCMainFrame:
     shorts[].register shortcut(state.layers.cbClearLayer, NK_Delete)
     # XXX: for now both ctrl + shift + z or ctrl + y works
     #      but one will be the default winner
+    shorts[].register shortcut(state.cbExportPNG, NK_E + {Mod_Control})
+    shorts[].register shortcut(state.cbFileSave, NK_S + {Mod_Control})
+    shorts[].register shortcut(state.cbFileOpen, NK_O + {Mod_Control})
     shorts[].register shortcut(state.cbUndo, NK_Z + {Mod_Control})
     shorts[].register shortcut(state.cbRedo, NK_Z + {Mod_Control, Mod_Shift})
     shorts[].register shortcut(state.cbRedo, NK_Y + {Mod_Control})
@@ -60,7 +63,7 @@ controller NCMainFrame:
     result.dispatch = dispatch
     result.docks = docks
     # Create Main Frame
-    result.menu = ncMainMenu()
+    result.menu = ncMainMenu(state)
     result.tools = ncMainTools(state.tool)
     let frame = result.createFrame()
     result.frame = frame

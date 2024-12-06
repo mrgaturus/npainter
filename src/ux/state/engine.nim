@@ -127,7 +127,7 @@ controller NPainterEngine:
     info.g1 = 225
     info.b1 = 225
     # Update Background
-    info.checker = 4
+    info.checker = 0
     self.canvas.background()
 
   proc bindAffine0proof =

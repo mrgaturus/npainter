@@ -10,3 +10,4 @@ bin           = @["npainter"]
 # Dependencies
 requires "nim >= 2.0.0"
 requires "https://github.com/mrgaturus/nogui#head"
+requires "tinyfiledialogs"

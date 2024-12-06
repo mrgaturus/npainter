@@ -12,7 +12,7 @@ type
   NUndoSide = enum
     sideWrite, sideRead
   NUndoSwap* = object
-    file: File
+    file*: File
     # Swap Stamping
     seekWrite: NUndoSeek
     stampWrite0: NUndoSkip
@@ -27,19 +27,18 @@ type
 # Undo Swap Creation/Destruction
 # ------------------------------
 
-proc configure*(swap: var NUndoSwap) =
-  if not open(swap.file, "undo.bin", fmReadWrite):
-    echo "[ERROR]: failed creating swap file"
-    quit(1)
+proc configure*(swap: var NUndoSwap, file: File) =
   # Write Padding Header
   var pad: array[4, uint32]
   const head = sizeof(pad)
-  if writeBuffer(swap.file, addr pad, head) != head:
+  if writeBuffer(file, addr pad, head) != head:
     echo "[ERROR]: failed configure swap file"
     quit(1)
   # Initialize Current Seeking
-  swap.posWrite = head
-  swap.posRead = head
+  let pos = getFilePos(file)
+  swap.posWrite = pos
+  swap.posRead = pos
+  swap.file = file
 
 proc destroy*(swap: var NUndoSwap) =
   close(swap.file)

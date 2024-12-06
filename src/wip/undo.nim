@@ -40,15 +40,15 @@ type
     state: NUndoTransfer
     stage: uint8
   NImageUndo* = ptr object
-    swap: NUndoSwap
-    stream: NUndoStream
+    swap*: NUndoSwap
+    stream*: NUndoStream
     state: NUndoState
     coro: Coroutine[NUndoTask]
     # Step Linked List
     first, last: NUndoStep
     firs0, las0: NUndoStep
     # Step Cursor
-    swipe, busy: bool
+    swipe, busy, hang: bool
     cursor: NUndoStep
     curso0: NUndoStep
 
@@ -56,13 +56,13 @@ type
 # Undo Manager Creation/Destruction
 # ---------------------------------
 
-proc createImageUndo*(image: NImage): NImageUndo =
+proc createImageUndo*(image: NImage, file: File): NImageUndo =
   result = create(result[].typeof)
   let swap = addr result.swap
   let stream = addr result.stream
   let coro = coroutine(NUndoTask)
   # Configure Streaming
-  swap[].configure()
+  swap[].configure(file)
   stream[].configure(swap)
   # Configure Dispatchers
   configure(result.state, stream, image)
@@ -71,12 +71,45 @@ proc createImageUndo*(image: NImage): NImageUndo =
   coro.data.undo = result
   result.coro = coro
 
+proc createImageUndo*(image: NImage): NImageUndo =
+  var file {.noinit.}: File
+  if not open(file, "undo.bin", fmReadWrite):
+    echo "[ERROR]: failed creating swap file"
+    quit(1)
+  # Create Default Undo File
+  createImageUndo(image, file)
+
 proc destroy*(undo: NImageUndo) =
   destroy(undo.stream)
   destroy(undo.swap)
   # Dealloc Undo History
   `=destroy`(undo[])
   dealloc(undo)
+
+# ---------------------------
+# Undo Manager Proof: Restore
+# ---------------------------
+
+proc seed*(undo: NImageUndo, skip: NUndoSkip) =
+  let cursor = undo.cursor
+  let ghost = create(cursor[].typeof)
+  ghost.where = inSwap
+  ghost.undo = undo
+  # Set Endpoints
+  undo.first = ghost
+  undo.firs0 = ghost
+  undo.last = ghost
+  undo.las0 = ghost
+  # Set Cursors
+  undo.cursor = ghost
+  undo.curso0 = ghost
+  # Read Undo Seed
+  undo.swipe = true
+  ghost.skip = skip
+
+proc hang*(undo: NImageUndo) =
+  wait(undo.coro)
+  undo.hang = true
 
 # ---------------------
 # Undo Step Destruction
@@ -92,7 +125,7 @@ proc detach(step: NUndoStep) =
   if step == undo.last:
     undo.last = step.prev
   if step == undo.firs0:
-    wasMoved(undo.firs0)
+    undo.firs0 = step.nex0
   # Detach From Undo
   let prev = step.prev
   let next = step.next
@@ -351,6 +384,9 @@ proc swap0stage(undo: NImageUndo) =
   undo.busy = true
 
 proc swap0check(undo: NImageUndo) =
+  if undo.hang:
+    undo.destroy()
+    return
   var step = default(NUndoStep)
   if undo.first != undo.firs0:
     step = undo.first

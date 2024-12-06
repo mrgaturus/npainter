@@ -1,6 +1,7 @@
 import nogui/ux/prelude
 import nogui/ux/values/dual
-import ../wip/undo
+import ../wip/[undo, proof, image]
+import ../wip/image/context
 # Import State Objects
 import ./state/[
   color,
@@ -81,6 +82,35 @@ controller NPainterState:
     let canvas = self.engine.canvas
     let flags = redo(canvas.undo)
     self.reactUndo(flags)
+
+  # XXX: proof of concept file i/o
+  callback cbFileOpen:
+    let canvas = self.engine.canvas
+    let image = canvas.image
+    let effect = loadFile(image, canvas.undo)
+    if effect == {}: return
+    # Replace Canvas Undo And React
+    canvas.undo = createImageUndo(image)
+    image.selectLayer(image.root.first)
+    # Redraw Whole Canvas
+    let status = addr image.status
+    complete(status.clip)
+    status[].mark(status.clip)
+    # React Undo Effect
+    self.reactUndo(effect)
+    echo effect
+
+  callback cbFileSave:
+    let canvas = self.engine.canvas
+    let image = canvas.image
+    # Save Image File
+    saveFile(image)
+
+  callback cbExportPNG:
+    let canvas = self.engine.canvas
+    let image = canvas.image
+    # Save Image File
+    saveFilePNG(image)
 
   # XXX: proof of concept defaults
   proc proof0default*() =

@@ -3,6 +3,7 @@ from tools import iconLogo
 import nogui/ux/prelude
 import nogui/ux/widgets/menu
 import nogui/ux/widgets/button
+import ../state
 
 widget UXNoClick:
   new noclick(w: GUIWidget):
@@ -24,13 +25,17 @@ widget UXNoClick:
 # --------------------
 
 controller NCMainMenu:
+  attributes: {.cursor.}:
+    state: NPainterState
+
   callback dummy:
     echo "not implemented yet"
 
-  new ncMainMenu():
-    discard
+  new ncMainMenu(state: NPainterState):
+    result.state = state
 
   proc menuFile: UXMenu =
+    let state {.cursor.} = self.state
     let dummy = self.dummy
     echo dummy.repr
     menu("File").child:
@@ -39,8 +44,8 @@ controller NCMainMenu:
       menuitem("Close", dummy)
       # -- Opening --
       menuseparator()
-      menuitem("Open ..", dummy)
-      menuitem("Import ..", dummy)
+      menuitem("Open ..", state.cbFileOpen)
+      menuitem("Import ..", state.cbFileOpen)
       # TODO: calculate recent files
       menu("Recent Files").child:
         menuitem("fileA.npi", dummy)
@@ -49,9 +54,9 @@ controller NCMainMenu:
         menuitem("Clear Recents", dummy)
       # -- Saving --
       menuseparator()
-      menuitem("Save", dummy)
-      menuitem("Save As ..", dummy)
-      menuitem("Export ..", dummy)
+      menuitem("Save", state.cbFileSave)
+      menuitem("Save As ..", state.cbFileSave)
+      menuitem("Export PNG ..", state.cbExportPNG)
       # -- Program Stuff --
       menuseparator("NPainter")
       menuitem("Settings ..", dummy)

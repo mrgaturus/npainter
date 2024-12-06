@@ -48,7 +48,6 @@ proc configure(img: NImage) =
     let c = addr img.com
     c.root = root
     c.ctx = ctx
-    c.mipmap = 4
     # Configure Root Layer
     root.props.flags = {lpVisible}
     root.hook.fn = cast[NLayerProc](root16proc)
@@ -102,6 +101,18 @@ proc createLayer*(img: NImage, kind: NLayerKind): NLayer =
 proc attachLayer*(img: NImage, layer: NLayer, tag: NLayerTag) =
   let owner = addr img.owner
   let code = addr layer.code
+  # XXX: dummy restore proof
+  #echo "reached attach: ", layer.kind, " ", layer.code.id, "->", tag
+  if layer.code.id == img.root.code.id:
+    destroy(img.root)
+    if owner[].insert(addr layer.code):
+      img.root = layer
+      img.configure()
+      echo "loaded root"
+    return
+  elif tag.code == 0 and isNil(img.selected):
+    img.selected = layer
+    img.proxy.layer = layer
   # Register Layer to Owner
   if code.tree != owner:
     discard owner[].insert(code)

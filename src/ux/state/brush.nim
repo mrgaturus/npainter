@@ -5,6 +5,7 @@ import nogui/ux/values/[linear, dual, chroma]
 import engine, color
 from ../../wip/image/proxy import
   NImageProxy, commit
+import ../../wip/image/layer
 import ../../wip/canvas/matrix
 import ../../wip/brush/stabilizer
 
@@ -619,6 +620,8 @@ widget UXBrushDispatch:
     self.prepareColor()
 
   method event(state: ptr GUIState) =
+    if self.brush.engine.canvas.image.selected.kind == lkFolder:
+      return
     if state.kind == evCursorClick:
       self.prepareDispatch()
       state.pressure = 0.0
@@ -630,6 +633,8 @@ widget UXBrushDispatch:
     echo "brush reason: ", reason
     let win = getWindow()
     if reason == inHover:
-      win.cursor(cursorBasic)
+      if self.brush.engine.canvas.image.selected.kind != lkFolder:
+        win.cursor(cursorBasic)
+      else: win.cursor(cursorForbidden)
     elif reason == outHover:
       win.cursorReset()
