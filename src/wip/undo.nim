@@ -187,7 +187,7 @@ proc cutswap(swap, step: NUndoStep): NUndoStep =
 # Undo Step Capture: Creation
 # ---------------------------
 
-proc push*(undo: NImageUndo, cmd: NUndoCommand): NUndoStep =
+proc pushed(undo: NImageUndo, cmd: NUndoCommand): NUndoStep =
   result = create(result[].typeof)
   result.undo = undo
   result.cmd = cmd
@@ -219,8 +219,14 @@ proc chained(step: NUndoStep, rev: bool) =
   else: step.chain = chainStep
 
 proc chain*(undo: NImageUndo, cmd: NUndoCommand): NUndoStep =
-  result = undo.push(cmd)
+  result = undo.pushed(cmd)
   result.chained(rev = false)
+
+proc push*(undo: NImageUndo, cmd: NUndoCommand): NUndoStep =
+  result = undo.pushed(cmd)
+  let prev = result.prev
+  if not isNil(prev) and prev.chain == chainStep:
+    prev.chain = chainEnd
 
 # ----------------------------
 # Undo Step Capture: Recursive
@@ -388,7 +394,10 @@ proc swap0check(undo: NImageUndo) =
     undo.destroy()
     return
   var step = default(NUndoStep)
-  if undo.first != undo.firs0:
+  if undo.last.chain == chainStep:
+    discard
+  # Check for Steps inRAM
+  elif undo.first != undo.firs0:
     step = undo.first
   elif undo.last != undo.las0:
     step = undo.last

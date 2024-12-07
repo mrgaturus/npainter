@@ -10,8 +10,8 @@ static inline __m128i canvas_pixel_white(__m128i src) {
   __m128i xmm0;
   // Blend With White Pixel
   xmm0 = _mm_shuffle_epi8(src, alphas);
-  xmm0 = _mm_subs_epi8(ones, xmm0);
-  src = _mm_adds_epi8(src, xmm0);
+  xmm0 = _mm_subs_epu8(ones, xmm0);
+  src = _mm_adds_epu8(src, xmm0);
 
   // Return Blended Source
   return src;

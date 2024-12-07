@@ -42,7 +42,7 @@ echo "------ COMPILING NPAINTER ------"
 echo ""
 
 # Compile NPainter Pass-1
-nimble build -d:danger
+nimble build -d:danger --passL:-lole32 --passL:-lcomdlg32
 nopack
 
 # Assemble Release Folder
@@ -70,6 +70,6 @@ cp pack/win32.manifest ${SHARED}/win32.manifest
 echo "1 24 win32.manifest" >> ${SHARED}/win32.rc
 windres -o win32.o ${SHARED}/win32.rc
 # Compile NPainter Pass-2
-nimble build -d:danger -d:noSignalHandler --passL:win32.o --app:gui 
+nimble build -d:danger -d:noSignalHandler --passL:win32.o --passL:-lole32 --passL:-lcomdlg32 --app:gui
 cp npainter.exe release/npainter.exe
 rm npainter.exe win32.o
