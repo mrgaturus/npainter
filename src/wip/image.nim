@@ -48,7 +48,6 @@ proc configure(img: NImage) =
     let c = addr img.com
     c.root = root
     c.ctx = ctx
-    c.mipmap = 4
     # Configure Root Layer
     root.props.flags = {lpVisible}
     root.hook.fn = cast[NLayerProc](root16proc)
