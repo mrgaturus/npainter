@@ -163,7 +163,7 @@ proc copyTiles(src, dst: NLayer) =
     # Copy Buffer Tile
     t1.toBuffer()
     copyMem(t1.data.buffer, 
-      t0.data.buffer, t0.bytes)
+      t0.data.buffer, t0.bytes * 2)
 
 proc copyLayer*(img: NImage, layer: NLayer): NLayer =
   result = img.copyLayerBase(layer)
@@ -197,7 +197,7 @@ proc mergeRegion(src, dst: NLayer): NTileReserved =
   result.h = max(r0.h, r1.h)
 
 proc mergeFill(dst: var NTile) =
-  var color {.align: 16.}: uint64
+  var color {.align: 16.}: uint64 = 0
   if dst.found:
     color = dst.data.color
   # Convert to Buffer
@@ -237,13 +237,14 @@ proc mergeLayer*(img: NImage, src, dst: NLayer): NLayer =
   let r = mergeRegion(src, dst)
   g1[].ensure(r.x, r.y,
     r.w - r.x, r.h - r.y)
-  # Configure Layer Properties
-  var co: NImageComposite
+  # Configure Layer Blending
   let props = addr src.props
-  # Configure Layer Properties
+  var co = default(NImageComposite)
   co.alpha = cuint(props.opacity * 65535.0)
-  co.clip = cast[cuint](lpClipping in props.flags)
   co.fn = blend_procs[props.mode]
+  # Configure Layer Blending: Clipping
+  let flags = props.flags - dst.props.flags
+  co.clip = cast[cuint](lpClipping in flags)
   # Blend Layer Tiles
   for y in r.y ..< r.h:
     for x in r.x ..< r.w:
