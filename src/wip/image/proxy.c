@@ -125,19 +125,25 @@ void proxy_uniform(image_combine_t* co) {
   // Source Pixel Values
   __m128i xmm0, xmm1, xmm2, xmm3;
   __m128i xmm4, xmm5, xmm6, xmm7;
-  // Load First Buffer
-  __m128i check = _mm_load_si128((__m128i*) src_y);
-  __m128i mask = _mm_cmpeq_epi32(check, check);
-  check = _mm_unpacklo_epi64(check, check);
-  check = _mm_srli_epi16(check, 8);
+  // Load First Pixel from Buffer
+  __m128i pixel = _mm_load_si128((__m128i*) src_y);
+  __m128i check = _mm_cmpeq_epi32(pixel, pixel);
+  __m128i mask = _mm_cmpeq_epi32(pixel, pixel);
+  
+  // Prepare Mask and Pixel
+  if (co->src.bpp == 4)
+    mask = _mm_slli_epi16(mask, 8);
+  else mask = _mm_slli_epi16(mask, 4);
+  pixel = _mm_unpacklo_epi64(pixel, pixel);
+  pixel = _mm_and_si128(pixel, mask);
 
-  for (int count, y = 0; y < h; y++) {
+  for (int y = 0; y < h; y++) {
+    int count = w;
     src_x = src_y;
-    count = w;
 
     // Check Region Uniform
     while (count > 0) {
-      xmm0 = _mm_load_si128((__m128i*) src_x);
+      xmm0 = _mm_load_si128((__m128i*) src_x + 0);
       xmm1 = _mm_load_si128((__m128i*) src_x + 1);
       xmm2 = _mm_load_si128((__m128i*) src_x + 2);
       xmm3 = _mm_load_si128((__m128i*) src_x + 3);
@@ -146,33 +152,32 @@ void proxy_uniform(image_combine_t* co) {
       xmm6 = _mm_load_si128((__m128i*) src_x + 6);
       xmm7 = _mm_load_si128((__m128i*) src_x + 7);
       // Lower Pixel Precision
-      xmm0 = _mm_srli_epi16(xmm0, 8);
-      xmm1 = _mm_srli_epi16(xmm1, 8);
-      xmm2 = _mm_srli_epi16(xmm2, 8);
-      xmm3 = _mm_srli_epi16(xmm3, 8);
-      xmm4 = _mm_srli_epi16(xmm4, 8);
-      xmm5 = _mm_srli_epi16(xmm5, 8);
-      xmm6 = _mm_srli_epi16(xmm6, 8);
-      xmm7 = _mm_srli_epi16(xmm7, 8);
-      // Check if Pixel Match Pattern
-      xmm0 = _mm_cmpeq_epi8(xmm0, check);
-      xmm1 = _mm_cmpeq_epi8(xmm1, check);
-      xmm2 = _mm_cmpeq_epi8(xmm2, check);
-      xmm3 = _mm_cmpeq_epi8(xmm3, check);
-      xmm4 = _mm_cmpeq_epi8(xmm4, check);
-      xmm5 = _mm_cmpeq_epi8(xmm5, check);
-      xmm6 = _mm_cmpeq_epi8(xmm6, check);
-      xmm7 = _mm_cmpeq_epi8(xmm7, check);
-      // Combine Pixel Checks
+      xmm0 = _mm_and_si128(xmm0, mask);
+      xmm1 = _mm_and_si128(xmm1, mask);
+      xmm2 = _mm_and_si128(xmm2, mask);
+      xmm3 = _mm_and_si128(xmm3, mask);
+      xmm4 = _mm_and_si128(xmm4, mask);
+      xmm5 = _mm_and_si128(xmm5, mask);
+      xmm6 = _mm_and_si128(xmm6, mask);
+      xmm7 = _mm_and_si128(xmm7, mask);
+      // Check Match with Pixel
+      xmm0 = _mm_cmpeq_epi16(xmm0, pixel);
+      xmm1 = _mm_cmpeq_epi16(xmm1, pixel);
+      xmm2 = _mm_cmpeq_epi16(xmm2, pixel);
+      xmm3 = _mm_cmpeq_epi16(xmm3, pixel);
+      xmm4 = _mm_cmpeq_epi16(xmm4, pixel);
+      xmm5 = _mm_cmpeq_epi16(xmm5, pixel);
+      xmm6 = _mm_cmpeq_epi16(xmm6, pixel);
+      xmm7 = _mm_cmpeq_epi16(xmm7, pixel);
+      // Combine Match with Pixel
       xmm0 = _mm_and_si128(xmm0, xmm1);
       xmm2 = _mm_and_si128(xmm2, xmm3);
       xmm4 = _mm_and_si128(xmm4, xmm5);
       xmm6 = _mm_and_si128(xmm6, xmm7);
       xmm0 = _mm_and_si128(xmm0, xmm2);
       xmm1 = _mm_and_si128(xmm4, xmm6);
-      xmm0 = _mm_and_si128(xmm0, xmm1);
-      // Accumulate Pixel Checks
-      mask = _mm_and_si128(mask, xmm0);
+      check = _mm_and_si128(check, xmm0);
+      check = _mm_and_si128(check, xmm1);
 
       // Step Buffer
       src_x += 128;
@@ -184,12 +189,13 @@ void proxy_uniform(image_combine_t* co) {
   }
 
   // Change Buffer to Uniform if pass
-  xmm1 = _mm_cmpeq_epi32(mask, mask);
-  if (_mm_testc_si128(mask, xmm1) == 1) {
+  xmm1 = _mm_cmpeq_epi32(check, check);
+  if (_mm_testc_si128(check, xmm1) == 1) {
     co->src.stride = co->src.bpp;
     // Store 8bit to 16bit Uniform
-    check = _mm_packus_epi16(check, check);
-    check = _mm_unpacklo_epi8(check, check);
-    _mm_store_si128((__m128i*) co->src.buffer, check);
+    pixel = _mm_srli_epi16(pixel, 8);
+    pixel = _mm_packus_epi16(pixel, pixel);
+    pixel = _mm_unpacklo_epi8(pixel, pixel);
+    _mm_store_si128((__m128i*) co->src.buffer, pixel);
   }
 }
