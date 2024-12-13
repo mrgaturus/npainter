@@ -398,11 +398,11 @@ proc readBook(stage: ptr NUndoStage, book: ptr NUndoBook) =
     commit(codec, stage)
 
 proc readRegion(stage: ptr NUndoStage) =
-  let r0 = stage.before.region
+  var r0 = stage.before.region
   let r1 = stage.after.region
   # Check Stage Region
   if r0 != r1:
-    var m: NImageMark
+    var m = default(NImageMark)
     m.expand(r0.x, r0.y, r0.w, r0.h)
     m.expand(r1.x, r1.y, r1.w, r1.h)
     m.x0 *= 32; m.y0 *= 32
@@ -410,6 +410,12 @@ proc readRegion(stage: ptr NUndoStage) =
     # Mark Status Tiles
     stage.status[].clip = m
     stage.status[].mark(m)
+  elif stage.before == stage.after:
+    r0.x *= 32; r0.y *= 32
+    r0.w *= 32; r0.h *= 32
+    # Expand Status Tiles
+    expand(stage.status.clip,
+      r0.x, r0.y, r0.w, r0.h)
 
 proc readBefore*(stage: ptr NUndoStage) =
   stage.readBook(stage.before)

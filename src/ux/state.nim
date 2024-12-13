@@ -74,11 +74,15 @@ controller NPainterState:
 
   callback cbUndo:
     let canvas = self.engine.canvas
+    wasMoved(canvas.image.status.clip)
+    # Dispatch Undo Step
     let flags = undo(canvas.undo)
     self.reactUndo(flags)
 
   callback cbRedo:
     let canvas = self.engine.canvas
+    wasMoved(canvas.image.status.clip)
+    # Dispatch Redo Step
     let flags = redo(canvas.undo)
     self.reactUndo(flags)
 
