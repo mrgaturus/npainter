@@ -48,9 +48,11 @@ type
     first, last: NUndoStep
     firs0, las0: NUndoStep
     # Step Cursor
-    swipe, busy: bool
     cursor: NUndoStep
     curso0: NUndoStep
+    # Step Cursor Status
+    busy, bus0: bool
+    swipe: bool
 
 # ---------------------------------
 # Undo Manager Creation/Destruction
@@ -170,10 +172,12 @@ proc pushed(undo: NImageUndo, cmd: NUndoCommand): NUndoStep =
     cursor.next = result
     result.prev = cursor
   else: undo.first = result
-  # Replace Current Cursors
+  # Replace Cursors
   undo.cursor = result
   undo.last = result
+  # Replace Cursors Status
   undo.swipe = false
+  undo.busy = true
 
 proc chained(step: NUndoStep, rev: bool) =
   let prev = if not rev: step.prev else: step.next
@@ -355,13 +359,12 @@ proc swap0stage(undo: NImageUndo) =
   # Execute Coroutine
   undo.coro.pass(swap0coro)
   undo.coro.spawn()
-  undo.busy = true
+  undo.bus0 = true
 
 proc swap0check(undo: NImageUndo) =
   var step = default(NUndoStep)
-  if undo.last.chain == chainStep:
-    discard
   # Check for Steps inRAM
+  if undo.busy: discard
   elif undo.first != undo.firs0:
     step = undo.first
   elif undo.last != undo.las0:
@@ -374,7 +377,7 @@ proc swap0check(undo: NImageUndo) =
         break
       step = prev
   # Dispatch Coroutine
-  undo.busy = false
+  undo.bus0 = false
   undo.curso0 = step
   if not isNil(step):
     undo.swap0stage()
@@ -526,7 +529,8 @@ proc flush*(undo: NImageUndo) =
   of chainStep: chainEnd
   else: peek.chain
   # Swap if not Busy
-  if not undo.busy:
+  undo.busy = false
+  if not undo.bus0:
     swap0check(undo)
 
 proc undo*(undo: NImageUndo): set[NUndoEffect] =
