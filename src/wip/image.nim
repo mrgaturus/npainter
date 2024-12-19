@@ -46,20 +46,21 @@ proc configure(img: NImage) =
   # Compositor Configure
   block compositor:
     let c = addr img.com
-    c.root = root
-    c.ctx = ctx
     # Configure Root Layer
     root.props.flags = {lpVisible}
+    root.props.opacity = 1.0
     root.hook.fn = cast[NLayerProc](root16proc)
+    root.hook.ext = cast[ptr NImageContext](ctx)
+    # Confgure Compositor Context
     c.fn = cast[NCompositorProc](blend16proc)
+    c.ext = cast[ptr NImageContext](ctx)
+    c[].configure(ctx.w32, ctx.h32)
   # Proxy Configure
   block proxy:
     let p = addr img.proxy
-    p.ctx = ctx
     p.status = status
-  # Configure Compositor & Proxy
-  img.com.configure()
-  img.proxy.configure()
+    p.ctx = ctx
+    p[].configure()
 
 proc createImage*(w, h: cint): NImage =
   result = create(result[].typeof)

@@ -75,15 +75,14 @@ proc blendProxy(state: ptr NCompositorState) =
   state.blendBuffer(src)
 
 proc proxy16proc(state: ptr NCompositorState) =
-  case state.cmd
+  case state.step.cmd
   of cmBlendLayer:
     state.blendProxy()
   # Blend Clipping
   of cmScopeClip:
-    if state.scope.mode != bmPassthrough:
-      state.clearScope()
+    state.clearScope()
     state.blendProxy()
-  # Blend Discard
+  # Blending Default
   else: state.blend16proc()
 
 # ---------------------
@@ -95,7 +94,7 @@ proc mapping(proxy: var NImageProxy, mode: NProxyMode) =
     ctx = proxy.ctx
     layer = proxy.layer
   # Configure Context Mapping
-  const bpp = sizeof(cushort) shl 2
+  const bpp = sizeof(uint16) shl 2
   let map = ctx[].mapAux(bpp)
   # Configure Mapping Region
   proxy.map = NImageRegion(map)

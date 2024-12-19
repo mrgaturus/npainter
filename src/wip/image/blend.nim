@@ -31,22 +31,20 @@ type
     co1*: NImageComposite
 
 proc blendCombine*(state: ptr NCompositorState): NBlendCombine =
-  let
-    co1 = addr result.co1
-    # State Information
-    props = addr state.layer.props
-    scope = state.scope
-    mode = props.mode
-    # Accumulated Opacity
-    alpha = props.opacity * scope.alpha1
+  result = default(NBlendCombine)
+  let step = state.step
+  let co = addr result.co1
+  # Prepare Props
+  let mode = step.mode
+  let alpha = uint32(step.alpha)
   # Prepare Opacity, Clipping and Blending
-  co1.alpha = cuint(alpha * 65535.0)
-  co1.clip = cast[cuint](state.clip)
-  co1.fn = blend_procs[mode]
+  co.alpha = (alpha shl 8) or alpha
+  co.clip = cast[cuint](step.clip)
+  co.fn = blend_procs[mode]
   # Reset when Preparing Clipping
-  if state.cmd == cmScopeClip:
-    co1.alpha = 65535
-    co1.fn = blend_normal
+  if step.cmd == cmScopeClip:
+    co.alpha = 65535
+    co.fn = blend_normal
 
 proc blendChunk*(co: ptr NImageComposite) =
   let uniform = co.src.stride == co.src.bpp
@@ -97,9 +95,9 @@ proc blendScope*(state: ptr NCompositorState) =
 proc packScope(state: ptr NCompositorState) =
   let 
     lod = state.mipmap
-    ctx = state.chunk.com.ctx
     src = state.scope.buffer
   # Configure Buffer Combine
+  let ctx = cast[ptr NImageContext](state.ext)
   var dst = ctx[].mapFlat(lod).chunk()
   dst.w = dst.w shl lod
   dst.h = dst.h shl lod
@@ -159,7 +157,7 @@ proc blendLayer*(state: ptr NCompositorState) =
   let
     lod = state.mipmap
     # Layer Objects
-    layer = state.layer
+    layer = state.step.layer
     tiles = addr layer.tiles
     dst = state.scope.buffer
     # Layer Region Size
@@ -182,29 +180,20 @@ proc blendLayer*(state: ptr NCompositorState) =
 # -------------------------
 
 proc blend16proc*(state: ptr NCompositorState) =
-  case state.cmd
-  of cmBlendLayer:
-    state.blendLayer()
-  # Blend Scoping
-  of cmBlendScope, cmBlendClip:
-    state.blendScope()
-  of cmScopeRoot, cmScopeImage:
-    state.clearScope()
-  # Blend Clipping
+  let step = state.step
+  case step.cmd
+  of cmBlendLayer: state.blendLayer()
+  of cmBlendScope: state.blendScope()
+  of cmScopeImage: state.clearScope()
   of cmScopeClip:
-    # Skip folder because has image already
-    if state.layer.kind == lkFolder: return
-    if state.scope.mode != bmPassthrough:
+    if step.layer.kind != lkFolder:
       state.clearScope()
-    state.blendLayer()
+      state.blendLayer()
   # Blend Discard
   else: discard
 
 proc root16proc*(state: ptr NCompositorState) =
-  case state.cmd
-  of cmScopeRoot:
-    state.clearScope()
-  of cmBlendScope:
-    state.packScope()
-  # Blend Discard
+  case state.step.cmd
+  of cmBlendScope: state.packScope()
+  of cmScopeImage: state.clearScope()
   else: discard

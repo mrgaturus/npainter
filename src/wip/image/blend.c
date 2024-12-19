@@ -724,6 +724,8 @@ __m128i blend_luminosity(__m128i src, __m128i dst) {
 const blend_proc_t blend_procs[] = {
   blend_normal,
   blend_normal,
+  blend_normal,
+  blend_normal,
   // Darker Blendings
   blend_multiply,
   blend_darken,

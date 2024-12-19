@@ -23,6 +23,8 @@ icons "dock/layers", 32:
 const blendname*: array[NBlendMode, cstring] = [
   bmNormal: "Normal",
   bmPassthrough: "Passthrough",
+  bmMask: "Mask",
+  bmStencil: "Stencil",
   # -- Darker --
   bmMultiply: "Multiply",
   bmDarken: "Darken",

@@ -5,6 +5,7 @@ type
   NBlendMode* {.pure.} = enum
     bmNormal
     bmPassthrough
+    bmMask, bmStencil
     # Darker
     bmMultiply
     bmDarken

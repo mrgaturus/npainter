@@ -21,12 +21,9 @@ type
   NLayerKind* = enum
     lkColor
     lkMask
-    lkStencil
-    # Layer Tree
     lkFolder
   NLayerFlag* = enum
     lpVisible
-    # Layer Props
     lpClipping
     lpProtectAlpha
     lpTarget
@@ -38,7 +35,6 @@ type
     mode*: NBlendMode
     flags*: set[NLayerFlag]
     opacity*: cfloat
-    # GUI Labeling
     label*: string
   NLayerLevel* = object
     depth*: cint
@@ -69,7 +65,7 @@ type
     props*: NLayerProps
     # Layer Data
     case kind*: NLayerKind
-    of lkColor, lkMask, lkStencil:
+    of lkColor, lkMask:
       tiles*: NTileImage
     of lkFolder:
       first*, last*: NLayer

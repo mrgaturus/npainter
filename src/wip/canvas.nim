@@ -1,10 +1,9 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 # Copyright (c) 2024 Cristian Camilo Ruiz <mrgaturus>
 import nogui/async/pool
+import image, undo
+import image/[context, composite]
 import canvas/[matrix, render, copy]
-import image, image/[context], undo
-from image/composite import
-  mark, dispatch
 
 type
   NCanvasManager* = ptr object
@@ -138,6 +137,13 @@ proc mark(image: NImage, tile: ptr NCanvasTile, level: cint) =
 # Canvas Image Update
 # -------------------
 
+proc composite(image: NImage, pool: NThreadPool) =
+  let com = addr image.com
+  # Prepare Composite Pipeline
+  com[].stepClear()
+  com[].stepLayer(image.root)
+  com[].dispatch(pool)
+
 proc composite*(canvas: NCanvasImage) =
   let
     image = canvas.image
@@ -148,7 +154,7 @@ proc composite*(canvas: NCanvasImage) =
     mark(image, tile, level)
   # Dispatch Compositor
   let pool = canvas.man.pool
-  image.com.dispatch(pool)
+  image.composite(pool)
 
 proc stream*(canvas: NCanvasImage) =
   let
