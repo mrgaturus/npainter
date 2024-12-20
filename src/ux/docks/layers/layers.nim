@@ -35,10 +35,13 @@ icons "dock/layers", 16:
 
 controller CXLayersDock:
   attributes:
-    # Combomodel
     layers: CXLayers
     list: UXLayerList
-    mode: ComboModel
+    # Combo Models
+    modeMask: ComboModel
+    modeColor: ComboModel
+    itemNormal: UXComboItem
+    itemPass: UXComboItem
     # Usable Dock
     {.public.}:
       dock: UXDockContent
@@ -46,7 +49,7 @@ controller CXLayersDock:
   callback cbUpdate:
     let
       m = peek(self.layers.mode)[]
-      mode {.cursor.} = self.mode
+      mode {.cursor.} = self.modeColor
     # Select Without Callback
     wasMoved(mode.onchange)
     mode.select(ord m)
@@ -54,7 +57,7 @@ controller CXLayersDock:
 
   callback cbChangeMode:
     let m = react(self.layers.mode)
-    m[] = NBlendMode(self.mode.selected.value)
+    m[] = NBlendMode(self.modeColor.selected.value)
 
   callback cbStructure:
     self.list.reload()
@@ -63,9 +66,16 @@ controller CXLayersDock:
     discard
 
   proc createCombo() =
-    self.mode = 
+    self.itemNormal = comboitem(bmNormal)
+    self.itemPass = comboitem(bmPassthrough)
+    self.modeMask =
       combomodel(): menu("").child:
-        comboitem(bmNormal)
+        comboitem(bmMask)
+        comboitem(bmStencil)
+    self.modeColor =
+      combomodel(): menu("").child:
+        self.itemNormal
+        self.itemPass
         menuseparator("Dark")
         comboitem(bmMultiply)
         comboitem(bmDarken)
@@ -96,7 +106,8 @@ controller CXLayersDock:
         comboitem(bmColor)
         comboitem(bmLuminosity)
     # Change Blending Callback
-    self.mode.onchange = self.cbChangeMode
+    self.modeColor.onchange = self.cbChangeMode
+    self.modeMask.onchange = self.cbChangeMode
 
   proc createWidget: GUIWidget =
     let
@@ -111,7 +122,7 @@ controller CXLayersDock:
       min: margin(4):
         vertical().child:
           form().child:
-            field("Blending"): combobox(self.mode)
+            field("Blending"): combobox(self.modeColor)
             field("Opacity"): slider(la.opacity)
           grid(2, 2).child:
             cell(0, 0): button("Protect Alpha", iconAlpha, la.protect)
@@ -121,17 +132,18 @@ controller CXLayersDock:
       # Layer Control
       min: level().child:
         # Layer Creation
-        button(iconAddLayer, la.cbCreateLayer).clear()
-        button(iconAddMask, cb).clear()
-        button(iconAddFolder, la.cbCreateFolder).clear()
-        vseparator() # Layer Manipulation
-        button(iconDuplicate, la.cbDuplicateLayer).clear()
-        button(iconMerge, la.cbMergeLayer).clear()
-        button(iconClear, la.cbClearLayer).clear()
-        button(iconDelete, la.cbRemoveLayer).clear()
+        glass: button(iconAddLayer, la.cbCreateLayer)
+        glass: button(iconAddMask, cb)
+        glass: button(iconAddFolder, la.cbCreateFolder)
+        vseparator()
+        # Layer Manipulation
+        glass: button(iconDuplicate, la.cbDuplicateLayer)
+        glass: button(iconMerge, la.cbMergeLayer)
+        glass: button(iconClear, la.cbClearLayer)
+        glass: button(iconDelete, la.cbRemoveLayer)
         # Layer Reordering Buttons
-        tail: button(iconUp, la.cbRaiseLayer).clear()
-        tail: button(iconDown, la.cbLowerLayer).clear()
+        tail: glass: button(iconUp, la.cbRaiseLayer)
+        tail: glass: button(iconDown, la.cbLowerLayer)
       # Layer Item
       scrollview():
         self.list
