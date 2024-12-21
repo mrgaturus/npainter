@@ -37,9 +37,10 @@ controller CXLayersDock:
   attributes:
     layers: CXLayers
     list: UXLayerList
-    # Combo Models
+    # Combobox Modes
     modeMask: ComboModel
     modeColor: ComboModel
+    modeCombo: UXComboBox
     itemNormal: UXComboItem
     itemPass: UXComboItem
     # Usable Dock
@@ -47,23 +48,41 @@ controller CXLayersDock:
       dock: UXDockContent
 
   callback cbUpdate:
-    let
-      m = peek(self.layers.mode)[]
-      mode {.cursor.} = self.modeColor
+    let layer = self.layers.selected
+    let mode = layer.props.mode
+    # Detach Passthrough
+    let pass = self.itemPass
+    if not isNil(pass.prev):
+      pass.detach()
+      wasMoved(pass.prev)
+    # Select Current Model
+    let model {.cursor.} =
+      case layer.kind
+      of lkColor: self.modeColor
+      of lkMask: self.modeMask
+      of lkFolder:
+        attachNext(self.itemNormal, pass)
+        self.modeColor
     # Select Without Callback
-    wasMoved(mode.onchange)
-    mode.select(ord m)
-    mode.onchange = self.cbChangeMode
+    wasMoved(model.onchange)
+    model.select(ord mode)
+    model.onchange = self.cbChangeMode
+    model(self.modeCombo, model)
+    send(self.modeCombo, wsLayout)
 
   callback cbChangeMode:
+    let layer = self.layers.selected
+    let model {.cursor.} =
+      case layer.kind
+      of lkColor, lkFolder:
+        self.modeColor
+      of lkMask: self.modeMask
+    # Change Current Blend Mode
     let m = react(self.layers.mode)
-    m[] = NBlendMode(self.modeColor.selected.value)
+    m[] = NBlendMode(model.selected.value)
 
   callback cbStructure:
     self.list.reload()
-
-  callback cbDummy:
-    discard
 
   proc createCombo() =
     self.itemNormal = comboitem(bmNormal)
@@ -108,11 +127,10 @@ controller CXLayersDock:
     # Change Blending Callback
     self.modeColor.onchange = self.cbChangeMode
     self.modeMask.onchange = self.cbChangeMode
+    self.modeCombo = combobox(self.modeColor)
 
   proc createWidget: GUIWidget =
-    let
-      cb = self.cbDummy
-      la = self.layers
+    let la = self.layers
     # Create Layer List
     self.list = layerlist(self.layers)
     self.list.reload()
@@ -122,7 +140,7 @@ controller CXLayersDock:
       min: margin(4):
         vertical().child:
           form().child:
-            field("Blending"): combobox(self.modeColor)
+            field("Blending"): self.modeCombo
             field("Opacity"): slider(la.opacity)
           grid(2, 2).child:
             cell(0, 0): button("Protect Alpha", iconAlpha, la.protect)
@@ -133,7 +151,7 @@ controller CXLayersDock:
       min: level().child:
         # Layer Creation
         glass: button(iconAddLayer, la.cbCreateLayer)
-        glass: button(iconAddMask, cb)
+        glass: button(iconAddMask, la.cbCreateMask)
         glass: button(iconAddFolder, la.cbCreateFolder)
         vseparator()
         # Layer Manipulation

@@ -74,12 +74,16 @@ controller CXLayers:
       undo = self.canvas.undo
       step = undo.push(ucLayerCreate)
     # Put Next to Selected or Inside a Folder
-    if target.kind != lkFolder or kind == lkFolder:
+    if target.kind != lkFolder or kind != lkColor:
       target.attachPrev(layer)
     else: target.attachInside(layer)
     # Default Layer Properties
-    layer.props.flags.incl(lpVisible)
+    var flags = {lpVisible}
+    if kind == lkMask:
+      flags.incl(lpClipping)
+      layer.props.mode = bmMask
     layer.props.opacity = 1.0
+    layer.props.flags = flags
     # Select New Layer
     force(self.onstructure)
     self.select(layer)
@@ -176,6 +180,9 @@ controller CXLayers:
 
   callback cbCreateFolder:
     self.create(lkFolder)
+
+  callback cbCreateMask:
+    self.create(lkMask)
 
   callback cbDuplicateLayer:
     let
@@ -345,23 +352,6 @@ controller CXLayers:
   # Layer Control Initialization
   # ----------------------------
 
-  proc bindLayer0proof =
-    let
-      canvas = self.canvas
-      img = canvas.image
-      layer = img.createLayer(lkColor)
-    # Change Layer Properties
-    layer.props.flags.incl(lpVisible)
-    layer.props.opacity = 1.0
-    img.root.attachInside(layer)
-    # Select Current Layer
-    img.selectLayer(layer)
-    self.reflect(layer)
-    # Update Structure
-    send(self.cbUpdateLayer)
-    send(self.onselect)
-    send(self.onstructure)
-
   new cxlayers(canvas: NCanvasImage):
     result.canvas = canvas
     result.image = canvas.image
@@ -375,5 +365,20 @@ controller CXLayers:
     result.wand.cb = cb0
     result.opacity.cb = cb1
     result.mode.cb = cb0
-    # Create Initial Layer
-    result.bindLayer0proof()
+
+  proc proof0default*() =
+    let
+      canvas = self.canvas
+      img = canvas.image
+      layer = img.createLayer(lkColor)
+    # Change Layer Properties
+    layer.props.flags.incl(lpVisible)
+    layer.props.opacity = 1.0
+    img.root.attachInside(layer)
+    # Select Current Layer
+    img.selectLayer(layer)
+    self.reflect(layer)
+    # Update Structure
+    force(self.onstructure)
+    force(self.cbUpdateLayer)
+    force(self.onselect)

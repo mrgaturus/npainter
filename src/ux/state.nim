@@ -90,11 +90,13 @@ controller NPainterState:
   proc proof0default*() =
     # Locate Canvas to Center
     let engine {.cursor.} = self.engine
-    self.canvas.x.peek[] = cfloat(engine.canvas.image.ctx.w) * 0.5
-    self.canvas.y.peek[] = cfloat(engine.canvas.image.ctx.h) * 0.5
+    let ctx {.cursor.} = engine.canvas.image.ctx
+    self.canvas.x.peek[] = cfloat(ctx.w) * 0.5
+    self.canvas.y.peek[] = cfloat(ctx.h) * 0.5
     lorp self.canvas.zoom.peek[], -1.0
     # Default Brush Values
     proof0default(self.brush)
+    proof0default(self.layers)
 
 # ---------------
 # State Exporting

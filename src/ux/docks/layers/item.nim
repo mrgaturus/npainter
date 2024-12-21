@@ -128,8 +128,12 @@ widget UXLayerThumb:
       layer = self.layer[]
       r = self.rect
     # TODO: draw thumbnail texture here
-    ctx.color 0xFFFFFFFF'u32
-    if layer.kind != lkFolder:
+    case layer.kind
+    of lkColor:
+      ctx.color rgba(255, 255, 255, 255)
+      ctx.fill rect(r)
+    of lkMask:
+      ctx.color rgba(0, 0, 0, 255)
       ctx.fill rect(r)
     # Draw Folder Collapsed
     elif lpFolded notin layer.props.flags:

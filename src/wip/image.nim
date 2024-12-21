@@ -27,7 +27,7 @@ type
     status*: NImageStatus
     com*: NCompositor
     # Image Layering
-    t0*, t1*: cint
+    t0*, t1*, t2*: uint32
     owner*: NLayerOwner
     root*: NLayer
     # Image Proxy
@@ -92,12 +92,10 @@ proc createLayer*(img: NImage, kind: NLayerKind): NLayer =
   # Register to Owner and Define Label
   if img.owner.register(addr result.code):
     let props = addr result.props
-    if kind != lkFolder:
-      props.label = "Layer " & $img.t0
-      inc(img.t0)
-    else: # Define Folder Label
-      props.label = "Folder " & $img.t1
-      inc(img.t1)
+    case result.kind
+    of lkColor: props.label = "Layer " & $img.t0; inc(img.t0)
+    of lkFolder: props.label = "Folder " & $img.t1; inc(img.t1)
+    of lkMask: props.label = "Mask " & $img.t2; inc(img.t2)
 
 proc attachLayer*(img: NImage, layer: NLayer, tag: NLayerTag) =
   let owner = addr img.owner
