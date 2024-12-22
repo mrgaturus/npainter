@@ -7,12 +7,13 @@ type
   NCompositorCmd* = enum
     cmBlendDiscard
     cmBlendLayer
+    cmBlendMask
     cmBlendScope
     # Layer Scoping
     cmScopeImage
     cmScopePass
-    cmScopeMask
     cmScopeClip
+    cmScopeMask
   NCompositorStep* = object
     layer*: NLayer
     # Step Information
@@ -66,7 +67,7 @@ proc step*(layer: NLayer): NCompositorStep =
   let props = addr layer.props
   let clip = lpClipping in props.flags
   # Check Step Visibility
-  var alpha = uint8(props.opacity * 255.0)
+  var alpha = uint8(props.opacity * 255.0 + 0.5)
   if lpVisible notin props.flags:
     alpha = 0
   # Check Step Mask
@@ -170,8 +171,11 @@ proc stepUnsafe*(com: var NCompositor, step: NCompositorStep) =
 proc stepLayer*(com: var NCompositor, layer: NLayer) =
   if layer.kind != lkFolder:
     var step = layer.step()
-    if step.alpha > 0:
+    # Check Color or Mask
+    if step.alpha == 0: discard
+    elif layer.kind != lkMask:
       step.cmd = cmBlendLayer
+    else: step.cmd = cmBlendMask
     # Add Simple Command
     com.steps.add(step)
     return
@@ -238,6 +242,8 @@ proc pushScope(stack: var NCompositorStack, step: NCompositorStep) =
     elif step.cmd == cmScopeMask and mask:
       scope.buffer = lower.buffer
       scope.step.alpha = 0
+    elif step.cmd == cmScopePass and step.cmd == lower.step.cmd:
+      scope.step.clip = lower.step.clip
     # Check Scope Optimized Buffer
     if scope.buffer == lower.buffer:
       stack.scopes.add(scope)
@@ -288,12 +294,11 @@ proc scope(state: var NCompositorState): bool =
     state.step.clip =
       (state.step.clip or scope.step.clip) and
       lower.step.mode != bmPassthrough
-  else: discard
+  else: state.step.clip = false
   # Check Current Scope
   if scope != lower and
     scope.step.layer == lower.step.layer and
     state.step.cmd >= cmBlendScope: false
-  elif state.step.cmd == cmBlendDiscard: false
   elif state.step.alpha == 0: false
   elif scope.step.alpha == 0: false
   else: true
@@ -331,9 +336,10 @@ proc createState(chunk: ptr NCompositorBlock): NCompositorState =
 
 proc process(state: var NCompositorState) =
   case state.step.cmd
-  of cmBlendDiscard, cmBlendLayer:
+  of cmBlendDiscard: discard
+  of cmBlendLayer, cmBlendMask:
     state.dispatch()
-  of cmScopeImage..cmScopeClip:
+  of cmScopeImage..cmScopeMask:
     state.stack.pushScope(state.step)
     state.dispatch()
   of cmBlendScope:

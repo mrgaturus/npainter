@@ -44,6 +44,7 @@ type
 {.compile: "blend.c".}
 {.compile: "combine.c".}
 {.compile: "composite.c".}
+{.compile: "mask.c".}
 {.compile: "mipmap.c".}
 {.compile: "proxy.c".}
 {.push header: "wip/image/image.h".}
@@ -62,6 +63,7 @@ type
     dst*, src*: NImageBuffer
   NImageComposite* {.importc: "image_composite_t".} = object
     dst*, src*: NImageBuffer
+    ext*: NImageBuffer
     # Combine Properties
     alpha*, clip*: cuint
     fn*: NBlendProc
@@ -72,12 +74,21 @@ type
 proc combine_intersect*(co: ptr NImageCombine)
 proc combine_clip*(co: ptr NImageCombine, clip: NImageClip)
 proc combine_clear*(co: ptr NImageCombine)
+proc combine_copy*(co: ptr NImageCombine)
 proc combine_pack*(co: ptr NImageCombine)
+
 # composite.c
 proc composite_blend*(co: ptr NImageComposite)
 proc composite_blend_uniform*(co: ptr NImageComposite)
 proc composite_fn*(co: ptr NImageComposite)
 proc composite_fn_uniform*(co: ptr NImageComposite)
+
+# mask.c
+proc composite_mask*(co: ptr NImageComposite)
+proc composite_mask_uniform*(co: ptr NImageComposite)
+proc composite_pass*(co: ptr NImageComposite)
+proc composite_passmask*(co: ptr NImageComposite)
+proc composite_passmask_uniform*(co: ptr NImageComposite)
 
 # mipmap.c
 proc mipmap_reduce*(co: ptr NImageCombine)

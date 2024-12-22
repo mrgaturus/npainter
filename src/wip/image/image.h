@@ -4,6 +4,7 @@
 #define NPAINTER_IMAGE_H
 #include <smmintrin.h>
 
+__attribute__((always_inline))
 static inline __m128i _mm_multiply_color(__m128i a, __m128i b) {
   // Apply Alpha to Source
   a = _mm_mullo_epi32(a, b);
@@ -38,19 +39,21 @@ typedef struct {
 typedef struct {
   image_buffer_t src;
   image_buffer_t dst;
+  image_buffer_t ext;
   // Blend Properties
   unsigned int alpha, clip;
   blend_proc_t fn;
 } image_composite_t;
 
-// ------------------------------------
-// Image Buffer combine.c + composite.c
-// ------------------------------------
+// --------------------------------
+// Image Buffer Combine & Composite
+// --------------------------------
 
 // combine.c
 void combine_intersect(image_combine_t* co);
 void combine_clip(image_combine_t* co, image_clip_t clip);
 void combine_clear(image_combine_t* co);
+void combine_copy(image_combine_t* co);
 void combine_pack(image_combine_t* co);
 
 // composite.c
@@ -59,9 +62,16 @@ void composite_blend_uniform(image_composite_t* co);
 void composite_fn(image_composite_t* co);
 void composite_fn_uniform(image_composite_t* co);
 
-// -------------------------------
-// Image Buffer mipmap.c + proxy.c
-// -------------------------------
+// mask.c
+void composite_mask(image_composite_t* co);
+void composite_mask_uniform(image_composite_t* co);
+void composite_pass(image_composite_t* co);
+void composite_passmask(image_composite_t* co);
+void composite_passmask_uniform(image_composite_t* co);
+
+// ------------------
+// Image Buffer Proxy
+// ------------------
 
 // mipmap.c
 void mipmap_reduce(image_combine_t* co);

@@ -2,6 +2,7 @@
 // Copyright (c) 2023 Cristian Camilo Ruiz <mrgaturus>
 #include "image.h"
 
+__attribute__((always_inline))
 static inline __m128i _mm_blend_color(__m128i src, __m128i dst) {
   __m128i xmm0, xmm1;
 
@@ -17,6 +18,7 @@ static inline __m128i _mm_blend_color(__m128i src, __m128i dst) {
   return xmm1;
 }
 
+__attribute__((always_inline))
 static inline __m128i _mm_weight_color(__m128i src, __m128i dst) {
   __m128i xmm0, xmm1;
 
