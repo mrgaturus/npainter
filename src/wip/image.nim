@@ -83,9 +83,9 @@ proc destroy*(img: NImage) =
   `=destroy`(img[])
   dealloc(img)
 
-# ------------------------
-# Image Layer Manipulation
-# ------------------------
+# ------------------
+# Image Layer Basics
+# ------------------
 
 proc createLayer*(img: NImage, kind: NLayerKind): NLayer =
   result = createLayer(kind)
@@ -121,7 +121,11 @@ proc selectLayer*(img: NImage, layer: NLayer) =
   img.selected = layer
   img.proxy.layer = layer
 
-proc markLayer*(img: NImage, layer: NLayer) =
+# -------------------------
+# Image Layer Marking: Base
+# -------------------------
+
+proc markBase(img: NImage, layer: NLayer) =
   let status = addr img.status
   # Mark Tiles if is a Image Layer
   if layer.kind == lkColor:
@@ -132,8 +136,57 @@ proc markLayer*(img: NImage, layer: NLayer) =
     var la = layer.first
     # Walk Folder Childrens
     while not isNil(la):
-      img.markLayer(la)
+      img.markBase(la)
       la = la.next
+
+proc markClip(img: NImage, layer: NLayer) =
+  var la = layer.prev
+  # Mark Layer Clips
+  while not isNil(la) and
+    lpClipping in la.props.flags:
+      img.markBase(la)
+      la = la.prev
+
+proc markFloor(img: NImage, layer: NLayer) =
+  var la = layer.next
+  # Mark Layer Floor
+  while not isNil(la) and
+    lpClipping in la.props.flags:
+      la = la.next
+  if not isNil(la):
+    img.markBase(la)
+
+# -------------------
+# Image Layer Marking
+# -------------------
+
+proc markFolder(img: NImage, layer: NLayer) =
+  let mode = layer.props.mode
+  img.markBase(layer)
+  # Mark Passthrough Clippers
+  if mode == bmPassthrough:
+    img.markClip(layer)
+
+proc markMask(img: NImage, layer: NLayer) =
+  let clip = lpClipping in layer.props.flags
+  let mode = layer.props.mode
+  let folder = layer.folder
+  # Mark Layer Mask
+  if mode != bmStencil:
+    let status = addr img.status
+    for tile in layer.tiles:
+      status[].mark32(tile.x, tile.y)
+    img.markClip(layer)
+  # Mark Layer Stencil
+  elif clip: img.markFloor(layer)
+  elif not isNil(folder):
+    img.markBase(folder)
+
+proc markLayer*(img: NImage, layer: NLayer) =
+  case layer.kind # Layer Quirks
+  of lkColor: img.markBase(layer)
+  of lkFolder: img.markFolder(layer)
+  of lkMask: img.markMask(layer)
 
 # ---------------------
 # Image Layer Duplicate

@@ -111,12 +111,12 @@ controller CXLayers:
   # --------------------------
 
   callback cbUpdateLayer:
-    let
-      layer = self.image.selected
-      props = addr layer.props
-      user {.cursor.} = cast[GUIWidget](layer.user)
+    var layer = self.image.selected
+    let props = addr layer.props
+    let user {.cursor.} = cast[GUIWidget](layer.user)
     # Update Layer Properties Flags
-    var flags = props.flags - {lpClipping .. lpLock}
+    let flags0 = props.flags
+    var flags = flags0 - {lpClipping .. lpLock}
     if self.clipping.peek[]: flags.incl(lpClipping)
     if self.protect.peek[]: flags.incl(lpProtectAlpha)
     if self.wand.peek[]: flags.incl(lpTarget)
@@ -125,6 +125,8 @@ controller CXLayers:
     props.flags = flags
     props.mode = self.mode.peek[]
     props.opacity = self.opacity.peek[].toRaw
+    if (lpClipping in flags0) != (lpClipping in flags):
+      layer = layer.folder
     # Update Layer Widget
     user.send(wsLayout)
     self.render(layer)

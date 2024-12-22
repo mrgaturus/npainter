@@ -41,7 +41,10 @@ proc blendCombine*(state: ptr NCompositorState): NBlendCombine =
   case step.cmd
   of cmScopeClip, cmScopeMask:
     co.alpha = 65535
-    co.fn = blend_normal
+    # Special Scoping Function
+    if mode notin {bmMask, bmStencil}:
+      co.fn = blend_normal
+    else: co.fn = composite_mask
   of cmBlendMask:
     if state.scope.step.mode == bmPassthrough:
       co.ext = state.lower.buffer
@@ -236,22 +239,26 @@ proc passScope*(state: ptr NCompositorState) =
 # -------------------------
 
 proc blend16proc*(state: ptr NCompositorState) =
+  const pass = {bmPassthrough, bmMask, bmStencil}
   let step = state.step
+  # Dispatch Layer Blending
   case step.cmd
   of cmBlendDiscard: discard
   of cmBlendLayer, cmBlendMask:
     state.blendLayer()
   of cmBlendScope:
-    if step.mode != bmPassthrough:
+    if step.mode notin pass:
       state.blendScope()
     else: state.passScope()
   # Blending Compositor Scope
   of cmScopeImage: state.clearScope()
   of cmScopePass: state.copyScope()
   of cmScopeClip, cmScopeMask:
-    if step.layer.kind != lkFolder:
-      state.clearScope()
-      state.blendLayer()
+    case step.layer.kind
+    of lkColor: state.clearScope()
+    of lkMask: state.copyScope()
+    of lkFolder: return
+    state.blendLayer()
 
 proc root16proc*(state: ptr NCompositorState) =
   case state.step.cmd

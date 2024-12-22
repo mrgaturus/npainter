@@ -232,18 +232,16 @@ proc pushScope(stack: var NCompositorStack, step: NCompositorStep) =
   if len(stack.scopes) > 0:
     let lower = stack.scopes[^1]
     let mask = step.mode in {bmMask, bmStencil}
-    let pass = step.mode == bmPassthrough
     # Check Same Layer or Cancel Clip
     if step.layer == lower.step.layer:
       scope.buffer = lower.buffer
-    elif step.cmd == cmScopeClip and (pass or mask):
-      scope.buffer = lower.buffer
-      scope.step.mode = bmPassthrough
     elif step.cmd == cmScopeMask and mask:
       scope.buffer = lower.buffer
       scope.step.alpha = 0
-    elif step.cmd == cmScopePass and step.cmd == lower.step.cmd:
-      scope.step.clip = lower.step.clip
+    elif lower.step.cmd == cmScopePass:
+      scope.step.clip =
+        scope.step.clip or
+        lower.step.clip
     # Check Scope Optimized Buffer
     if scope.buffer == lower.buffer:
       stack.scopes.add(scope)
@@ -284,21 +282,20 @@ proc scope(state: var NCompositorState): bool =
   let lower = addr stack.scopes[idx1]
   state.scope = scope
   state.lower = lower
+  # Check Scope Clipping: Lower
+  let step = addr state.step
+  var pass {.cursor.} = scope
+  if step.cmd == cmBlendScope:
+    pass = lower
   # Check Scope Clipping
-  case scope.step.cmd
-  of cmScopeClip:
-    state.step.clip =
-      state.step.clip and
-      scope.step.mode != bmPassthrough
-  of cmScopePass:
-    state.step.clip =
-      (state.step.clip or scope.step.clip) and
-      lower.step.mode != bmPassthrough
-  else: state.step.clip = false
+  if pass.step.cmd == cmScopePass:
+    step.clip = step.clip or pass.step.clip
+  elif pass.step.cmd != cmScopeClip:
+    step.clip = false
   # Check Current Scope
   if scope != lower and
     scope.step.layer == lower.step.layer and
-    state.step.cmd >= cmBlendScope: false
+    step.cmd >= cmBlendScope: false
   elif state.step.alpha == 0: false
   elif scope.step.alpha == 0: false
   else: true
