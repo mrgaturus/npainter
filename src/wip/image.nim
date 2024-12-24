@@ -93,9 +93,10 @@ proc createLayer*(img: NImage, kind: NLayerKind): NLayer =
   if img.owner.register(addr result.code):
     let props = addr result.props
     case result.kind
-    of lkColor: props.label = "Layer " & $img.t0; inc(img.t0)
-    of lkFolder: props.label = "Folder " & $img.t1; inc(img.t1)
-    of lkMask: props.label = "Mask " & $img.t2; inc(img.t2)
+    of lkColor16, lkColor8:
+      props.label = "Layer " & $img.t0; inc(img.t0)
+    of lkMask: props.label = "Mask " & $img.t1; inc(img.t1)
+    of lkFolder: props.label = "Folder " & $img.t2; inc(img.t2)
 
 proc attachLayer*(img: NImage, layer: NLayer, tag: NLayerTag) =
   let owner = addr img.owner
@@ -127,12 +128,14 @@ proc selectLayer*(img: NImage, layer: NLayer) =
 
 proc markBase(img: NImage, layer: NLayer) =
   let status = addr img.status
-  # Mark Tiles if is a Image Layer
-  if layer.kind == lkColor:
+  # Mark Color Layer
+  case layer.kind
+  of lkColor16, lkColor8:
     for tile in layer.tiles:
       status[].mark32(tile.x, tile.y)
-  # Mark Recursive if is a Folder
-  elif layer.kind == lkFolder:
+  # Mark Folder Recursive
+  of lkMask: discard
+  of lkFolder:
     var la = layer.first
     # Walk Folder Childrens
     while not isNil(la):
@@ -147,12 +150,18 @@ proc markClip(img: NImage, layer: NLayer) =
       img.markBase(la)
       la = la.prev
 
-proc markFloor(img: NImage, layer: NLayer) =
-  var la = layer.next
-  # Mark Layer Floor
+proc markScope(img: NImage, layer: NLayer) =
+  var la = layer
   while not isNil(la) and
     lpClipping in la.props.flags:
       la = la.next
+  # Find non Passthrough Scope
+  if not isNil(la) and la.kind == lkMask:
+    la = la.folder
+    while not isNil(la) and
+      la.props.mode == bmPassthrough:
+        la = la.folder
+  # Mark Layer Scope
   if not isNil(la):
     img.markBase(la)
 
@@ -163,28 +172,24 @@ proc markFloor(img: NImage, layer: NLayer) =
 proc markFolder(img: NImage, layer: NLayer) =
   let mode = layer.props.mode
   img.markBase(layer)
-  # Mark Passthrough Clippers
+  # Mark Passthrough Clips
   if mode == bmPassthrough:
     img.markClip(layer)
 
 proc markMask(img: NImage, layer: NLayer) =
-  let clip = lpClipping in layer.props.flags
   let mode = layer.props.mode
-  let folder = layer.folder
   # Mark Layer Mask
   if mode != bmStencil:
     let status = addr img.status
     for tile in layer.tiles:
       status[].mark32(tile.x, tile.y)
     img.markClip(layer)
-  # Mark Layer Stencil
-  elif clip: img.markFloor(layer)
-  elif not isNil(folder):
-    img.markBase(folder)
+  else: img.markScope(layer)
 
 proc markLayer*(img: NImage, layer: NLayer) =
-  case layer.kind # Layer Quirks
-  of lkColor: img.markBase(layer)
+  case layer.kind
+  of lkColor16, lkColor8:
+    img.markBase(layer)
   of lkFolder: img.markFolder(layer)
   of lkMask: img.markMask(layer)
 
@@ -220,7 +225,7 @@ proc copyTiles(src, dst: NLayer) =
 proc copyLayer*(img: NImage, layer: NLayer): NLayer =
   result = img.copyLayerBase(layer)
   # Copy Buffer Color Tiles
-  if layer.kind == lkColor:
+  if layer.kind != lkFolder:
     layer.copyTiles(result)
   elif layer.kind == lkFolder:
     var la0 = layer.last

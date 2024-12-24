@@ -57,12 +57,11 @@ controller CXLayersDock:
       wasMoved(pass.prev)
     # Select Current Model
     let model {.cursor.} =
-      case layer.kind
-      of lkColor: self.modeColor
-      of lkMask: self.modeMask
-      of lkFolder:
-        attachNext(self.itemNormal, pass)
+      if layer.kind != lkMask:
         self.modeColor
+      else: self.modeMask
+    if layer.kind == lkFolder:
+      attachNext(self.itemNormal, pass)
     # Select Without Callback
     wasMoved(model.onchange)
     model.select(ord mode)
@@ -73,10 +72,9 @@ controller CXLayersDock:
   callback cbChangeMode:
     let layer = self.layers.selected
     let model {.cursor.} =
-      case layer.kind
-      of lkColor, lkFolder:
+      if layer.kind != lkMask:
         self.modeColor
-      of lkMask: self.modeMask
+      else: self.modeMask
     # Change Current Blend Mode
     let m = react(self.layers.mode)
     m[] = NBlendMode(model.selected.value)

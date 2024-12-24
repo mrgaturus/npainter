@@ -21,7 +21,13 @@ type
     cells: NTileCells
     bits: NTileBits
   # -- Tiled Image --
+  NTileDepth* {.pure size: 4.} = enum
+    depth0bpp
+    depth2bpp
+    depth4bpp
+    depth8bpp
   NTileImage* = object
+    bits*: NTileDepth
     bpp*, bytes*: cshort
     grid: NTileGrid
 
@@ -219,15 +225,17 @@ proc mask(grid: var NTileGrid, idx: cint): uint32 =
 # Tile Image Creation
 # -------------------
 
-proc createTileImage*(bpp: 0..4): NTileImage =
-  const
-    bits = cshort sizeof(cushort)
-    size = cshort 1024 * bits
-  # Store Tile Image Bytes
-  result.bpp = bpp * bits
-  result.bytes = bpp * size
+proc createTileImage*(bits: NTileDepth): NTileImage =
+  let bpp = cshort(1 shl bits.ord)
+  result = default(NTileImage)
+  result.bits = bits
+  # Define Tile Bytes
+  if bits > depth0bpp:
+    result.bytes = bpp * 1024
+    result.bpp = bpp
 
 proc region*(tiles: var NTileImage): NTileReserved =
+  assert tiles.bits > depth0bpp
   let grid = addr tiles.grid
   # Return Reserved Grid Region
   result.x = grid.ox
@@ -245,12 +253,12 @@ proc clear*(tiles: var NTileImage) =
 # ---------------------
 
 proc ensure*(tiles: var NTileImage, x, y, w, h: cint) =
-  let
-    src = addr tiles.grid
-    # Source Copy Region
-    r = src[].region(x, y)
-    w0 = max(src.w, x + w - src.ox) + r.ox
-    h0 = max(src.h, y + h - src.oy) + r.oy
+  assert tiles.bits > depth0bpp
+  # Source Copy Region
+  let src = addr tiles.grid
+  let r = src[].region(x, y)
+  let w0 = max(src.w, x + w - src.ox) + r.ox
+  let h0 = max(src.h, y + h - src.oy) + r.oy
   # Create Expanded Grid
   if src.len == 0:
     src[] = createTileGrid(w, h)
@@ -272,9 +280,9 @@ proc ensure*(tiles: var NTileImage, x, y, w, h: cint) =
     src[] = dst
 
 proc shrink*(tiles: var NTileImage) =
-  let
-    src = addr tiles.grid
-    r = src[].bounds()
+  assert tiles.bits > depth0bpp
+  let src = addr tiles.grid
+  let r = src[].bounds()
   # Deallocate Grid if there is nothing
   if (r.w or r.h) <= 0 and src.len > 0:
     dealloc(src.cells)

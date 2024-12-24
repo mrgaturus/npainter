@@ -255,9 +255,11 @@ proc blend16proc*(state: ptr NCompositorState) =
   of cmScopePass: state.copyScope()
   of cmScopeClip, cmScopeMask:
     case step.layer.kind
-    of lkColor: state.clearScope()
+    of lkColor16, lkColor8:
+      state.clearScope()
     of lkMask: state.copyScope()
     of lkFolder: return
+    # Blend Layer to Scope
     state.blendLayer()
 
 proc root16proc*(state: ptr NCompositorState) =

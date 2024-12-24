@@ -74,7 +74,7 @@ controller CXLayers:
       undo = self.canvas.undo
       step = undo.push(ucLayerCreate)
     # Put Next to Selected or Inside a Folder
-    if target.kind != lkFolder or kind != lkColor:
+    if target.kind != lkFolder or kind >= lkMask:
       target.attachPrev(layer)
     else: target.attachInside(layer)
     # Default Layer Properties
@@ -178,7 +178,7 @@ controller CXLayers:
   # ----------------------
 
   callback cbCreateLayer:
-    self.create(lkColor)
+    self.create(lkColor16)
 
   callback cbCreateFolder:
     self.create(lkFolder)
@@ -239,6 +239,7 @@ controller CXLayers:
       layer = image.selected
       tiles = addr layer.tiles
     # Capture Before Tiles
+    if layer.kind == lkFolder: return
     let step = undo.push(ucLayerTiles)
     step.capture(layer)
     self.render(layer)
@@ -372,8 +373,8 @@ controller CXLayers:
     let
       canvas = self.canvas
       img = canvas.image
-      layer = img.createLayer(lkColor)
-    # Change Layer Properties
+    # Create Default Layer
+    let layer = img.createLayer(lkColor16)
     layer.props.flags.incl(lpVisible)
     layer.props.opacity = 1.0
     img.root.attachInside(layer)

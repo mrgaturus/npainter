@@ -129,7 +129,7 @@ widget UXLayerThumb:
       r = self.rect
     # TODO: draw thumbnail texture here
     case layer.kind
-    of lkColor:
+    of lkColor16, lkColor8:
       ctx.color rgba(255, 255, 255, 255)
       ctx.fill rect(r)
     of lkMask:
