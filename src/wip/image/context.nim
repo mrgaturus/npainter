@@ -10,10 +10,10 @@ type
     buffer*: pointer
   # Image Context
   NImageContext* = object
-    # Image Size
     w*, h*: cint
-    # Image Size Padded
-    w32*, h32*, s32*: cint
+    # Image Padded
+    w32*, h32*: cint
+    s32*: cint
     # Image Buffers
     flat: array[6, pointer]
     aux: seq[pointer]

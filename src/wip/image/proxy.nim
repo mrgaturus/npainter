@@ -4,35 +4,61 @@ import ffi, context, layer, tiles, composite, blend, chunk
 
 type
   NProxyMode* = enum
+    pmErase
     pmBlit
     pmBlend
-    pmErase
     # Alpha Lock
     pmClipBlit
     pmClipBlend
+  # Proxy Streaming
+  NProxyMap = object
+    tiles*: ptr NTileImage
+    buffer*: NImageMap
   NProxyStream = object
-    mode: NProxyMode
-    # Image Mapping
-    tiles: ptr NTileImage
-    map: NImageMap
+    mode*: NProxyMode
+    fn*: NBlendMode
+    # Stream Mapping
+    map*: NProxyMap
+    mask*: NProxyMap
+  # Proxy Dispatch
   NProxyBlock = object
-    x, y: cshort
-    dirty: uint32
-    # Buffer Stream
     stream: ptr NProxyStream
-  # Image Tile Proxy
-  NImageRegion {.borrow.} =
-    distinct NImageMap
+    # Block 256x128
+    dirty: uint32
+    x, y: int16
   NImageProxy* = object
     ctx*: ptr NImageContext
     status*: ptr NImageStatus
-    layer*: NLayer
-    # Proxy Streaming
-    map*: NImageRegion
-    stream: NProxyStream
+    stream*: NProxyStream
+    # Image Mapping
+    map*: NImageMap
+    mask*: NImageMap
     # Proxy Dispatch
+    layer: NLayer
     w256, h128: cint
     blocks: seq[NProxyBlock]
+
+# -----------------------
+# Image Proxy Compositing
+# -----------------------
+
+proc blendProxy(state: ptr NCompositorState) =
+  let 
+    stream = cast[ptr NProxyStream](state.ext)
+    src = chunk(stream.map.buffer)
+  # Blend Buffer to Scope
+  state.blendBuffer(src)
+
+proc proxy16proc(state: ptr NCompositorState) =
+  case state.step.cmd
+  of cmBlendLayer:
+    state.blendProxy()
+  # Blend Clipping
+  of cmScopeClip:
+    state.clearScope()
+    state.blendProxy()
+  # Blending Default
+  else: state.blend16proc()
 
 # ---------------------
 # Image Proxy Configure
@@ -49,7 +75,7 @@ proc configure*(proxy: var NImageProxy) =
   # Initialize Proxy Blocks
   setLen(proxy.blocks, l)
   # Locate Proxy Blocks
-  var i: cint
+  var i: uint = 0
   for y in 0 ..< h128:
     for x in 0 ..< w256:
       let b = addr proxy.blocks[i]
@@ -63,86 +89,54 @@ proc configure*(proxy: var NImageProxy) =
   proxy.w256 = w256
   proxy.h128 = h128
 
-# -----------------------
-# Image Proxy Compositing
-# -----------------------
-
-proc blendProxy(state: ptr NCompositorState) =
-  let 
-    stream = cast[ptr NProxyStream](state.ext)
-    src = chunk(stream.map)
-  # Blend Buffer to Scope
-  state.blendBuffer(src)
-
-proc proxy16proc(state: ptr NCompositorState) =
-  case state.step.cmd
-  of cmBlendLayer:
-    state.blendProxy()
-  # Blend Clipping
-  of cmScopeClip:
-    state.clearScope()
-    state.blendProxy()
-  # Blending Default
-  else: state.blend16proc()
-
-# ---------------------
-# Image Proxy Preparing
-# ---------------------
-
-proc mapping(proxy: var NImageProxy, mode: NProxyMode) =
-  let
-    ctx = proxy.ctx
-    layer = proxy.layer
-  # Configure Context Mapping
-  const bpp = sizeof(uint16) shl 2
+proc prepareBuffer(proxy: var NImageProxy, layer: NLayer) =
+  let ctx = proxy.ctx
+  const bpp = sizeof(uint16) * 4
   let map = ctx[].mapAux(bpp)
-  # Configure Mapping Region
-  proxy.map = NImageRegion(map)
+  # Configure Buffer
+  proxy.map = map
   proxy.map.w = ctx.w
   proxy.map.h = ctx.h
-  # Configure Stream
-  proxy.stream.mode = mode
-  proxy.stream.map = map
-  proxy.stream.tiles = addr layer.tiles
+  # Configure Stream Buffer
+  proxy.stream.mode = pmBlit
+  proxy.stream.fn = bmNormal
+  proxy.stream.map.buffer = map
+  proxy.stream.map.tiles = addr layer.tiles
 
-proc prepare*(proxy: var NImageProxy, mode: NProxyMode) =
-  let
-    layer = proxy.layer
-    status = proxy.status
-  # Prepare Buffer Mapping
-  proxy.mapping(mode)
-  # Prepare Status Mark
-  status[].prepare()
-  status.clip = mark(0, 0, 0, 0)
-  # Prepare Compositor Proc
+proc prepare*(proxy: var NImageProxy, layer: NLayer) =
+  assert isNil(proxy.layer)
   assert layer.kind != lkFolder
+  # Prepare Proxy
+  proxy.prepareBuffer(layer)
+  proxy.status[].prepare()
+  proxy.status[].clip = mark(0, 0, 0, 0)
+  # Prepare Compositor Proc
   layer.hook.fn = cast[NLayerProc](proxy16proc)
   layer.hook.ext = addr proxy.stream
+  proxy.layer = layer
 
 proc mark*(proxy: var NImageProxy, x, y, w, h: cint) =
   let status = proxy.status
   # Apply Mark Region
   status[].mark(x, y, w, h)
-  status.clip.expand(x, y, w, h)
+  status[].clip.expand(x, y, w, h)
 
-# -------------------
-# Image Proxy Marking
-# -------------------
+# --------------------------
+# Image Proxy Dispatch: Mark
+# --------------------------
 
 proc mark(proxy: var NImageProxy, tx, ty: cint) =
   let
     bw = proxy.w256
     bx = tx shr 3
     by = ty shr 2
-    # Lookup Compositor Block
-    b = addr proxy.blocks[by * bw + bx]
     # Dirty Position
     dx = tx and 0x7
     dy = ty and 0x3
-    # Bit Position
     bit = 1 shl (dy shl 3 + dx)
-  # Mark Block To Dispatch
-  b.dirty = b.dirty or uint32(bit)
+  # Mark Block Bit To Dispatch
+  let b = addr proxy.blocks[by * bw + bx]
+  b.dirty = b.dirty or cast[uint32](bit)
 
 proc find(proxy: var NImageProxy, check, stage: uint8) =
   for c in proxy.status[].checkAux():
@@ -151,106 +145,64 @@ proc find(proxy: var NImageProxy, check, stage: uint8) =
       proxy.mark(c.tx, c.ty)
       c.check[] = stage
 
+proc ensure(proxy: var NImageProxy) =
+  let tiles = proxy.stream.map.tiles
+  let status = proxy.status
+  # Status Clip Region
+  var m = status.clip
+  m = status[].scale(m)
+  # Ensure Tile Region
+  tiles[].ensure(m.x0, m.y0,
+    m.x1 - m.x0, m.y1 - m.y0)
+
+# ----------------------------
+# Image Proxy Dispatch: Blocks
+# ----------------------------
+
 iterator scan(p: ptr NProxyBlock): tuple[tx, ty: cint] =
-  let
-    x0 = p.x shl 3
-    y0 = p.y shl 2
+  let x0 = p.x shl 3
+  let y0 = p.y shl 2
+  # Scan Dirty Bits
   var dirty = p.dirty
-  # Iterate Dirty Bits
-  const l = int32(4)
-  for y in 0 ..< l:
-    for x in 0 ..< l + l:
+  for y in 0 ..< 4'i32:
+    for x in 0 ..< 8'i32:
       # Check Dirty Bit
       if (dirty and 1) > 0:
         yield (x + x0, y + y0)
       # Next Dirty Bit
       dirty = dirty shr 1
 
-# ---------------------
-# Image Proxy Streaming
-# ---------------------
+proc stream(proxy: ptr NProxyBlock) =
+  discard
 
-proc update(p: ptr NProxyBlock) =
-  let
-    stream = p.stream
-    tiles = stream.tiles
-    # Buffer Combine
-    dst = chunk(stream.map)
-    co0 = combine(dst, dst)
-  # Stream Tiles to Proxy Buffer
-  for tx, ty in p.scan():
-    let tile = tiles[].find(tx, ty)
-    # Prepare Combine Buffers
-    var co = co0.clip32(tx, ty)
-    if not tile.found:
-      combine_clear(addr co)
-      continue
-    # Stream Tile to Proxy
-    co.src = tile.chunk()
-    if tile.uniform: proxy_fill(addr co)
-    else: proxy_stream(addr co)
-  # Remove Dirty
-  p.dirty = 0
-
-proc store(p: ptr NProxyBlock) =
-  let
-    stream = p.stream
-    tiles = stream.tiles
-    # Buffer Combine
-    src = chunk(stream.map)
-    co0 = combine(src, src)
-  # Stream Tiles to Proxy Buffer
-  for tx, ty in p.scan():
-    var
-      co = co0.clip32(tx, ty)
-      tile = tiles[].find(tx, ty)
-    # Check Tile Uniform
-    proxy_uniform(addr co)
-    # Convert to Buffer
-    assert not isNil(tile.data)
-    if co.src.bpp != co.src.stride:
-      tile.toBuffer()
-      co.dst = tile.chunk()
-      # Stream to Buffer and Reduce
-      proxy_stream(addr co)
-      tile.mipmaps()
-    # Convert to Uniform
-    else:
-      let color = cast[ptr uint64](co.src.buffer)[]
-      tile.toColor(color)
-  # Remove Dirty
-  p.dirty = 0
+proc commit(proxy: ptr NProxyBlock) =
+  discard
 
 # --------------------
 # Image Proxy Dispatch
 # --------------------
 
-proc ensure(proxy: var NImageProxy) =
-  let
-    status = proxy.status
-    tiles = proxy.stream.tiles
-  # Status Clip Region
-  var m = status.clip
-  m = status[].scale(m)
-  # Ensure Tile Region
-  m.x1 -= m.x0; m.y1 -= m.y0
-  tiles[].ensure(m.x0, m.y0, m.x1, m.y1)
-
-# Instant TODO: multithreading
+# IMPORTANT TODO: multithreading
 proc stream*(proxy: var NImageProxy) =
   proxy.find(check = 1, stage = 2)
   # Dispatch Update Blocks
   for p in mitems(proxy.blocks):
     if p.dirty > 0:
-      update(addr p)
+      stream(addr p)
 
-# Instant TODO: multithreading
+# IMPORTANT TODO: multithreading
 proc commit*(proxy: var NImageProxy) =
   proxy.find(check = 2, stage = 0)
   proxy.ensure()
   # Dispatch Store Blocks
   for p in mitems(proxy.blocks):
     if p.dirty > 0:
-      store(addr p)
+      commit(addr p)
   # Restore Compositor Proc
   proxy.layer.hook = default(NLayerHook)
+  proxy.stream = default(NProxyStream)
+  proxy.ctx[].clearAux()
+  # Remove Mappings
+  wasMoved(proxy.map)
+  wasMoved(proxy.mask)
+  wasMoved(proxy.layer)
