@@ -74,12 +74,18 @@ void composite_passmask_uniform(image_composite_t* co);
 // ------------------
 
 // mipmap.c
-void mipmap_reduce(image_combine_t* co);
+void mipmap_pack8(image_combine_t* co);
+void mipmap_pack2(image_combine_t* co);
+void mipmap_reduce16(image_combine_t* co);
+void mipmap_reduce8(image_combine_t* co);
+void mipmap_reduce2(image_combine_t* co);
 
 // proxy.c
-void proxy_stream(image_combine_t* co);
-void proxy_fill(image_combine_t* co);
-void proxy_uniform(image_combine_t* co);
+void proxy_stream16(image_combine_t* co);
+void proxy_stream8(image_combine_t* co);
+void proxy_stream2(image_combine_t* co);
+void proxy_uniform_fill(image_combine_t* co);
+void proxy_uniform_check(image_combine_t* co);
 
 // --------------------
 // Image Buffer blend.c

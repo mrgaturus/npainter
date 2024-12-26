@@ -91,11 +91,18 @@ proc composite_passmask*(co: ptr NImageComposite)
 proc composite_passmask_uniform*(co: ptr NImageComposite)
 
 # mipmap.c
-proc mipmap_reduce*(co: ptr NImageCombine)
+proc mipmap_pack8*(co: ptr NImageCombine)
+proc mipmap_pack2*(co: ptr NImageCombine)
+proc mipmap_reduce16*(co: ptr NImageCombine)
+proc mipmap_reduce8*(co: ptr NImageCombine)
+proc mipmap_reduce2*(co: ptr NImageCombine)
+
 # proxy.c
-proc proxy_stream*(co: ptr NImageCombine)
-proc proxy_fill*(co: ptr NImageCombine)
-proc proxy_uniform*(co: ptr NImageCombine)
+proc proxy_stream16*(co: ptr NImageCombine)
+proc proxy_stream8*(co: ptr NImageCombine)
+proc proxy_stream2*(co: ptr NImageCombine)
+proc proxy_uniform_fill*(co: ptr NImageCombine)
+proc proxy_uniform_check*(co: ptr NImageCombine)
 
 {.pop.} # importc
 {.pop.} # image.h
@@ -119,7 +126,7 @@ proc combine_reduce*(co: ptr NImageCombine, lod: cint) =
   for _ in 0 ..< lod:
     {.emit: "`ro.dst.w` >>= 1;".}
     {.emit: "`ro.dst.h` >>= 1;".}
-    mipmap_reduce(addr ro)
+    mipmap_reduce16(addr ro)
     ro.src = ro.dst
 
 # ----------------------
