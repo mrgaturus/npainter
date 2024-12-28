@@ -177,15 +177,16 @@ proc write(codec: var NBookWrite, tile: NTile) =
   let t0 = addr list.tiles[idx]
   t0.point(tile.x, tile.y)
   # Define Tile Data
-  if not tile.found:
-    discard
-  elif not tile.uniform:
+  case tile.status
+  of tsInvalid, tsZero: discard
+  of tsColor: t0.asUniform(tile.data.color)
+  of tsBuffer:
     let idx = codec.nextSlab()
     t0.asIndex(uint64 idx)
     # Copy Tile Buffer
     copyMem(codec.chunk,
-      tile.data.buffer, tile.bytes)
-  else: t0.asUniform(tile.data.color)
+      tile.data.buffer,
+      tile.bytes)
   # Next Tile from List
   inc(list.count)
 

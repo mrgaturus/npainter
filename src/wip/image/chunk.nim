@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 # Copyright (c) 2023 Cristian Camilo Ruiz <mrgaturus>
 import ffi
-from tiles import NTile
+from tiles import NTile, NTileStatus
 from context import NImageMap
 # Mipmap Level Buffer Location
 const miplocs = [0, 1024, 1280, 1344, 1360, 1376]
@@ -54,8 +54,8 @@ proc chunk*(tile: NTile): NImageBuffer =
     bpp: tile.bpp,
     buffer: data
   )
-  # Check Allocated
-  if not tile.uniform:
+  # Check Buffer Allocated
+  if tile.status == tsBuffer:
     result.stride *= 32
     result.buffer = data.buffer
 
@@ -76,18 +76,17 @@ proc chunk*(map: NImageMap): NImageBuffer =
 
 proc chunk*(tile: NTile, lod: cint): NImageBuffer =
   result = tile.chunk()
-  if lod == 0 or tile.uniform:
-    return result
-  # Locate LOD Buffer
-  let idx = miplocs[lod] * tile.bpp
-  {.emit: "`result.buffer` += `idx`;".}
-  # Reduce Buffer Sizes to LOD
-  {.emit: "`result.w` >>= `lod`;".}
-  {.emit: "`result.h` >>= `lod`;".}
-  {.emit: "`result.stride` >>= `lod`;".}
+  # Locate LOD Tile Buffer
+  if lod > 0 and tile.status == tsBuffer:
+    let idx = miplocs[lod] * tile.bpp
+    {.emit: "`result.buffer` += `idx`;".}
+    # Reduce Buffer Sizes to LOD
+    {.emit: "`result.w` >>= `lod`;".}
+    {.emit: "`result.h` >>= `lod`;".}
+    {.emit: "`result.stride` >>= `lod`;".}
 
 proc mipmaps*(tile: var NTile) =
-  if tile.uniform: return
+  if tile.status != tsBuffer: return
   # Select Reduce Function
   let mipmap_reduce =
     case tile.bpp

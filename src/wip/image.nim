@@ -209,7 +209,7 @@ proc copyTiles(src, dst: NLayer) =
   for t0 in g0[]:
     var t1 = g1[].find(t0.x, t0.y)
     # Copy Uniform Tile
-    if t0.uniform:
+    if t0.status < tsBuffer:
       t1.data.color = t0.data.color
       continue
     # Copy Buffer Tile
@@ -250,7 +250,7 @@ proc mergeRegion(src, dst: NLayer): NTileReserved =
 
 proc mergeFill(dst: var NTile) =
   var color {.align: 16.}: uint64 = 0
-  if dst.found:
+  if dst.status > tsInvalid:
     color = dst.data.color
   # Convert to Buffer
   dst.toBuffer()
@@ -262,9 +262,8 @@ proc mergeFill(dst: var NTile) =
   proxy_uniform_fill(addr co)
 
 proc mergeTile(src, dst: var NTile, co: ptr NImageComposite) =
-  if not src.found:
-    return
-  if dst.uniform:
+  if src.status < tsColor: return
+  if dst.status < tsBuffer:
     dst.mergeFill()
   # Blend Layer Tile
   co.src = src.chunk()

@@ -159,18 +159,17 @@ proc blendLayer*(state: ptr NCompositorState) =
     tx0 = dst.x shr 5
     ty0 = dst.y shr 5
   # Layer Region Blending
-  var pixel {.align: 16.}: uint64 = 0
+  var zero = default(NTileCell)
   var co = blendCombine(state)
   # Blend Layer Tiles
   for tx, ty in state.scan():
     var tile = tiles[].find(tx + tx0, ty + ty0)
-    if not tile.found:
+    if tile.status < tsColor:
       if mode != bmStencil:
         continue
-      # XXX: This is crappy, solve it clarify tile status
-      tile.found = true
-      tile.uniform = true
-      tile.data = cast[typeof tile.data](addr pixel)
+      # Zero Fill for Stencil
+      tile.status = tsZero
+      tile.data = addr zero
     # Prepare Tile Chunk
     let chunk = tile.chunk(lod)
     co.co0 = combine(chunk, dst)

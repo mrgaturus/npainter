@@ -225,12 +225,12 @@ proc stream(proxy: ptr NProxyBlock) =
     let tile = tiles[].find(tx, ty)
     # Prepare Combine Buffers
     var co = co0.clip32(tx, ty)
-    if not tile.found:
+    if tile.status < tsColor:
       combine_clear(addr co)
       continue
     # Stream Tile to Proxy
     co.src = tile.chunk()
-    if tile.uniform:
+    if tile.status == tsColor:
       proxy_uniform_fill(addr co)
     else: proxy_stream(addr co)
   # Remove Dirty Mark
