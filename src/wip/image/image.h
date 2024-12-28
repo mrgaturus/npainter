@@ -43,6 +43,7 @@ typedef struct {
   // Blend Properties
   unsigned int alpha, clip;
   blend_proc_t fn;
+  void* opaque;
 } image_composite_t;
 
 // --------------------------------

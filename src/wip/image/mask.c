@@ -8,17 +8,15 @@
 
 __attribute__((always_inline))
 static inline __m128i _mm_multiply_mask(__m128i xmm0, __m128i fract) {
-  const __m128i ones = _mm_cmpeq_epi32(xmm0, xmm0);
-  xmm0 = _mm_xor_si128(xmm0, ones);
-
+  const __m128i ones = _mm_set1_epi32(65535);
   __m128i xmm1 = _mm_mullo_epi32(xmm0, fract);
-  xmm1 = _mm_add_epi32(xmm1, ones);
+  xmm1 = _mm_add_epi32(xmm1, fract);
   xmm1 = _mm_srli_epi32(xmm1, 16);
-  // xmm0 + (fract - fract * xmm0)
-  fract = _mm_sub_epi32(fract, xmm1);
-  xmm0 = _mm_add_epi32(xmm0, fract);
+  // ones - fract + fract * xmm0
+  fract = _mm_sub_epi32(ones, fract);
+  xmm0 = _mm_add_epi32(fract, xmm1);
 
-  return xmm1;
+  return xmm0;
 }
 
 void composite_mask(image_composite_t* co) {
@@ -40,6 +38,7 @@ void composite_mask(image_composite_t* co) {
   __m128i src_xmm0, src_xmm1, src_xmm2, src_xmm3;
   __m128i dst_xmm0, dst_xmm1, dst_xmm2, dst_xmm3;
   const __m128i zeros = _mm_setzero_si128();
+  const __m128i ones = _mm_cmpeq_epi32(zeros, zeros);
   // Load Alpha and Unpack to 4x32
   __m128i alpha = _mm_loadu_si32(&co->alpha);
   alpha = _mm_shuffle_epi32(alpha, 0);
@@ -51,15 +50,17 @@ void composite_mask(image_composite_t* co) {
     
     // Blend Pixels
     while (count > 0) {
-      __m128i mask =  _mm_loadl_epi64((__m128i*) src_x);
+      __m128i mask = _mm_loadl_epi64((__m128i*) src_x);
       dst_xmm0 = _mm_load_si128((__m128i*) dst_x);
       dst_xmm2 = _mm_load_si128((__m128i*) dst_x + 1);
+      mask = _mm_xor_si128(mask, ones);
       mask = _mm_cvtepu16_epi32(mask);
+
       // Unpack Source Mask Pixels
-      src_xmm0 = _mm_shuffle_epi32(mask, _MM_SHUFFLE(0, 0, 0, 0));
-      src_xmm1 = _mm_shuffle_epi32(mask, _MM_SHUFFLE(1, 1, 1, 1));
-      src_xmm2 = _mm_shuffle_epi32(mask, _MM_SHUFFLE(2, 2, 2, 2));
-      src_xmm3 = _mm_shuffle_epi32(mask, _MM_SHUFFLE(3, 3, 3, 3));
+      src_xmm1 = _mm_shuffle_epi32(mask, _MM_SHUFFLE(0, 0, 0, 0));
+      src_xmm0 = _mm_shuffle_epi32(mask, _MM_SHUFFLE(1, 1, 1, 1));
+      src_xmm3 = _mm_shuffle_epi32(mask, _MM_SHUFFLE(2, 2, 2, 2));
+      src_xmm2 = _mm_shuffle_epi32(mask, _MM_SHUFFLE(3, 3, 3, 3));
       // Unpack Destination Color Pixels
       dst_xmm1 = _mm_unpacklo_epi16(dst_xmm0, zeros);
       dst_xmm0 = _mm_unpackhi_epi16(dst_xmm0, zeros);
@@ -127,9 +128,11 @@ void composite_mask_uniform(image_composite_t* co) {
   // Pixel XMM Registers
   __m128i dst_xmm0, dst_xmm1, dst_xmm2, dst_xmm3;
   const __m128i zeros = _mm_setzero_si128();
-  // Load Alpha and Unpack to 4x32
+  const __m128i ones = _mm_cmpeq_epi32(zeros, zeros);
+  // Load Mask Uniform and Unpack to 4x32
   __m128i mask = _mm_loadl_epi64((__m128i*) co->src.buffer);
   __m128i alpha = _mm_loadu_si32(&co->alpha);
+  mask = _mm_xor_si128(mask, ones);
   mask = _mm_cvtepu16_epi32(mask);
   alpha = _mm_shuffle_epi32(alpha, 0);
   mask = _mm_multiply_mask(mask, alpha);
@@ -324,6 +327,7 @@ void composite_passmask(image_composite_t* co) {
   __m128i ext_xmm0, ext_xmm1, ext_xmm2, ext_xmm3;
   __m128i dst_xmm0, dst_xmm1, dst_xmm2, dst_xmm3;
   const __m128i zeros = _mm_setzero_si128();
+  const __m128i ones = _mm_cmpeq_epi32(zeros, zeros);
   // Load Alpha and Unpack to 4x32
   __m128i alpha = _mm_loadu_si32(&co->alpha);
   alpha = _mm_shuffle_epi32(alpha, 0);
@@ -336,17 +340,18 @@ void composite_passmask(image_composite_t* co) {
     
     // Blend Pixels
     while (count > 0) {
-      __m128i mask =  _mm_loadl_epi64((__m128i*) src_x);
+      __m128i mask = _mm_loadl_epi64((__m128i*) src_x);
       dst_xmm0 = _mm_load_si128((__m128i*) dst_x);
       dst_xmm2 = _mm_load_si128((__m128i*) dst_x + 1);
       ext_xmm0 = _mm_load_si128((__m128i*) ext_x);
       ext_xmm2 = _mm_load_si128((__m128i*) ext_x + 1);
+      mask = _mm_xor_si128(mask, ones);
       mask = _mm_cvtepu16_epi32(mask);
       // Unpack Source Mask Pixels
-      src_xmm0 = _mm_shuffle_epi32(mask, _MM_SHUFFLE(0, 0, 0, 0));
-      src_xmm1 = _mm_shuffle_epi32(mask, _MM_SHUFFLE(1, 1, 1, 1));
-      src_xmm2 = _mm_shuffle_epi32(mask, _MM_SHUFFLE(2, 2, 2, 2));
-      src_xmm3 = _mm_shuffle_epi32(mask, _MM_SHUFFLE(3, 3, 3, 3));
+      src_xmm1 = _mm_shuffle_epi32(mask, _MM_SHUFFLE(0, 0, 0, 0));
+      src_xmm0 = _mm_shuffle_epi32(mask, _MM_SHUFFLE(1, 1, 1, 1));
+      src_xmm3 = _mm_shuffle_epi32(mask, _MM_SHUFFLE(2, 2, 2, 2));
+      src_xmm2 = _mm_shuffle_epi32(mask, _MM_SHUFFLE(3, 3, 3, 3));
       // Unpack Destination Color Pixels
       dst_xmm1 = _mm_unpacklo_epi16(dst_xmm0, zeros);
       dst_xmm0 = _mm_unpackhi_epi16(dst_xmm0, zeros);
@@ -364,10 +369,10 @@ void composite_passmask(image_composite_t* co) {
       src_xmm2 = _mm_multiply_mask(src_xmm2, alpha);
       src_xmm3 = _mm_multiply_mask(src_xmm3, alpha);
       // Apply Source Mask Pixel
-      dst_xmm0 = _mm_mix_color(dst_xmm0, ext_xmm0, src_xmm0);
-      dst_xmm1 = _mm_mix_color(dst_xmm1, ext_xmm1, src_xmm1);
-      dst_xmm2 = _mm_mix_color(dst_xmm2, ext_xmm2, src_xmm2);
-      dst_xmm3 = _mm_mix_color(dst_xmm3, ext_xmm3, src_xmm3);
+      dst_xmm0 = _mm_mix_color(ext_xmm0, ext_xmm0, src_xmm0);
+      dst_xmm1 = _mm_mix_color(ext_xmm1, ext_xmm1, src_xmm1);
+      dst_xmm2 = _mm_mix_color(ext_xmm2, ext_xmm2, src_xmm2);
+      dst_xmm3 = _mm_mix_color(ext_xmm3, ext_xmm3, src_xmm3);
       // Pack Destination Pixels to 8x16 bit channels
       dst_xmm0 = _mm_packus_epi32(dst_xmm1, dst_xmm0);
       dst_xmm2 = _mm_packus_epi32(dst_xmm3, dst_xmm2);
@@ -431,9 +436,11 @@ void composite_passmask_uniform(image_composite_t* co) {
   __m128i ext_xmm0, ext_xmm1, ext_xmm2, ext_xmm3;
   __m128i dst_xmm0, dst_xmm1, dst_xmm2, dst_xmm3;
   const __m128i zeros = _mm_setzero_si128();
-  // Load Alpha and Unpack to 4x32
+  const __m128i ones = _mm_cmpeq_epi32(zeros, zeros);
+  // Load Mask Uniform and Unpack to 4x32
   __m128i mask = _mm_loadl_epi64((__m128i*) co->src.buffer);
   __m128i alpha = _mm_loadu_si32(&co->alpha);
+  mask = _mm_xor_si128(mask, ones);
   mask = _mm_cvtepu16_epi32(mask);
   alpha = _mm_shuffle_epi32(alpha, 0);
   mask = _mm_multiply_mask(mask, alpha);

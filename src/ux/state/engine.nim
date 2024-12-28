@@ -71,12 +71,12 @@ controller NPainterEngine:
   proc proxyBrush0proof*: ptr NImageProxy =
     const bpp = cint(sizeof cushort)
     # Prepare Proxy
-    let canvas = self.canvas
-    result = addr canvas.image.proxy
-    result[].prepare(pmBlit)
+    let image = self.canvas.image
+    result = addr image.proxy
+    result[].prepare(image.selected)
     # Prepare Brush Engine
     let
-      ctx = addr canvas.image.ctx
+      ctx = addr image.ctx
       target = addr self.brush.pipe.canvas
       # TODO: rewrite brush engine to use less physical pages
       mapColor = ctx[].mapAux(bpp * 4)
@@ -96,12 +96,12 @@ controller NPainterEngine:
   proc proxyBucket0proof*: ptr NImageProxy =
     const bpp = cint(sizeof cushort)
     # Prepare Proxy
-    let canvas = self.canvas
-    result = addr canvas.image.proxy
-    result[].prepare(pmBlit)
+    let image = self.canvas.image
+    result = addr image.proxy
+    result[].prepare(image.selected)
     # Prepare Bucket Tool
     let
-      ctx = addr canvas.image.ctx
+      ctx = addr image.ctx
       mapColor = ctx[].mapAux(bpp * 4)
       mapShape = ctx[].mapAux(bpp * 4)
     # Configure Bucket Tool

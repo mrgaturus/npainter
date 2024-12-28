@@ -89,8 +89,9 @@ void mipmap_pack2(image_combine_t* co) {
   // Source Pixel Values
   __m128i xmm0, xmm1, xmm2, xmm3;
   __m128i xmm4, xmm5, xmm6, xmm7;
-  const __m128i gray = _mm_set1_epi64x(0xe984b222646);
+  const __m128i gray = _mm_set_epi32(0, 3736, 19234, 9798);
   const __m128i ones = _mm_cmpeq_epi32(gray, gray);
+  const __m128i zeros = _mm_setzero_si128();
 
   for (int count, y = 0; y < h; y++) {
     dst_x = dst_y;
@@ -99,47 +100,49 @@ void mipmap_pack2(image_combine_t* co) {
 
     // Copy Source to Destination
     while (count > 0) {
-      xmm0 = _mm_load_si128((__m128i*) src_x);
-      xmm1 = _mm_load_si128((__m128i*) src_x + 1);
-      xmm2 = _mm_load_si128((__m128i*) src_x + 2);
-      xmm3 = _mm_load_si128((__m128i*) src_x + 3);
-      xmm4 = _mm_load_si128((__m128i*) src_x + 4);
-      xmm5 = _mm_load_si128((__m128i*) src_x + 5);
-      xmm6 = _mm_load_si128((__m128i*) src_x + 6);
-      xmm7 = _mm_load_si128((__m128i*) src_x + 7);
+      xmm4 = _mm_load_si128((__m128i*) src_x);
+      xmm5 = _mm_load_si128((__m128i*) src_x + 1);
+      xmm6 = _mm_load_si128((__m128i*) src_x + 2);
+      xmm7 = _mm_load_si128((__m128i*) src_x + 3);
+
+      // Unpack 16-bit to 32-bit
+      xmm0 = _mm_unpacklo_epi16(xmm4, zeros);
+      xmm1 = _mm_unpackhi_epi16(xmm4, zeros);
+      xmm2 = _mm_unpacklo_epi16(xmm5, zeros);
+      xmm3 = _mm_unpackhi_epi16(xmm5, zeros);
+      xmm4 = _mm_unpacklo_epi16(xmm6, zeros);
+      xmm5 = _mm_unpackhi_epi16(xmm6, zeros);
+      xmm6 = _mm_unpacklo_epi16(xmm7, zeros);
+      xmm7 = _mm_unpackhi_epi16(xmm7, zeros);
 
       // Convert to Grayscale
-      xmm0 = _mm_madd_epi16(xmm0, gray);
-      xmm1 = _mm_madd_epi16(xmm1, gray);
-      xmm2 = _mm_madd_epi16(xmm2, gray);
-      xmm3 = _mm_madd_epi16(xmm3, gray);
-      xmm4 = _mm_madd_epi16(xmm4, gray);
-      xmm5 = _mm_madd_epi16(xmm5, gray);
-      xmm6 = _mm_madd_epi16(xmm6, gray);
-      xmm7 = _mm_madd_epi16(xmm7, gray);
-      // Convert to Grayscale: Pack
+      xmm0 = _mm_mullo_epi32(xmm0, gray);
+      xmm1 = _mm_mullo_epi32(xmm1, gray);
+      xmm2 = _mm_mullo_epi32(xmm2, gray);
+      xmm3 = _mm_mullo_epi32(xmm3, gray);
+      xmm4 = _mm_mullo_epi32(xmm4, gray);
+      xmm5 = _mm_mullo_epi32(xmm5, gray);
+      xmm6 = _mm_mullo_epi32(xmm6, gray);
+      xmm7 = _mm_mullo_epi32(xmm7, gray);
+      // Convert to Grayscale: Pack 1
       xmm0 = _mm_hadd_epi32(xmm0, xmm1);
-      xmm2 = _mm_hadd_epi32(xmm2, xmm3);
-      xmm4 = _mm_hadd_epi32(xmm4, xmm5);
-      xmm6 = _mm_hadd_epi32(xmm6, xmm7);
+      xmm1 = _mm_hadd_epi32(xmm2, xmm3);
+      xmm2 = _mm_hadd_epi32(xmm4, xmm5);
+      xmm3 = _mm_hadd_epi32(xmm6, xmm7);
+      // Convert to Grayscale: Pack 2
+      xmm0 = _mm_hadd_epi32(xmm0, xmm1);
+      xmm1 = _mm_hadd_epi32(xmm2, xmm3);
       xmm0 = _mm_srli_epi32(xmm0, 15);
-      xmm2 = _mm_srli_epi32(xmm2, 15);
-      xmm4 = _mm_srli_epi32(xmm4, 15);
-      xmm6 = _mm_srli_epi32(xmm6, 15);
-
-      // Pack to 16-bit Alpha
-      xmm0 = _mm_packus_epi32(xmm0, xmm2);
-      xmm1 = _mm_packus_epi32(xmm4, xmm6);
-      xmm0 = _mm_xor_si128(xmm0, ones);
-      xmm1 = _mm_xor_si128(xmm1, ones);
+      xmm1 = _mm_srli_epi32(xmm1, 15);
+      // Convert to Grayscale: Pack Store
+      xmm0 = _mm_packus_epi32(xmm0, xmm1);
       _mm_stream_si128((__m128i*) dst_x, xmm0);
-      _mm_stream_si128((__m128i*) dst_x + 1, xmm1);
 
       // Step Buffers
-      src_x += 128;
-      dst_x += 32;
+      src_x += 64;
+      dst_x += 16;
       // Step Pixels
-      count -= 16;
+      count -= 8;
     }
 
     // Step Y Buffers
@@ -277,10 +280,10 @@ void mipmap_reduce8(image_combine_t* co) {
       xmm2 = _mm_load_si128((__m128i*) src_x0 + 2);
       xmm3 = _mm_load_si128((__m128i*) src_x0 + 3);
       // Bottom Source Pixels
-      xmm4 = _mm_load_si128((__m128i*) src_x1);
-      xmm5 = _mm_load_si128((__m128i*) src_x1 + 1);
-      xmm6 = _mm_load_si128((__m128i*) src_x1 + 2);
-      xmm7 = _mm_load_si128((__m128i*) src_x1 + 3);
+      xmm4 = _mm_loadu_si128((__m128i*) src_x1);
+      xmm5 = _mm_loadu_si128((__m128i*) src_x1 + 1);
+      xmm6 = _mm_loadu_si128((__m128i*) src_x1 + 2);
+      xmm7 = _mm_loadu_si128((__m128i*) src_x1 + 3);
 
       // Average 16 Pixels Vertically
       xmm0 = _mm_avg_epu8(xmm0, xmm4);
@@ -382,10 +385,10 @@ void mipmap_reduce2(image_combine_t* co) {
       xmm2 = _mm_load_si128((__m128i*) src_x0 + 2);
       xmm3 = _mm_load_si128((__m128i*) src_x0 + 3);
       // Bottom Source Pixels
-      xmm4 = _mm_load_si128((__m128i*) src_x1);
-      xmm5 = _mm_load_si128((__m128i*) src_x1 + 1);
-      xmm6 = _mm_load_si128((__m128i*) src_x1 + 2);
-      xmm7 = _mm_load_si128((__m128i*) src_x1 + 3);
+      xmm4 = _mm_loadu_si128((__m128i*) src_x1);
+      xmm5 = _mm_loadu_si128((__m128i*) src_x1 + 1);
+      xmm6 = _mm_loadu_si128((__m128i*) src_x1 + 2);
+      xmm7 = _mm_loadu_si128((__m128i*) src_x1 + 3);
 
       // Average 32 Pixels Vertically
       xmm0 = _mm_avg_epu16(xmm0, xmm4);
@@ -399,15 +402,15 @@ void mipmap_reduce2(image_combine_t* co) {
       xmm6 = _mm_unpackhi_epi16(xmm0, xmm1);
       xmm7 = _mm_unpackhi_epi16(xmm2, xmm3);
       // Interleave 16 Pixels Horizontally: Pass 2
-      xmm0 = _mm_unpacklo_epi16(xmm4, xmm5);
-      xmm1 = _mm_unpacklo_epi16(xmm6, xmm7);
-      xmm2 = _mm_unpackhi_epi16(xmm4, xmm5);
-      xmm3 = _mm_unpackhi_epi16(xmm6, xmm7);
+      xmm0 = _mm_unpacklo_epi16(xmm4, xmm6);
+      xmm1 = _mm_unpacklo_epi16(xmm5, xmm7);
+      xmm2 = _mm_unpackhi_epi16(xmm4, xmm6);
+      xmm3 = _mm_unpackhi_epi16(xmm5, xmm7);
       // Interleave 16 Pixels Horizontally: Pass 3
-      xmm4 = _mm_unpacklo_epi16(xmm0, xmm1);
-      xmm5 = _mm_unpacklo_epi16(xmm2, xmm3);
-      xmm6 = _mm_unpackhi_epi16(xmm0, xmm1);
-      xmm7 = _mm_unpackhi_epi16(xmm2, xmm3);
+      xmm4 = _mm_unpacklo_epi16(xmm0, xmm2);
+      xmm5 = _mm_unpacklo_epi16(xmm1, xmm3);
+      xmm6 = _mm_unpackhi_epi16(xmm0, xmm2);
+      xmm7 = _mm_unpackhi_epi16(xmm1, xmm3);
       // Average 16 Pixels Horizontally
       xmm0 = _mm_avg_epu16(xmm4, xmm6);
       xmm1 = _mm_avg_epu16(xmm5, xmm7);
@@ -439,7 +442,7 @@ void mipmap_reduce2(image_combine_t* co) {
       if (count == 4) {
         _mm_storel_epi64((__m128i*) dst_x, xmm0);
         _mm_srli_si128(xmm0, 8);
-        // No More Pixels
+        // Step 4 Pixels
         dst_x += 8;
         count -= 4;
       }
@@ -448,6 +451,7 @@ void mipmap_reduce2(image_combine_t* co) {
       if (count == 2) {
         _mm_storeu_si32((__m128i*) dst_x, xmm0);
         _mm_srli_si128(xmm0, 4);
+        // Step 2 Pixels
         dst_x += 4;
         count -= 2;
       }

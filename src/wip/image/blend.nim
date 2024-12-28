@@ -3,7 +3,7 @@
 import ffi, context, composite, layer, tiles, chunk
 
 type
-  NBlendCombine* {.union.} = object
+  NBlendCombine* {.pure, union.} = object
     co0*: NImageCombine
     co1*: NImageComposite
 
@@ -47,7 +47,6 @@ proc blendCombine*(state: ptr NCompositorState): NBlendCombine =
     else: co.fn = composite_mask
   of cmBlendMask:
     if state.scope.step.mode == bmPassthrough:
-      co.ext = state.lower.buffer
       co.fn = composite_passmask
     else: co.fn = composite_mask
   else: co.fn = blend_procs[mode]
@@ -127,8 +126,9 @@ proc packScope(state: ptr NCompositorState) =
 # Blending Compositor Buffer
 # --------------------------
 
-proc blendRaw(state: ptr NCompositorState, src: NImageBuffer) =
+proc blendRaw*(state: ptr NCompositorState, src: NImageBuffer) =
   let
+    lod = state.mipmap
     dst = state.scope.buffer
     co0 = combine(src, dst)
   var co = blendCombine(state)
@@ -139,31 +139,8 @@ proc blendRaw(state: ptr NCompositorState, src: NImageBuffer) =
     return
   # Blend Buffer Tiles
   for tx, ty in state.scan():
-    co.co0 = co0.clip32(tx, ty)
-    blendChunk(addr co.co1)
-
-proc blendBuffer*(state: ptr NCompositorState, src: NImageBuffer) =
-  let lod = state.mipmap
-  if lod == 0:
-    state.blendRaw(src)
-    return
-  # LOD Blending
-  let
-    tmp = state.stack.pushBuffer()
-    dst = state.scope.buffer
-    # Combine Buffers
-    ro0 = combine(src, tmp)
-    co0 = combine(tmp, dst)
-  var co = blendCombine(state)
-  # Reduce and Blend Buffer Tiles
-  for tx, ty in state.scan():
-    var ro = ro0.clip32(tx, ty)
-    combine_reduce(addr ro, lod)
-    # Blend Reduced Tile
     co.co0 = co0.clip32(tx, ty, lod)
     blendChunk(addr co.co1)
-  # Clear Temporal Buffer
-  state.stack.popBuffer()
 
 proc blendLayer*(state: ptr NCompositorState) =
   let

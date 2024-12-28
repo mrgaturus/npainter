@@ -6,6 +6,37 @@ from context import NImageMap
 # Mipmap Level Buffer Location
 const miplocs = [0, 1024, 1280, 1344, 1360, 1376]
 
+proc pixel*(src: NImageBuffer): uint64 =
+  cast[ptr uint64](src.buffer)[]
+
+# -------------------------
+# Compositor Buffer Combine
+# -------------------------
+
+proc combine*(src, dst: NImageBuffer): NImageCombine =
+  result.src = src
+  result.dst = dst
+  # Prepare Clipping if is not same
+  if src.buffer != dst.buffer:
+    combine_intersect(addr result)
+
+proc combine_reduce*(co: ptr NImageCombine, lod: cint) =
+  var ro = co[]
+  assert ro.src.w == ro.dst.w
+  assert ro.src.h == ro.dst.h
+  # Select Reduce Function
+  let mipmap_reduce =
+    case ro.src.bpp
+    of 2: mipmap_reduce2
+    of 4: mipmap_reduce8
+    else: mipmap_reduce16 
+  # Apply Mipmap Reduction
+  for _ in 0 ..< lod:
+    {.emit: "`ro.dst.w` >>= 1;".}
+    {.emit: "`ro.dst.h` >>= 1;".}
+    mipmap_reduce(addr ro)
+    ro.src = ro.dst
+
 # ------------------------
 # Compositor Buffer Chunks
 # ------------------------
@@ -57,8 +88,14 @@ proc chunk*(tile: NTile, lod: cint): NImageBuffer =
 
 proc mipmaps*(tile: var NTile) =
   if tile.uniform: return
+  # Select Reduce Function
+  let mipmap_reduce =
+    case tile.bpp
+    of 2: mipmap_reduce2
+    of 4: mipmap_reduce8
+    else: mipmap_reduce16 
   # Calculate Mipmaps to LODs
-  for lod in 0'i32 ..< 5'i32:
+  for lod in 0 ..< 5'i32:
     let
       src = tile.chunk(lod)
       dst = tile.chunk(lod + 1)

@@ -42,22 +42,54 @@ type
 # Image Proxy Compositing
 # -----------------------
 
+proc blendPack(state: ptr NCompositorState, tmp: var NImageBuffer) =
+  let stream = cast[ptr NProxyStream](state.ext)
+  let map = stream.map
+  let lod = state.mipmap
+  let bits = map.tiles.bits
+  # Prepare Buffer Combine
+  if bits == depth2bpp:
+    tmp.bpp = map.tiles.bpp
+    tmp.stride = tmp.w * tmp.bpp
+  # Pack Buffer Tiles
+  let src = chunk(map.buffer)
+  let co0 = combine(src, tmp)
+  for tx, ty in state.scan():
+    var co = co0.clip32(tx, ty)
+    # Pack Tile Buffer
+    if bits == depth2bpp:
+      mipmap_pack2(addr co)
+      co.src = co.dst
+    combine_reduce(addr co, lod)
+
 proc blendProxy(state: ptr NCompositorState) =
-  let 
-    stream = cast[ptr NProxyStream](state.ext)
-    src = chunk(stream.map.buffer)
+  let stream = cast[ptr NProxyStream](state.ext)
+  let map = stream.map
+  let src = chunk(map.buffer)
   # Blend Buffer to Scope
-  state.blendBuffer(src)
+  let lod = state.mipmap
+  if map.tiles.bits > depth2bpp and lod == 0:
+    state.blendRaw(src)
+    return
+  # Pack Buffer and Blend
+  let stack = addr state.stack
+  var tmp = stack[].pushBuffer()
+  state.blendPack(tmp)
+  state.blendRaw(tmp)
+  stack[].popBuffer()
 
 proc proxy16proc(state: ptr NCompositorState) =
-  case state.step.cmd
-  of cmBlendLayer:
+  let step = state.step
+  case step.cmd
+  of cmBlendLayer, cmBlendMask:
     state.blendProxy()
   # Blend Clipping
-  of cmScopeClip:
-    state.clearScope()
+  of cmScopeClip, cmScopeMask:
+    if step.layer.kind != lkMask:
+      state.clearScope()
+    else: state.copyScope()
+    # Blend Proxy Buffer
     state.blendProxy()
-  # Blending Default
   else: state.blend16proc()
 
 # ---------------------
@@ -114,6 +146,8 @@ proc prepare*(proxy: var NImageProxy, layer: NLayer) =
   layer.hook.fn = cast[NLayerProc](proxy16proc)
   layer.hook.ext = addr proxy.stream
   proxy.layer = layer
+  echo "prepared layer: ", layer.kind
+  echo "prepared bpp: ", layer.tiles.bits
 
 proc mark*(proxy: var NImageProxy, x, y, w, h: cint) =
   let status = proxy.status
@@ -159,11 +193,11 @@ proc ensure(proxy: var NImageProxy) =
 # Image Proxy Dispatch: Blocks
 # ----------------------------
 
-iterator scan(p: ptr NProxyBlock): tuple[tx, ty: cint] =
-  let x0 = p.x shl 3
-  let y0 = p.y shl 2
+iterator scan(proxy: ptr NProxyBlock): tuple[tx, ty: cint] =
+  let x0 = proxy.x shl 3
+  let y0 = proxy.y shl 2
   # Scan Dirty Bits
-  var dirty = p.dirty
+  var dirty = proxy.dirty
   for y in 0 ..< 4'i32:
     for x in 0 ..< 8'i32:
       # Check Dirty Bit
@@ -173,10 +207,71 @@ iterator scan(p: ptr NProxyBlock): tuple[tx, ty: cint] =
       dirty = dirty shr 1
 
 proc stream(proxy: ptr NProxyBlock) =
-  discard
+  let
+    stream = proxy.stream
+    map = stream.map
+    tiles = map.tiles
+    # Buffer Combine
+    dst = chunk(map.buffer)
+    co0 = combine(dst, dst)
+  # Select Proxy Stream
+  let proxy_stream =
+    case tiles.bits
+    of depth2bpp: proxy_stream2
+    of depth4bpp: proxy_stream8
+    else: proxy_stream16
+  # Stream Tiles to Proxy Buffer
+  for tx, ty in proxy.scan():
+    let tile = tiles[].find(tx, ty)
+    # Prepare Combine Buffers
+    var co = co0.clip32(tx, ty)
+    if not tile.found:
+      combine_clear(addr co)
+      continue
+    # Stream Tile to Proxy
+    co.src = tile.chunk()
+    if tile.uniform:
+      proxy_uniform_fill(addr co)
+    else: proxy_stream(addr co)
+  # Remove Dirty Mark
+  wasMoved(proxy.dirty)
 
 proc commit(proxy: ptr NProxyBlock) =
-  discard
+  let
+    stream = proxy.stream
+    map = stream.map
+    tiles = map.tiles
+    # Buffer Combine
+    src = chunk(map.buffer)
+    co0 = combine(src, src)
+  # Decide Pack Function
+  let mipmap_pack =
+    case tiles.bits
+    of depth2bpp: mipmap_pack2
+    of depth4bpp: mipmap_pack8
+    else: combine_copy
+  # Stream Tiles to Proxy Buffer
+  for tx, ty in proxy.scan():
+    var co = co0.clip32(tx, ty)
+    var tile = tiles[].find(tx, ty)
+    assert not isNil(tile.data)
+    # Pack Tile 16bit to Depth
+    if mipmap_pack != combine_copy:
+      co.dst.bpp = tiles.bpp
+      mipmap_pack(addr co)
+      co.src = co.dst
+    # Check Tile Uniform
+    proxy_uniform_check(addr co)
+    if co.src.bpp == co.src.stride:
+      tile.toColor(co.src.pixel)
+      continue
+    # Stream and Reduce
+    tile.toBuffer()
+    co.dst = tile.chunk()
+    combine_copy(addr co)
+    tile.mipmaps()
+  # Remove Dirty Mark
+  wasMoved(proxy.dirty)
 
 # --------------------
 # Image Proxy Dispatch

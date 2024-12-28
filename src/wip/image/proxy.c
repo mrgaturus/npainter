@@ -159,8 +159,6 @@ void proxy_stream2(image_combine_t* co) {
     // Unpack Mask to RGBA
     while (count > 0) {
       __m128i mask = _mm_load_si128((__m128i*) src_x);
-      mask = _mm_xor_si128(mask, ones);
-
       // Unpack Mask to [AAAA, BBBB, CCCC, DDDD]
       xmm0 = _mm_shuffle_epi8(mask, shuffle0);
       xmm1 = _mm_shuffle_epi8(mask, shuffle1);
@@ -241,12 +239,12 @@ void proxy_uniform_check(image_combine_t* co) {
   unsigned char *src_x, *src_y;
   src_y = co->src.buffer;
 
-  int w, h, s_src;
   // Load Region
-  w = co->src.w;
-  h = co->src.h;
+  int w = co->src.w;
+  int h = co->src.h;
   // Load Strides
-  s_src = co->src.stride;
+  int s_src = co->src.stride;
+  int s_bpp = co->src.bpp;
 
   // Source Pixel Values
   __m128i xmm0, xmm1, xmm2, xmm3;
@@ -257,14 +255,25 @@ void proxy_uniform_check(image_combine_t* co) {
   __m128i mask = _mm_cmpeq_epi32(pixel, pixel);
   
   // Prepare Mask and Pixel
-  if (co->src.bpp == 4)
-    mask = _mm_slli_epi16(mask, 8);
-  else mask = _mm_slli_epi16(mask, 4);
-  pixel = _mm_unpacklo_epi64(pixel, pixel);
-  pixel = _mm_and_si128(pixel, mask);
+  switch (s_bpp) {
+    case 2: // Mask 16-bit
+      pixel = _mm_unpacklo_epi16(pixel, pixel);
+      pixel = _mm_unpacklo_epi32(pixel, pixel);
+      pixel = _mm_unpacklo_epi64(pixel, pixel);
+      mask = _mm_slli_epi16(mask, 4); // TODO: remove this
+      break;
+    case 4: // RGBA 8-bit
+      pixel = _mm_unpacklo_epi32(pixel, pixel);
+      pixel = _mm_unpacklo_epi64(pixel, pixel);
+      break;
+    case 8: // RGBA 16-bit
+      pixel = _mm_unpacklo_epi64(pixel, pixel);
+      mask = _mm_slli_epi16(mask, 4); // TODO: remove this
+  }
 
+  pixel = _mm_and_si128(pixel, mask);
   for (int y = 0; y < h; y++) {
-    int count = w;
+    int count = w * s_bpp;
     src_x = src_y;
 
     // Check Region Uniform
@@ -307,7 +316,7 @@ void proxy_uniform_check(image_combine_t* co) {
 
       // Step Buffer
       src_x += 128;
-      count -= 16;
+      count -= 128;
     }
 
     // Step Y Buffer
@@ -317,11 +326,11 @@ void proxy_uniform_check(image_combine_t* co) {
   // Change Buffer to Uniform if pass
   xmm1 = _mm_cmpeq_epi32(check, check);
   if (_mm_testc_si128(check, xmm1) == 1) {
-    co->src.stride = co->src.bpp;
-    // Store 8bit to 16bit Uniform
-    pixel = _mm_srli_epi16(pixel, 8);
-    pixel = _mm_packus_epi16(pixel, pixel);
-    pixel = _mm_unpacklo_epi8(pixel, pixel);
+    co->src.stride = s_bpp;
+
+    // Store Pixel Uniform
+    if (s_bpp == 4)
+      pixel = _mm_cvtepu8_epi16(pixel);
     _mm_store_si128((__m128i*) co->src.buffer, pixel);
   }
 }

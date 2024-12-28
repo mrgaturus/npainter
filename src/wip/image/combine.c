@@ -18,10 +18,10 @@ static void buffer_clip(image_buffer_t* src, const image_clip_t clip) {
   if (x1 > cx1) x1 = cx1;
   if (y1 > cy1) y1 = cy1;
   // Clip Buffer Deltas
-  int dx = x0 - src->x;
-  int dy = y0 - src->y;
+  long long dx = x0 - src->x;
+  long long dy = y0 - src->y;
   // Apply Buffer Delta to Pointer
-  if (src->stride != src->bpp)
+  if (src->stride > src->bpp)
     src->buffer += dy * src->stride + dx * src->bpp;
 
   // Apply Clipping

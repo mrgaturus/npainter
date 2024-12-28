@@ -67,6 +67,7 @@ type
     # Combine Properties
     alpha*, clip*: cuint
     fn*: NBlendProc
+    opaque*: pointer
 
 {.push importc.}
 
@@ -106,28 +107,6 @@ proc proxy_uniform_check*(co: ptr NImageCombine)
 
 {.pop.} # importc
 {.pop.} # image.h
-
-# -------------------
-# image.h ffi combine
-# -------------------
-
-proc combine*(src, dst: NImageBuffer): NImageCombine =
-  result.src = src
-  result.dst = dst
-  # Prepare Clipping if is not same
-  if src.buffer != dst.buffer:
-    combine_intersect(addr result)
-
-proc combine_reduce*(co: ptr NImageCombine, lod: cint) =
-  var ro = co[]
-  assert co.src.w == co.dst.w
-  assert co.src.h == co.dst.h
-  # Apply Mipmap Reduction
-  for _ in 0 ..< lod:
-    {.emit: "`ro.dst.w` >>= 1;".}
-    {.emit: "`ro.dst.h` >>= 1;".}
-    mipmap_reduce16(addr ro)
-    ro.src = ro.dst
 
 # ----------------------
 # image.h ffi blend proc

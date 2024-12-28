@@ -118,9 +118,7 @@ proc attachLayer*(img: NImage, layer: NLayer, tag: NLayerTag) =
 proc selectLayer*(img: NImage, layer: NLayer) =
   let check = layer.code.tree == addr img.owner
   assert check, "layer owner mismatch"
-  # Configure Proxy Selected
   img.selected = layer
-  img.proxy.layer = layer
 
 # -------------------------
 # Image Layer Marking: Base
@@ -264,7 +262,7 @@ proc mergeFill(dst: var NTile) =
   # Fill Both Buffers
   c0.buffer = addr color
   var co = combine(c0, c1)
-  proxy_fill(addr co)
+  proxy_uniform_fill(addr co)
 
 proc mergeTile(src, dst: var NTile, co: ptr NImageComposite) =
   if not src.found:
@@ -278,11 +276,10 @@ proc mergeTile(src, dst: var NTile, co: ptr NImageComposite) =
   # Check Layer Uniform
   let co0 = cast[ptr NImageCombine](co)
   co0.src = co0.dst
-  proxy_uniform(co0)
+  proxy_uniform_check(co0)
   # Convert to Uniform if was Uniform
   if co0.src.stride == co0.src.bpp:
-    let color = cast[ptr uint64](co.src.buffer)[]
-    dst.toColor(color)
+    dst.toColor(co.src.pixel)
   # Generate Mipmaps
   else: dst.mipmaps()
 
