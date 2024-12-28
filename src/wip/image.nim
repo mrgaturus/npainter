@@ -31,7 +31,7 @@ type
     owner*: NLayerOwner
     root*: NLayer
     # Image Proxy
-    selected*: NLayer
+    target*: NLayer
     proxy*: NImageProxy
 
 # ----------------------------
@@ -118,7 +118,7 @@ proc attachLayer*(img: NImage, layer: NLayer, tag: NLayerTag) =
 proc selectLayer*(img: NImage, layer: NLayer) =
   let check = layer.code.tree == addr img.owner
   assert check, "layer owner mismatch"
-  img.selected = layer
+  img.target = layer
 
 # -------------------------
 # Image Layer Marking: Base

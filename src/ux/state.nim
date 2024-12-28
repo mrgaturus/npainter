@@ -63,7 +63,7 @@ controller NPainterState:
     if ueLayerTiles in flags:
       update(self.engine.canvas)
     if ueLayerProps in flags:
-      let layer {.cursor.} = layers.selected
+      let layer {.cursor.} = layers.target
       let user {.cursor.} = cast[GUIWidget](layer.user)
       # Reflect Props Changes to Widget
       if ueLayerList notin flags:

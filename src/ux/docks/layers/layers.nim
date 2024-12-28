@@ -48,7 +48,7 @@ controller CXLayersDock:
       dock: UXDockContent
 
   callback cbUpdate:
-    let layer = self.layers.selected
+    let layer = self.layers.target
     let mode = layer.props.mode
     # Detach Passthrough
     let pass = self.itemPass
@@ -70,7 +70,7 @@ controller CXLayersDock:
     send(self.modeCombo, wsLayout)
 
   callback cbChangeMode:
-    let layer = self.layers.selected
+    let layer = self.layers.target
     let model {.cursor.} =
       if layer.kind != lkMask:
         self.modeColor

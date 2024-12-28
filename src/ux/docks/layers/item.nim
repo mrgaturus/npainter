@@ -419,7 +419,7 @@ widget UXLayerItem:
     # Check Layer Selected
     let level = self.laLevel.level
     var flags = self.flags - {wHold, wHidden}
-    if self.layer == self.layers.selected:
+    if self.layer == self.layers.target:
       flags.incl(wHold)
     # Check Level Folded/Hidden
     if level.folded: flags.incl(wHidden)

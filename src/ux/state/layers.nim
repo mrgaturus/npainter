@@ -34,8 +34,8 @@ controller CXLayers:
   proc root*: NLayer =
     self.image.root
     
-  proc selected*: NLayer =
-    self.image.selected
+  proc target*: NLayer =
+    self.image.target
 
   proc reflect*(layer: NLayer) =
     let
@@ -64,21 +64,22 @@ controller CXLayers:
     if self.marked == 2: return
     elif self.marked == 0:
       complete(image.status.clip)
+      relax(self.cbRender)
     # Check Clipped Stencil
     let props = addr layer.props
-    let check0 = lpClipping in props.flags
-    let check1 = props.mode == bmStencil
+    let stencil = props.mode == bmStencil
     # Mark Layer Folder if Clip
     var la = layer.prev
-    if not isNil(la) and not isNil(layer.folder) and
-      (lpClipping in la.props.flags) or (check0 and check1):
+    if stencil or not isNil(la) and
+      lpClipping in la.props.flags:
         image.markLayer(layer.folder)
-        relax(self.cbRender)
-        self.marked = 2
+        # Stencil Could be Marked Twice
+        if not stencil:
+          self.marked = 2
+        else: self.marked = 1
     # Just Mark Layer Once
     elif self.marked == 0:
       image.markLayer(layer)
-      relax(self.cbRender)
       self.marked = 1
 
   proc render*(layer: NLayer) =
@@ -95,7 +96,7 @@ controller CXLayers:
 
   proc select*(layer: NLayer) =
     let
-      u0 {.cursor.} = cast[GUIWidget](self.selected.user)
+      u0 {.cursor.} = cast[GUIWidget](self.target.user)
       u1 {.cursor.} = cast[GUIWidget](layer.user)
     # Select Current Layer
     self.image.selectLayer(layer)
@@ -108,7 +109,7 @@ controller CXLayers:
     let
       image = self.image
       layer = image.createLayer(kind)
-      target = image.selected
+      target = image.target
       # Undo Step Capture
       undo = self.canvas.undo
       step = undo.push(ucLayerCreate)
@@ -136,7 +137,7 @@ controller CXLayers:
   # --------------------------
 
   callback cbUpdateLayer:
-    var layer = self.image.selected
+    var layer = self.image.target
     let props = addr layer.props
     let user {.cursor.} = cast[GUIWidget](layer.user)
     # Update Layer Properties Flags
@@ -160,7 +161,7 @@ controller CXLayers:
 
   callback cbPropLayer:
     let undo = self.canvas.undo
-    let layer = self.image.selected
+    let layer = self.image.target
     let step = undo.push(ucLayerProps)
     step.capture(layer)
     # Dispatch Layer Update
@@ -172,7 +173,7 @@ controller CXLayers:
   callback cbSliderLayer:
     let event = getApp().state.kind
     let undo = self.canvas.undo
-    let layer = self.image.selected
+    let layer = self.image.target
     # Prepare Undo Step
     if event == evCursorClick:
       self.step = undo.push(ucLayerProps)
@@ -217,7 +218,7 @@ controller CXLayers:
     let
       undo = self.canvas.undo
       image {.cursor.} = self.image
-      layer = image.selected
+      layer = image.target
     # Copy Layer And Attach Prev
     let la = image.copyLayer(layer)
     layer.attachPrev(la)
@@ -234,7 +235,7 @@ controller CXLayers:
     let
       image {.cursor.} = self.image
       undo = self.canvas.undo
-      layer = image.selected
+      layer = image.target
       target = layer.next
     # Avoid Merge Invalid Layer
     if isNil(target) or
@@ -263,7 +264,7 @@ controller CXLayers:
       image = self.image
       undo = self.canvas.undo
       # Current Layer Selected
-      layer = image.selected
+      layer = image.target
       tiles = addr layer.tiles
     # Capture Before Tiles
     if layer.kind == lkFolder: return
@@ -279,7 +280,7 @@ controller CXLayers:
     let
       image = self.image
       undo = self.canvas.undo
-      layer = image.selected
+      layer = image.target
       root = image.root
     # Avoid Delete When is Unique
     if root.first == layer and root.last == layer:
@@ -329,7 +330,7 @@ controller CXLayers:
 
   callback cbRaiseLayer:
     let undo = self.canvas.undo
-    let target = self.selected
+    let target = self.target
     if target == self.root.first:
       return
     # Decide Pivot Layer
@@ -357,7 +358,7 @@ controller CXLayers:
 
   callback cbLowerLayer:
     let undo = self.canvas.undo
-    let target = self.selected
+    let target = self.target
     if target == self.root.last:
       return
     # Decide Pivot Layer

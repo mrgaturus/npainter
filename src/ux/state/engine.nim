@@ -73,7 +73,7 @@ controller NPainterEngine:
     # Prepare Proxy
     let image = self.canvas.image
     result = addr image.proxy
-    result[].prepare(image.selected)
+    result[].prepare(image.target)
     # Prepare Brush Engine
     let
       ctx = addr image.ctx
@@ -98,7 +98,7 @@ controller NPainterEngine:
     # Prepare Proxy
     let image = self.canvas.image
     result = addr image.proxy
-    result[].prepare(image.selected)
+    result[].prepare(image.target)
     # Prepare Bucket Tool
     let
       ctx = addr image.ctx
@@ -152,7 +152,7 @@ controller NPainterEngine:
     let
       image = self.canvas.image
       undo = self.canvas.undo
-      layer = image.selected
+      layer = image.target
     self.canvas.update()
     getWindow().fuse()
     # Prepare Undo Step
