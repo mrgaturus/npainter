@@ -64,10 +64,14 @@ controller CXLayers:
     if self.marked == 2: return
     elif self.marked == 0:
       complete(image.status.clip)
+    # Check Clipped Stencil
+    let props = addr layer.props
+    let check0 = lpClipping in props.flags
+    let check1 = props.mode == bmStencil
     # Mark Layer Folder if Clip
     var la = layer.prev
     if not isNil(la) and not isNil(layer.folder) and
-      lpClipping in la.props.flags:
+      (lpClipping in la.props.flags) or (check0 and check1):
         image.markLayer(layer.folder)
         relax(self.cbRender)
         self.marked = 2
