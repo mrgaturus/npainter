@@ -153,12 +153,9 @@ proc markScope(img: NImage, layer: NLayer) =
   while not isNil(la) and
     lpClipping in la.props.flags:
       la = la.next
-  # Find non Passthrough Scope
-  if not isNil(la) and la.kind == lkMask:
-    la = la.folder
-    while not isNil(la) and
-      la.props.mode == bmPassthrough:
-        la = la.folder
+  if not isNil(la) and
+    la.kind == lkMask:
+      la = la.folder
   # Mark Layer Scope
   if not isNil(la):
     img.markBase(la)

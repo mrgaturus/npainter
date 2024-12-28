@@ -115,6 +115,7 @@ controller CXLayers:
     let props = addr layer.props
     let user {.cursor.} = cast[GUIWidget](layer.user)
     # Update Layer Properties Flags
+    let mode0 = props.mode
     let flags0 = props.flags
     var flags = flags0 - {lpClipping .. lpLock}
     if self.clipping.peek[]: flags.incl(lpClipping)
@@ -125,8 +126,9 @@ controller CXLayers:
     props.flags = flags
     props.mode = self.mode.peek[]
     props.opacity = self.opacity.peek[].toRaw
-    if (lpClipping in flags0) != (lpClipping in flags):
-      layer = layer.folder
+    if (lpClipping in flags0) != (lpClipping in flags) or
+        (mode0 != props.mode and mode0 == bmStencil):
+          layer = layer.folder
     # Update Layer Widget
     user.send(wsLayout)
     self.render(layer)

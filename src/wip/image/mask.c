@@ -38,7 +38,8 @@ void composite_mask(image_composite_t* co) {
   __m128i src_xmm0, src_xmm1, src_xmm2, src_xmm3;
   __m128i dst_xmm0, dst_xmm1, dst_xmm2, dst_xmm3;
   const __m128i zeros = _mm_setzero_si128();
-  const __m128i ones = _mm_cmpeq_epi32(zeros, zeros);
+  __m128i ones = _mm_cmpeq_epi32(zeros, zeros);
+  if (co->clip) ones = zeros; // <- Stencil
   // Load Alpha and Unpack to 4x32
   __m128i alpha = _mm_loadu_si32(&co->alpha);
   alpha = _mm_shuffle_epi32(alpha, 0);
@@ -128,7 +129,8 @@ void composite_mask_uniform(image_composite_t* co) {
   // Pixel XMM Registers
   __m128i dst_xmm0, dst_xmm1, dst_xmm2, dst_xmm3;
   const __m128i zeros = _mm_setzero_si128();
-  const __m128i ones = _mm_cmpeq_epi32(zeros, zeros);
+  __m128i ones = _mm_cmpeq_epi32(zeros, zeros);
+  if (co->clip) ones = zeros; // <- Stencil
   // Load Mask Uniform and Unpack to 4x32
   __m128i mask = _mm_loadl_epi64((__m128i*) co->src.buffer);
   __m128i alpha = _mm_loadu_si32(&co->alpha);
@@ -327,7 +329,8 @@ void composite_passmask(image_composite_t* co) {
   __m128i ext_xmm0, ext_xmm1, ext_xmm2, ext_xmm3;
   __m128i dst_xmm0, dst_xmm1, dst_xmm2, dst_xmm3;
   const __m128i zeros = _mm_setzero_si128();
-  const __m128i ones = _mm_cmpeq_epi32(zeros, zeros);
+  __m128i ones = _mm_cmpeq_epi32(zeros, zeros);
+  if (co->clip) ones = zeros; // <- Stencil
   // Load Alpha and Unpack to 4x32
   __m128i alpha = _mm_loadu_si32(&co->alpha);
   alpha = _mm_shuffle_epi32(alpha, 0);
@@ -436,7 +439,8 @@ void composite_passmask_uniform(image_composite_t* co) {
   __m128i ext_xmm0, ext_xmm1, ext_xmm2, ext_xmm3;
   __m128i dst_xmm0, dst_xmm1, dst_xmm2, dst_xmm3;
   const __m128i zeros = _mm_setzero_si128();
-  const __m128i ones = _mm_cmpeq_epi32(zeros, zeros);
+  __m128i ones = _mm_cmpeq_epi32(zeros, zeros);
+  if (co->clip) ones = zeros; // <- Stencil
   // Load Mask Uniform and Unpack to 4x32
   __m128i mask = _mm_loadl_epi64((__m128i*) co->src.buffer);
   __m128i alpha = _mm_loadu_si32(&co->alpha);

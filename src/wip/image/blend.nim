@@ -46,6 +46,7 @@ proc blendCombine*(state: ptr NCompositorState): NBlendCombine =
       co.fn = blend_normal
     else: co.fn = composite_mask
   of cmBlendMask:
+    co.clip = cast[cuint](mode == bmStencil)
     if state.scope.step.mode == bmPassthrough:
       co.opaque = addr state.lower.buffer
       co.fn = composite_passmask
@@ -151,17 +152,25 @@ proc blendLayer*(state: ptr NCompositorState) =
     lod = state.mipmap
     # Layer Objects
     layer = state.step.layer
+    mode = state.step.mode
     tiles = addr layer.tiles
     dst = state.scope.buffer
     # Layer Region Size
     tx0 = dst.x shr 5
     ty0 = dst.y shr 5
   # Layer Region Blending
+  var pixel {.align: 16.}: uint64 = 0
   var co = blendCombine(state)
   # Blend Layer Tiles
   for tx, ty in state.scan():
-    let tile = tiles[].find(tx + tx0, ty + ty0)
-    if not tile.found: continue
+    var tile = tiles[].find(tx + tx0, ty + ty0)
+    if not tile.found:
+      if mode != bmStencil:
+        continue
+      # XXX: This is crappy, solve it clarify tile status
+      tile.found = true
+      tile.uniform = true
+      tile.data = cast[typeof tile.data](addr pixel)
     # Prepare Tile Chunk
     let chunk = tile.chunk(lod)
     co.co0 = combine(chunk, dst)
