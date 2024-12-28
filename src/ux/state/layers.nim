@@ -15,6 +15,7 @@ controller CXLayers:
     canvas: NCanvasImage
     image: NImage
     step: NUndoStep
+    marked: int
     # Current State
     {.public.}:
       mode: @ NBlendMode
@@ -54,6 +55,40 @@ controller CXLayers:
   # Layer Rendering Manipulation
   # ----------------------------
 
+  callback cbRender:
+    self.canvas.update()
+    self.marked = 0
+
+  proc renderSafe(layer: NLayer) =
+    let image {.cursor.} = self.image
+    if self.marked == 2: return
+    elif self.marked == 0:
+      complete(image.status.clip)
+    # Mark Layer Folder if Clip
+    var la = layer.prev
+    if not isNil(la) and not isNil(layer.folder) and
+      lpClipping in la.props.flags:
+        image.markLayer(layer.folder)
+        relax(self.cbRender)
+        self.marked = 2
+    # Just Mark Layer Once
+    elif self.marked == 0:
+      image.markLayer(layer)
+      relax(self.cbRender)
+      self.marked = 1
+
+  proc render*(layer: NLayer) =
+    let image {.cursor.} = self.image
+    # TODO: Calculate AABB of Layer
+    complete(image.status.clip)
+    image.markLayer(layer)
+    # Send Rendering Callback
+    relax(self.cbRender)
+
+  # ----------------------------
+  # Layer Rendering Manipulation
+  # ----------------------------
+
   proc select*(layer: NLayer) =
     let
       u0 {.cursor.} = cast[GUIWidget](self.selected.user)
@@ -87,24 +122,10 @@ controller CXLayers:
     # Select New Layer
     force(self.onstructure)
     self.select(layer)
+    self.renderSafe(layer)
     # Capture Undo Step
     step.capture(layer)
     undo.flush()
-
-  # ----------------------------
-  # Layer Rendering Manipulation
-  # ----------------------------
-
-  callback cbRender:
-    self.canvas.update()
-
-  proc render*(layer: NLayer) =
-    let image {.cursor.} = self.image
-    # TODO: Calculate AABB of Layer
-    complete(image.status.clip)
-    image.markLayer(layer)
-    # Send Rendering Callback
-    relax(self.cbRender)
 
   # --------------------------
   # Layer Control Manipulation
@@ -264,11 +285,10 @@ controller CXLayers:
       self.select(layer.next)
     elif not isNil(layer.prev):
       self.select(layer.prev)
-    # Change Selected to Parent Folder
+    # Change to Parent Folder
     else: self.select(layer.folder)
-    # Prepare Rendering
-    self.render(layer)
     # Capture Undo Command
+    self.renderSafe(layer)
     let step = undo.push(ucLayerDelete)
     step.capture(layer)
     undo.flush()
@@ -288,6 +308,7 @@ controller CXLayers:
       return
     # Dettach Layer First
     let step = undo.push(ucLayerReorder)
+    self.renderSafe(layer)
     step.capture(layer)
     layer.detach()
     # Attach Layer to Target
@@ -300,7 +321,7 @@ controller CXLayers:
     undo.flush()
     # Render Layer
     force(self.onstructure)
-    self.render(layer)
+    self.renderSafe(layer)
 
   callback cbRaiseLayer:
     let undo = self.canvas.undo
@@ -313,6 +334,7 @@ controller CXLayers:
     if escape: pivot = target.folder
     # Detach Layer
     let step = undo.push(ucLayerReorder)
+    self.renderSafe(target)
     step.capture(target)
     target.detach()
     # Attach Layer Inside Folder
@@ -327,7 +349,7 @@ controller CXLayers:
     undo.flush()
     # Render Composition
     force(self.onstructure)
-    self.render(target)
+    self.renderSafe(target)
 
   callback cbLowerLayer:
     let undo = self.canvas.undo
@@ -338,7 +360,8 @@ controller CXLayers:
     var pivot = target.next
     let escape = isNil(pivot)
     if escape: pivot = target.folder
-    # Detach Layer
+    # Capture Detach Layer
+    self.renderSafe(target)
     let step = undo.push(ucLayerReorder)
     step.capture(target)
     target.detach()
@@ -351,7 +374,7 @@ controller CXLayers:
     undo.flush()
     # Render Composition
     force(self.onstructure)
-    self.render(target)
+    self.renderSafe(target)
 
   # ----------------------------
   # Layer Control Initialization
