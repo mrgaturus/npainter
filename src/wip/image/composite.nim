@@ -131,6 +131,7 @@ proc stepClipScope(com: var NCompositor) =
   let peekMask = peek.layer.kind == lkMask
   if peekClip and not nextClip:
     com.stepPopScope(cmScopeMask)
+    com.stepPopScope(cmScopeMask)
     com.stepPopScope(cmScopeClip)
     com.stepPopScope(cmScopeClip)
     return
@@ -152,10 +153,15 @@ proc stepClipScope(com: var NCompositor) =
   if not peekClip: return
   if peekMask and not nextMask:
     com.stepPopScope(cmScopeMask)
+    com.stepPopScope(cmScopeMask)
   elif not peekMask and nextMask:
+    let cmd = peek.cmd
     peek.cmd = cmScopeMask
     com.steps[^1] = peek
     com.stack.add(peek)
+    # Check Masking to Scope
+    if cmd == cmBlendScope:
+      com.stack.add(peek)
 
 # -----------------------
 # Compositor Step Machine
@@ -273,16 +279,21 @@ proc next(state: var NCompositorState): bool =
     state.step = com.steps[idx]
     inc(state.idx)
 
-proc scope(state: var NCompositorState): bool =
+proc check(state: var NCompositorState): bool =
   let stack = addr state.stack
   let idx0 = high(stack.scopes)
-  let idx1 = max(0, idx0 - 1)
+  var idx1 = max(0, idx0 - 1)
   # Define Current Scope
   let scope = addr stack.scopes[idx0]
   let lower = addr stack.scopes[idx1]
   state.scope = scope
-  state.lower = lower
   # Check Scope Clipping: Lower
+  while idx1 >= 0:
+    let lo = addr stack.scopes[idx1]
+    if scope.step.layer != lo.step.layer:
+      state.lower = lo; break
+    dec(idx1)
+  # Check Scope Clipping: Pass
   let step = addr state.step
   var pass {.cursor.} = scope
   if step.cmd == cmBlendScope:
@@ -301,7 +312,7 @@ proc scope(state: var NCompositorState): bool =
   else: true
 
 proc dispatch(state: var NCompositorState) =
-  if not state.scope():
+  if not state.check():
     return
   # Prepare Dispatch Hook
   let step = state.step

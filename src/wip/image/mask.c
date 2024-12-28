@@ -369,10 +369,10 @@ void composite_passmask(image_composite_t* co) {
       src_xmm2 = _mm_multiply_mask(src_xmm2, alpha);
       src_xmm3 = _mm_multiply_mask(src_xmm3, alpha);
       // Apply Source Mask Pixel
-      dst_xmm0 = _mm_mix_color(ext_xmm0, ext_xmm0, src_xmm0);
-      dst_xmm1 = _mm_mix_color(ext_xmm1, ext_xmm1, src_xmm1);
-      dst_xmm2 = _mm_mix_color(ext_xmm2, ext_xmm2, src_xmm2);
-      dst_xmm3 = _mm_mix_color(ext_xmm3, ext_xmm3, src_xmm3);
+      dst_xmm0 = _mm_mix_color(ext_xmm0, dst_xmm0, src_xmm0);
+      dst_xmm1 = _mm_mix_color(ext_xmm1, dst_xmm1, src_xmm1);
+      dst_xmm2 = _mm_mix_color(ext_xmm2, dst_xmm2, src_xmm2);
+      dst_xmm3 = _mm_mix_color(ext_xmm3, dst_xmm3, src_xmm3);
       // Pack Destination Pixels to 8x16 bit channels
       dst_xmm0 = _mm_packus_epi32(dst_xmm1, dst_xmm0);
       dst_xmm2 = _mm_packus_epi32(dst_xmm3, dst_xmm2);
@@ -469,10 +469,10 @@ void composite_passmask_uniform(image_composite_t* co) {
       ext_xmm2 = _mm_unpackhi_epi16(ext_xmm2, zeros);
 
       // Apply Source Mask Pixel
-      dst_xmm0 = _mm_mix_color(dst_xmm0, ext_xmm0, mask);
-      dst_xmm1 = _mm_mix_color(dst_xmm1, ext_xmm1, mask);
-      dst_xmm2 = _mm_mix_color(dst_xmm2, ext_xmm2, mask);
-      dst_xmm3 = _mm_mix_color(dst_xmm3, ext_xmm3, mask);
+      dst_xmm0 = _mm_mix_color(ext_xmm0, dst_xmm0, mask);
+      dst_xmm1 = _mm_mix_color(ext_xmm1, dst_xmm1, mask);
+      dst_xmm2 = _mm_mix_color(ext_xmm2, dst_xmm2, mask);
+      dst_xmm3 = _mm_mix_color(ext_xmm3, dst_xmm3, mask);
       // Pack Destination Pixels to 8x16 bit channels
       dst_xmm0 = _mm_packus_epi32(dst_xmm1, dst_xmm0);
       dst_xmm2 = _mm_packus_epi32(dst_xmm3, dst_xmm2);

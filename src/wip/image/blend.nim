@@ -47,6 +47,7 @@ proc blendCombine*(state: ptr NCompositorState): NBlendCombine =
     else: co.fn = composite_mask
   of cmBlendMask:
     if state.scope.step.mode == bmPassthrough:
+      co.opaque = addr state.lower.buffer
       co.fn = composite_passmask
     else: co.fn = composite_mask
   else: co.fn = blend_procs[mode]
@@ -61,6 +62,9 @@ proc blendChunk*(co: ptr NImageComposite) =
     if uniform: composite_mask_uniform(co)
     else: composite_mask(co)
   elif co.fn == composite_passmask:
+    let ext = cast[ptr NImageBuffer](co.opaque)
+    co.ext = combine(co.dst, ext[]).dst
+    # Dispatch Passthrough Masking
     if uniform: composite_passmask_uniform(co)
     else: composite_passmask(co)
   # Advanced Blending Equation
