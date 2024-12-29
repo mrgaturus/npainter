@@ -139,6 +139,7 @@ proc mark(image: NImage, tile: ptr NCanvasTile, level: cint) =
 
 proc composite(image: NImage, pool: NThreadPool) =
   let com = addr image.com
+  wasMoved(image.test)
   # Prepare Composite Pipeline
   com[].stepClear()
   com[].stepLayer(image.root)
@@ -151,7 +152,7 @@ proc composite*(canvas: NCanvasImage) =
     level = canvas.affine.lod.level
   # Mark Canvas Tiles
   for tile in view[].tiles:
-    mark(image, tile, level)
+    image.mark(tile, level)
   # Dispatch Compositor
   let pool = canvas.man.pool
   image.composite(pool)

@@ -31,6 +31,7 @@ type
     owner*: NLayerOwner
     root*: NLayer
     # Image Proxy
+    test*: NLayer
     target*: NLayer
     proxy*: NImageProxy
 
@@ -187,6 +188,35 @@ proc markLayer*(img: NImage, layer: NLayer) =
     img.markBase(layer)
   of lkFolder: img.markFolder(layer)
   of lkMask: img.markMask(layer)
+
+proc markSafe*(img: NImage, layer: NLayer) =
+  let prev = layer.prev
+  let next = layer.next
+  let folder = layer.folder
+  # Redundant Mark Checking
+  let mode = layer.props.mode
+  let special = layer.kind == lkMask
+  let clipper = not isNil(prev) and
+    lpClipping in prev.props.flags
+  # Mark Folder if Special
+  var scope = layer
+  if special and not isNil(folder):
+    scope = layer.folder
+  elif clipper:
+    if mode != bmPassthrough:
+      img.markClip(scope)
+    if not isNil(next):
+      img.markLayer(next)
+  # Check Redundant Marked
+  let test = img.test
+  if not isNil(test):
+    var check = scope
+    while not isNil(check):
+      if check == test: return
+      check = check.folder
+  # Mark Current Layer
+  img.markLayer(scope)
+  img.test = scope
 
 # ---------------------
 # Image Layer Duplicate

@@ -15,7 +15,7 @@ controller CXLayers:
     canvas: NCanvasImage
     image: NImage
     step: NUndoStep
-    marked: int
+    staged: int
     # Current State
     {.public.}:
       mode: @ NBlendMode
@@ -57,30 +57,17 @@ controller CXLayers:
 
   callback cbRender:
     self.canvas.update()
-    self.marked = 0
+    self.staged = 0
 
-  proc renderSafe(layer: NLayer) =
+  proc renderSafe*(layer: NLayer) =
     let image {.cursor.} = self.image
-    if self.marked == 2: return
-    elif self.marked == 0:
+    # TODO: Calculate AABB of Layer
+    if self.staged == 0:
       complete(image.status.clip)
       relax(self.cbRender)
-    # Check Clipped Stencil
-    let props = addr layer.props
-    let stencil = props.mode == bmStencil
-    # Mark Layer Folder if Clip
-    var la = layer.prev
-    if stencil or not isNil(la) and
-      lpClipping in la.props.flags:
-        image.markLayer(layer.folder)
-        # Stencil Could be Marked Twice
-        if not stencil:
-          self.marked = 2
-        else: self.marked = 1
-    # Just Mark Layer Once
-    elif self.marked == 0:
-      image.markLayer(layer)
-      self.marked = 1
+    # Mark Layer Safe
+    image.markSafe(layer)
+    inc(self.staged)
 
   proc render*(layer: NLayer) =
     let image {.cursor.} = self.image
@@ -126,8 +113,8 @@ controller CXLayers:
     layer.props.flags = flags
     # Select New Layer
     force(self.onstructure)
-    self.select(layer)
     self.renderSafe(layer)
+    self.select(layer)
     # Capture Undo Step
     step.capture(layer)
     undo.flush()
@@ -253,11 +240,11 @@ controller CXLayers:
     step1.capture(layer); layer.detach(); layer.destroy()
     step2.capture(target); target.detach(); target.destroy()
     step0.capture(la)
+    undo.flush()
     # Update Layer Structure
     force(self.onstructure)
+    self.renderSafe(la)
     self.select(la)
-    self.render(la)
-    undo.flush()
 
   callback cbClearLayer:
     let
@@ -293,11 +280,11 @@ controller CXLayers:
     # Change to Parent Folder
     else: self.select(layer.folder)
     # Capture Undo Command
-    self.renderSafe(layer)
     let step = undo.push(ucLayerDelete)
     step.capture(layer)
     undo.flush()
     # Destroy Layer
+    self.renderSafe(layer)
     layer.detach()
     layer.destroy()
     # Update Layer Structure

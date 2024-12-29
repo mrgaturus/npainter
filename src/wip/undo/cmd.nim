@@ -337,8 +337,10 @@ proc commit0create(state: var NUndoState) =
     stage.readBefore()
   # Select Created Layer
   if not step.weak:
+    image.test = layer
+    image.markSafe(layer)
     image.selectLayer(layer)
-  else: complete(image.status.clip)
+    complete(image.status.clip)
 
 proc commit0delete(state: var NUndoState) =
   let step = addr state.step
@@ -348,7 +350,7 @@ proc commit0delete(state: var NUndoState) =
   let layer = step.node
   if not isNil(layer):
     complete(image.status.clip)
-    image.markLayer(layer)
+    image.markSafe(layer)
     # Select Previous Layer
     if not step.weak:
       let node = image.owner.search(layer.tag.code)
@@ -383,13 +385,14 @@ proc commit0reorder(state: var NUndoState, redo: bool) =
   # Lookup Current Layer
   state.layer(step.layer)
   let layer = step.node
+  image.markSafe(layer)
   layer.detach()
   # Apply Layer Reordering
   if redo: image.attachLayer(layer, reorder.after)
   else: image.attachLayer(layer, reorder.before)
   # Mark Layer to Status
   complete(image.status.clip)
-  image.markLayer(layer)
+  image.markSafe(layer)
 
 proc undo*(state: var NUndoState) =
   let
