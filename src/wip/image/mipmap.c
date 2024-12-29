@@ -280,10 +280,10 @@ void mipmap_reduce8(image_combine_t* co) {
       xmm2 = _mm_load_si128((__m128i*) src_x0 + 2);
       xmm3 = _mm_load_si128((__m128i*) src_x0 + 3);
       // Bottom Source Pixels
-      xmm4 = _mm_loadu_si128((__m128i*) src_x1);
-      xmm5 = _mm_loadu_si128((__m128i*) src_x1 + 1);
-      xmm6 = _mm_loadu_si128((__m128i*) src_x1 + 2);
-      xmm7 = _mm_loadu_si128((__m128i*) src_x1 + 3);
+      xmm4 = _mm_load_si128((__m128i*) src_x1);
+      xmm5 = _mm_load_si128((__m128i*) src_x1 + 1);
+      xmm6 = _mm_load_si128((__m128i*) src_x1 + 2);
+      xmm7 = _mm_load_si128((__m128i*) src_x1 + 3);
 
       // Average 16 Pixels Vertically
       xmm0 = _mm_avg_epu8(xmm0, xmm4);
@@ -297,10 +297,10 @@ void mipmap_reduce8(image_combine_t* co) {
       xmm6 = _mm_unpackhi_epi32(xmm0, xmm1);
       xmm7 = _mm_unpackhi_epi32(xmm2, xmm3);
       // Interleave 8 Pixels Horizontally: Pass 2
-      xmm0 = _mm_unpacklo_epi32(xmm4, xmm5);
-      xmm1 = _mm_unpacklo_epi32(xmm6, xmm7);
-      xmm2 = _mm_unpackhi_epi32(xmm4, xmm5);
-      xmm3 = _mm_unpackhi_epi32(xmm6, xmm7);
+      xmm0 = _mm_unpacklo_epi32(xmm4, xmm6);
+      xmm1 = _mm_unpacklo_epi32(xmm5, xmm7);
+      xmm2 = _mm_unpackhi_epi32(xmm4, xmm6);
+      xmm3 = _mm_unpackhi_epi32(xmm5, xmm7);
       // Average 8 Pixels Horizontally
       xmm0 = _mm_avg_epu8(xmm0, xmm2);
       xmm1 = _mm_avg_epu8(xmm1, xmm3);
@@ -329,7 +329,7 @@ void mipmap_reduce8(image_combine_t* co) {
       }
 
       // Store 2 Pixels
-      if (count == 2) {
+      if (count >= 2) {
         _mm_storel_epi64((__m128i*) dst_x, xmm0);
         _mm_srli_si128(xmm0, 8);
         // No More Pixels
@@ -385,10 +385,10 @@ void mipmap_reduce2(image_combine_t* co) {
       xmm2 = _mm_load_si128((__m128i*) src_x0 + 2);
       xmm3 = _mm_load_si128((__m128i*) src_x0 + 3);
       // Bottom Source Pixels
-      xmm4 = _mm_loadu_si128((__m128i*) src_x1);
-      xmm5 = _mm_loadu_si128((__m128i*) src_x1 + 1);
-      xmm6 = _mm_loadu_si128((__m128i*) src_x1 + 2);
-      xmm7 = _mm_loadu_si128((__m128i*) src_x1 + 3);
+      xmm4 = _mm_load_si128((__m128i*) src_x1);
+      xmm5 = _mm_load_si128((__m128i*) src_x1 + 1);
+      xmm6 = _mm_load_si128((__m128i*) src_x1 + 2);
+      xmm7 = _mm_load_si128((__m128i*) src_x1 + 3);
 
       // Average 32 Pixels Vertically
       xmm0 = _mm_avg_epu16(xmm0, xmm4);
@@ -439,7 +439,7 @@ void mipmap_reduce2(image_combine_t* co) {
       }
 
       // Store 4 Mask Pixels
-      if (count == 4) {
+      if (count >= 4) {
         _mm_storel_epi64((__m128i*) dst_x, xmm0);
         _mm_srli_si128(xmm0, 8);
         // Step 4 Pixels
@@ -448,7 +448,7 @@ void mipmap_reduce2(image_combine_t* co) {
       }
 
       // Store 2 Mask Pixels
-      if (count == 2) {
+      if (count >= 2) {
         _mm_storeu_si32((__m128i*) dst_x, xmm0);
         _mm_srli_si128(xmm0, 4);
         // Step 2 Pixels

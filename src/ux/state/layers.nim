@@ -193,7 +193,10 @@ controller CXLayers:
   # ----------------------
 
   callback cbCreateLayer:
-    self.create(lkColor16)
+    let state = getApp().state
+    if Mod_Shift notin state.mods:
+      self.create(lkColor16)
+    else: self.create(lkColor8)
 
   callback cbCreateFolder:
     self.create(lkFolder)

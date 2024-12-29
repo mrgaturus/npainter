@@ -54,10 +54,13 @@ proc blendCombine*(state: ptr NCompositorState): NBlendCombine =
   else: co.fn = blend_procs[mode]
 
 proc blendChunk*(co: ptr NImageComposite) =
-  let uniform = co.src.stride == co.src.bpp
+  let bpp = co.src.bpp
+  let uniform = co.src.stride == bpp
+  # Dispatch Normal Blending
   if co.fn == blend_normal and co.clip == 0:
     if uniform: composite_blend_uniform(co)
-    else: composite_blend(co)
+    elif bpp == 8: composite_blend16(co)
+    elif bpp == 4: composite_blend8(co)
   # Masking Blending Equation
   elif co.fn == composite_mask:
     if uniform: composite_mask_uniform(co)
@@ -70,7 +73,8 @@ proc blendChunk*(co: ptr NImageComposite) =
     else: composite_passmask(co)
   # Advanced Blending Equation
   elif uniform: composite_fn_uniform(co)
-  else: composite_fn(co)
+  elif bpp == 8: composite_fn16(co)
+  elif bpp == 4: composite_fn8(co)
 
 # -------------------------
 # Blending Compositor Scope

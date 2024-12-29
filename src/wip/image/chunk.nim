@@ -4,7 +4,7 @@ import ffi
 from tiles import NTile, NTileStatus
 from context import NImageMap
 # Mipmap Level Buffer Location
-const miplocs = [0, 1024, 1280, 1344, 1360, 1376]
+const miplocs = [0, 1024, 1280, 1344, 1408, 1472]
 
 proc pixel*(src: NImageBuffer): uint64 =
   cast[ptr uint64](src.buffer)[]
@@ -80,10 +80,10 @@ proc chunk*(tile: NTile, lod: cint): NImageBuffer =
   if lod > 0 and tile.status == tsBuffer:
     let idx = miplocs[lod] * tile.bpp
     {.emit: "`result.buffer` += `idx`;".}
-    # Reduce Buffer Sizes to LOD
     {.emit: "`result.w` >>= `lod`;".}
     {.emit: "`result.h` >>= `lod`;".}
-    {.emit: "`result.stride` >>= `lod`;".}
+    let stride = result.stride shr lod
+    result.stride = max(stride, 16)
 
 proc mipmaps*(tile: var NTile) =
   if tile.status != tsBuffer: return

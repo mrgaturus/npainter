@@ -330,7 +330,7 @@ void proxy_uniform_check(image_combine_t* co) {
 
     // Store Pixel Uniform
     if (s_bpp == 4)
-      pixel = _mm_cvtepu8_epi16(pixel);
+      pixel = _mm_unpacklo_epi8(pixel, pixel);
     _mm_store_si128((__m128i*) co->src.buffer, pixel);
   }
 }

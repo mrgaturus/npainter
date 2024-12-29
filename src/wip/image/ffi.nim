@@ -79,9 +79,11 @@ proc combine_copy*(co: ptr NImageCombine)
 proc combine_pack*(co: ptr NImageCombine)
 
 # composite.c
-proc composite_blend*(co: ptr NImageComposite)
+proc composite_blend16*(co: ptr NImageComposite)
+proc composite_blend8*(co: ptr NImageComposite)
 proc composite_blend_uniform*(co: ptr NImageComposite)
-proc composite_fn*(co: ptr NImageComposite)
+proc composite_fn16*(co: ptr NImageComposite)
+proc composite_fn8*(co: ptr NImageComposite)
 proc composite_fn_uniform*(co: ptr NImageComposite)
 
 # mask.c

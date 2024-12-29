@@ -69,9 +69,11 @@ void combine_copy(image_combine_t* co);
 void combine_pack(image_combine_t* co);
 
 // composite.c
-void composite_blend(image_composite_t* co);
+void composite_blend8(image_composite_t* co);
+void composite_blend16(image_composite_t* co);
 void composite_blend_uniform(image_composite_t* co);
-void composite_fn(image_composite_t* co);
+void composite_fn8(image_composite_t* co);
+void composite_fn16(image_composite_t* co);
 void composite_fn_uniform(image_composite_t* co);
 
 // mask.c

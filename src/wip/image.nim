@@ -94,8 +94,8 @@ proc createLayer*(img: NImage, kind: NLayerKind): NLayer =
   if img.owner.register(addr result.code):
     let props = addr result.props
     case result.kind
-    of lkColor16, lkColor8:
-      props.label = "Layer " & $img.t0; inc(img.t0)
+    of lkColor16: props.label = "Layer " & $img.t0; inc(img.t0)
+    of lkColor8: props.label = "Layer8 " & $img.t0; inc(img.t0)
     of lkMask: props.label = "Mask " & $img.t1; inc(img.t1)
     of lkFolder: props.label = "Folder " & $img.t2; inc(img.t2)
 
