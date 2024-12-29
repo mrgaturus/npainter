@@ -5,13 +5,24 @@
 #include <smmintrin.h>
 
 __attribute__((always_inline))
-static inline __m128i _mm_multiply_color(__m128i a, __m128i b) {
+static inline __m128i _mm_mul_color32(__m128i a, __m128i b) {
   // Apply Alpha to Source
   a = _mm_mullo_epi32(a, b);
   a = _mm_add_epi32(a, b);
   a = _mm_srli_epi32(a, 16);
 
   return a;
+}
+
+__attribute__((always_inline))
+static inline __m128i _mm_mul_color16(__m128i a, __m128i b) {
+  __m128i xmm0 = _mm_mulhi_epu16(a, b);
+  // Apply Alpha to Source
+  a = _mm_or_si128(a, b);
+  a = _mm_srli_epi16(a, 15);
+  b = _mm_adds_epu16(xmm0, a);
+
+  return b;
 }
 
 // --------------------

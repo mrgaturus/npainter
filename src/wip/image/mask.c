@@ -7,14 +7,12 @@
 // -----------------
 
 __attribute__((always_inline))
-static inline __m128i _mm_multiply_mask(__m128i xmm0, __m128i fract) {
-  const __m128i ones = _mm_set1_epi32(65535);
-  __m128i xmm1 = _mm_mullo_epi32(xmm0, fract);
-  xmm1 = _mm_add_epi32(xmm1, fract);
-  xmm1 = _mm_srli_epi32(xmm1, 16);
+static inline __m128i _mm_mul_mask16(__m128i xmm0, __m128i fract) {
+  const __m128i ones = _mm_cmpeq_epi16(fract, fract);
+  __m128i xmm1 = _mm_mul_color16(xmm0, fract);
   // ones - fract + fract * xmm0
-  fract = _mm_sub_epi32(ones, fract);
-  xmm0 = _mm_add_epi32(fract, xmm1);
+  fract = _mm_subs_epu16(ones, fract);
+  xmm0 = _mm_adds_epu16(fract, xmm1);
 
   return xmm0;
 }
@@ -42,6 +40,7 @@ void composite_mask(image_composite_t* co) {
   if (co->clip) ones = zeros; // <- Stencil
   // Load Alpha and Unpack to 4x32
   __m128i alpha = _mm_loadu_si32(&co->alpha);
+  alpha = _mm_unpacklo_epi16(alpha, alpha);
   alpha = _mm_shuffle_epi32(alpha, 0);
 
   for (int y = 0; y < h; y++) {
@@ -51,53 +50,62 @@ void composite_mask(image_composite_t* co) {
     
     // Blend Pixels
     while (count > 0) {
-      __m128i mask = _mm_loadl_epi64((__m128i*) src_x);
-      dst_xmm0 = _mm_load_si128((__m128i*) dst_x);
-      dst_xmm2 = _mm_load_si128((__m128i*) dst_x + 1);
+      __m128i mask = _mm_load_si128((__m128i*) src_x);
       mask = _mm_xor_si128(mask, ones);
-      mask = _mm_cvtepu16_epi32(mask);
 
-      // Unpack Source Mask Pixels
-      src_xmm1 = _mm_shuffle_epi32(mask, _MM_SHUFFLE(0, 0, 0, 0));
-      src_xmm0 = _mm_shuffle_epi32(mask, _MM_SHUFFLE(1, 1, 1, 1));
-      src_xmm3 = _mm_shuffle_epi32(mask, _MM_SHUFFLE(2, 2, 2, 2));
-      src_xmm2 = _mm_shuffle_epi32(mask, _MM_SHUFFLE(3, 3, 3, 3));
-      // Unpack Destination Color Pixels
-      dst_xmm1 = _mm_unpacklo_epi16(dst_xmm0, zeros);
-      dst_xmm0 = _mm_unpackhi_epi16(dst_xmm0, zeros);
-      dst_xmm3 = _mm_unpacklo_epi16(dst_xmm2, zeros);
-      dst_xmm2 = _mm_unpackhi_epi16(dst_xmm2, zeros);
+      // Load 8 Destination Pixels
+      dst_xmm0 = _mm_load_si128((__m128i*) dst_x);
+      dst_xmm1 = _mm_load_si128((__m128i*) dst_x + 1);
+      dst_xmm2 = _mm_load_si128((__m128i*) dst_x + 2);
+      dst_xmm3 = _mm_load_si128((__m128i*) dst_x + 3);
+      // Unpack 8 Mask Pixels to RGBA
+      src_xmm0 = _mm_unpacklo_epi16(mask, mask);
+      src_xmm2 = _mm_unpackhi_epi16(mask, mask);
+      src_xmm1 = _mm_unpackhi_epi32(src_xmm0, src_xmm0);
+      src_xmm0 = _mm_unpacklo_epi32(src_xmm0, src_xmm0);
+      src_xmm3 = _mm_unpackhi_epi32(src_xmm2, src_xmm2);
+      src_xmm2 = _mm_unpacklo_epi32(src_xmm2, src_xmm2);
 
       // Apply Mask Pixel Opacity
-      src_xmm0 = _mm_multiply_mask(src_xmm0, alpha);
-      src_xmm1 = _mm_multiply_mask(src_xmm1, alpha);
-      src_xmm2 = _mm_multiply_mask(src_xmm2, alpha);
-      src_xmm3 = _mm_multiply_mask(src_xmm3, alpha);
+      src_xmm0 = _mm_mul_mask16(src_xmm0, alpha);
+      src_xmm1 = _mm_mul_mask16(src_xmm1, alpha);
+      src_xmm2 = _mm_mul_mask16(src_xmm2, alpha);
+      src_xmm3 = _mm_mul_mask16(src_xmm3, alpha);
       // Apply Source Mask Pixel
-      dst_xmm0 = _mm_multiply_color(dst_xmm0, src_xmm0);
-      dst_xmm1 = _mm_multiply_color(dst_xmm1, src_xmm1);
-      dst_xmm2 = _mm_multiply_color(dst_xmm2, src_xmm2);
-      dst_xmm3 = _mm_multiply_color(dst_xmm3, src_xmm3);
-      // Pack Destination Pixels to 8x16 bit channels
-      dst_xmm0 = _mm_packus_epi32(dst_xmm1, dst_xmm0);
-      dst_xmm2 = _mm_packus_epi32(dst_xmm3, dst_xmm2);
+      dst_xmm0 = _mm_mul_color16(dst_xmm0, src_xmm0);
+      dst_xmm1 = _mm_mul_color16(dst_xmm1, src_xmm1);
+      dst_xmm2 = _mm_mul_color16(dst_xmm2, src_xmm2);
+      dst_xmm3 = _mm_mul_color16(dst_xmm3, src_xmm3);
+
+      // Store 8 Pixels
+      if (__builtin_expect(count >= 8, 1)) {
+        _mm_store_si128((__m128i*) dst_x, dst_xmm0);
+        _mm_store_si128((__m128i*) dst_x + 1, dst_xmm1);
+        _mm_store_si128((__m128i*) dst_x + 2, dst_xmm2);
+        _mm_store_si128((__m128i*) dst_x + 3, dst_xmm3);
+
+        // Next 8 Pixels
+        dst_x += 64;
+        src_x += 16;
+        count -= 8;
+        continue;
+      }
 
       // Store 4 Pixels
-      if (__builtin_expect(count >= 4, 1)) {
+      if (count >= 4) {
         _mm_store_si128((__m128i*) dst_x, dst_xmm0);
-        _mm_store_si128((__m128i*) dst_x + 1, dst_xmm2);
-
-        // Next 4 Pixels
+        _mm_store_si128((__m128i*) dst_x + 1, dst_xmm1);
+        dst_xmm0 = dst_xmm2;
+        dst_xmm1 = dst_xmm3;
+        // Next 2 Pixels
         dst_x += 32;
-        src_x += 8;
         count -= 4;
-        continue;
       }
 
       // Store 2 Pixels
       if (count >= 2) {
         _mm_store_si128((__m128i*) dst_x, dst_xmm0);
-        dst_xmm0 = dst_xmm2;
+        dst_xmm0 = dst_xmm1;
         // Next 2 Pixels
         dst_x += 16;
         count -= 2;
@@ -135,9 +143,10 @@ void composite_mask_uniform(image_composite_t* co) {
   __m128i mask = _mm_loadl_epi64((__m128i*) co->src.buffer);
   __m128i alpha = _mm_loadu_si32(&co->alpha);
   mask = _mm_xor_si128(mask, ones);
-  mask = _mm_cvtepu16_epi32(mask);
+  mask = _mm_unpacklo_epi64(mask, mask);
+  alpha = _mm_unpacklo_epi16(alpha, alpha);
   alpha = _mm_shuffle_epi32(alpha, 0);
-  mask = _mm_multiply_mask(mask, alpha);
+  mask = _mm_mul_mask16(mask, alpha);
 
   for (int y = 0; y < h; y++) {
     dst_x = dst_y;
@@ -146,37 +155,43 @@ void composite_mask_uniform(image_composite_t* co) {
     // Blend Pixels
     while (count > 0) {
       dst_xmm0 = _mm_load_si128((__m128i*) dst_x);
-      dst_xmm2 = _mm_load_si128((__m128i*) dst_x + 1);
-      // Unpack Destination Color Pixels
-      dst_xmm1 = _mm_unpacklo_epi16(dst_xmm0, zeros);
-      dst_xmm0 = _mm_unpackhi_epi16(dst_xmm0, zeros);
-      dst_xmm3 = _mm_unpacklo_epi16(dst_xmm2, zeros);
-      dst_xmm2 = _mm_unpackhi_epi16(dst_xmm2, zeros);
-
+      dst_xmm1 = _mm_load_si128((__m128i*) dst_x + 1);
+      dst_xmm2 = _mm_load_si128((__m128i*) dst_x + 2);
+      dst_xmm3 = _mm_load_si128((__m128i*) dst_x + 3);
       // Apply Source Mask Pixel
-      dst_xmm0 = _mm_multiply_color(dst_xmm0, mask);
-      dst_xmm1 = _mm_multiply_color(dst_xmm1, mask);
-      dst_xmm2 = _mm_multiply_color(dst_xmm2, mask);
-      dst_xmm3 = _mm_multiply_color(dst_xmm3, mask);
-      // Pack Destination Pixels to 8x16 bit channels
-      dst_xmm0 = _mm_packus_epi32(dst_xmm1, dst_xmm0);
-      dst_xmm2 = _mm_packus_epi32(dst_xmm3, dst_xmm2);
+      dst_xmm0 = _mm_mul_color16(dst_xmm0, mask);
+      dst_xmm1 = _mm_mul_color16(dst_xmm1, mask);
+      dst_xmm2 = _mm_mul_color16(dst_xmm2, mask);
+      dst_xmm3 = _mm_mul_color16(dst_xmm3, mask);
+
+      // Store 8 Pixels
+      if (__builtin_expect(count >= 8, 1)) {
+        _mm_store_si128((__m128i*) dst_x, dst_xmm0);
+        _mm_store_si128((__m128i*) dst_x + 1, dst_xmm1);
+        _mm_store_si128((__m128i*) dst_x + 2, dst_xmm2);
+        _mm_store_si128((__m128i*) dst_x + 3, dst_xmm3);
+
+        // Next 8 Pixels
+        dst_x += 64;
+        count -= 8;
+        continue;
+      }
 
       // Store 4 Pixels
-      if (__builtin_expect(count >= 4, 1)) {
+      if (count >= 4) {
         _mm_store_si128((__m128i*) dst_x, dst_xmm0);
-        _mm_store_si128((__m128i*) dst_x + 1, dst_xmm2);
-
-        // Next 4 Pixels
+        _mm_store_si128((__m128i*) dst_x + 1, dst_xmm1);
+        dst_xmm0 = dst_xmm2;
+        dst_xmm1 = dst_xmm3;
+        // Next 2 Pixels
         dst_x += 32;
         count -= 4;
-        continue;
       }
 
       // Store 2 Pixels
       if (count >= 2) {
         _mm_store_si128((__m128i*) dst_x, dst_xmm0);
-        dst_xmm0 = dst_xmm2;
+        dst_xmm0 = dst_xmm1;
         // Next 2 Pixels
         dst_x += 16;
         count -= 2;
@@ -200,17 +215,23 @@ void composite_mask_uniform(image_composite_t* co) {
 // ---------------------
 
 __attribute__((always_inline))
-static inline __m128i _mm_mix_color(__m128i xmm0, __m128i xmm1, __m128i fract) {
-  const __m128i one = _mm_set1_epi32(65535);
-  // Calculate Interpolation
-  xmm1 = _mm_mullo_epi32(xmm1, fract);
-  fract = _mm_sub_epi32(one, fract);
-  xmm0 = _mm_mullo_epi32(xmm0, fract);
-  xmm0 = _mm_add_epi32(xmm0, xmm1);
-  // Adjust 16bit Fixed Point
-  xmm0 = _mm_add_epi32(xmm0, one);
-  xmm0 = _mm_srli_epi32(xmm0, 16);
-  // Return Interpolated
+static inline __m128i _mm_mix_color16(__m128i xmm0, __m128i xmm1, __m128i fract) {
+  const __m128i one = _mm_cmpeq_epi16(fract, fract);
+  const __m128i inv = _mm_xor_si128(fract, one);
+
+  // mu0 = xmm1 * fract
+  // mu1 = xmm0 * (65535 - fract)
+  __m128i mu0 = _mm_mulhi_epu16(xmm1, fract);
+  __m128i mu1 = _mm_mulhi_epu16(xmm0, inv);
+  xmm0 = _mm_or_si128(xmm0, xmm1);
+  fract = _mm_or_si128(fract, inv);
+  mu0 = _mm_adds_epu16(mu0, mu1);
+  // fix = xmm0 | xmm1 | fract | inv >> 15
+  xmm0 = _mm_or_si128(xmm0, fract);
+  xmm0 = _mm_srli_epi16(xmm0, 15);
+  xmm0 = _mm_adds_epu16(mu0, xmm0);
+
+  // mu0 + mu1 + fix
   return xmm0;
 }
 
@@ -232,9 +253,9 @@ void composite_pass(image_composite_t* co) {
   // Pixel Values
   __m128i src_xmm0, src_xmm1, src_xmm2, src_xmm3;
   __m128i dst_xmm0, dst_xmm1, dst_xmm2, dst_xmm3;
-  const __m128i zeros = _mm_setzero_si128();
   // Load Alpha and Unpack to 4x32
   __m128i alpha = _mm_loadu_si32(&co->alpha);
+  alpha = _mm_unpacklo_epi16(alpha, alpha);
   alpha = _mm_shuffle_epi32(alpha, 0);
 
   for (int y = 0; y < h; y++) {
@@ -245,45 +266,50 @@ void composite_pass(image_composite_t* co) {
     // Blend Pixels
     while (count > 0) {
       src_xmm0 = _mm_load_si128((__m128i*) src_x);
-      src_xmm2 = _mm_load_si128((__m128i*) src_x + 1);
+      src_xmm1 = _mm_load_si128((__m128i*) src_x + 1);
+      src_xmm2 = _mm_load_si128((__m128i*) src_x + 2);
+      src_xmm3 = _mm_load_si128((__m128i*) src_x + 3);
+      // Load 8 Destination Pixels
       dst_xmm0 = _mm_load_si128((__m128i*) dst_x);
-      dst_xmm2 = _mm_load_si128((__m128i*) dst_x + 1);
-
-      // Unpack to 4x32 bit Color
-      src_xmm1 = _mm_unpacklo_epi16(src_xmm0, zeros);
-      dst_xmm1 = _mm_unpacklo_epi16(dst_xmm0, zeros);
-      src_xmm0 = _mm_unpackhi_epi16(src_xmm0, zeros);
-      dst_xmm0 = _mm_unpackhi_epi16(dst_xmm0, zeros);
-      src_xmm3 = _mm_unpacklo_epi16(src_xmm2, zeros);
-      dst_xmm3 = _mm_unpacklo_epi16(dst_xmm2, zeros);
-      src_xmm2 = _mm_unpackhi_epi16(src_xmm2, zeros);
-      dst_xmm2 = _mm_unpackhi_epi16(dst_xmm2, zeros);
+      dst_xmm1 = _mm_load_si128((__m128i*) dst_x + 1);
+      dst_xmm2 = _mm_load_si128((__m128i*) dst_x + 2);
+      dst_xmm3 = _mm_load_si128((__m128i*) dst_x + 3);
 
       // Blend Passthrough Pixel Colors
-      dst_xmm0 = _mm_mix_color(dst_xmm0, src_xmm0, alpha);
-      dst_xmm1 = _mm_mix_color(dst_xmm1, src_xmm1, alpha);
-      dst_xmm2 = _mm_mix_color(dst_xmm2, src_xmm2, alpha);
-      dst_xmm3 = _mm_mix_color(dst_xmm3, src_xmm3, alpha);
-      // Pack Destination Pixels to 8x16 bit channels
-      dst_xmm0 = _mm_packus_epi32(dst_xmm1, dst_xmm0);
-      dst_xmm2 = _mm_packus_epi32(dst_xmm3, dst_xmm2);
+      dst_xmm0 = _mm_mix_color16(dst_xmm0, src_xmm0, alpha);
+      dst_xmm1 = _mm_mix_color16(dst_xmm1, src_xmm1, alpha);
+      dst_xmm2 = _mm_mix_color16(dst_xmm2, src_xmm2, alpha);
+      dst_xmm3 = _mm_mix_color16(dst_xmm3, src_xmm3, alpha);
+
+      // Store 8 Pixels
+      if (__builtin_expect(count >= 8, 1)) {
+        _mm_store_si128((__m128i*) dst_x, dst_xmm0);
+        _mm_store_si128((__m128i*) dst_x + 1, dst_xmm1);
+        _mm_store_si128((__m128i*) dst_x + 2, dst_xmm2);
+        _mm_store_si128((__m128i*) dst_x + 3, dst_xmm3);
+
+        // Next 8 Pixels
+        dst_x += 64;
+        src_x += 64;
+        count -= 8;
+        continue;
+      }
 
       // Store 4 Pixels
-      if (__builtin_expect(count >= 4, 1)) {
+      if (count >= 4) {
         _mm_store_si128((__m128i*) dst_x, dst_xmm0);
-        _mm_store_si128((__m128i*) dst_x + 1, dst_xmm2);
-
-        // Next 4 Pixels
+        _mm_store_si128((__m128i*) dst_x + 1, dst_xmm1);
+        dst_xmm0 = dst_xmm2;
+        dst_xmm1 = dst_xmm3;
+        // Next 2 Pixels
         dst_x += 32;
-        src_x += 32;
         count -= 4;
-        continue;
       }
 
       // Store 2 Pixels
       if (count >= 2) {
         _mm_store_si128((__m128i*) dst_x, dst_xmm0);
-        dst_xmm0 = dst_xmm2;
+        dst_xmm0 = dst_xmm1;
         // Next 2 Pixels
         dst_x += 16;
         count -= 2;
@@ -333,6 +359,7 @@ void composite_passmask(image_composite_t* co) {
   if (co->clip) ones = zeros; // <- Stencil
   // Load Alpha and Unpack to 4x32
   __m128i alpha = _mm_loadu_si32(&co->alpha);
+  alpha = _mm_unpacklo_epi16(alpha, alpha);
   alpha = _mm_shuffle_epi32(alpha, 0);
 
   for (int y = 0; y < h; y++) {
@@ -343,60 +370,69 @@ void composite_passmask(image_composite_t* co) {
     
     // Blend Pixels
     while (count > 0) {
-      __m128i mask = _mm_loadl_epi64((__m128i*) src_x);
-      dst_xmm0 = _mm_load_si128((__m128i*) dst_x);
-      dst_xmm2 = _mm_load_si128((__m128i*) dst_x + 1);
-      ext_xmm0 = _mm_load_si128((__m128i*) ext_x);
-      ext_xmm2 = _mm_load_si128((__m128i*) ext_x + 1);
+      __m128i mask = _mm_load_si128((__m128i*) src_x);
       mask = _mm_xor_si128(mask, ones);
-      mask = _mm_cvtepu16_epi32(mask);
-      // Unpack Source Mask Pixels
-      src_xmm1 = _mm_shuffle_epi32(mask, _MM_SHUFFLE(0, 0, 0, 0));
-      src_xmm0 = _mm_shuffle_epi32(mask, _MM_SHUFFLE(1, 1, 1, 1));
-      src_xmm3 = _mm_shuffle_epi32(mask, _MM_SHUFFLE(2, 2, 2, 2));
-      src_xmm2 = _mm_shuffle_epi32(mask, _MM_SHUFFLE(3, 3, 3, 3));
-      // Unpack Destination Color Pixels
-      dst_xmm1 = _mm_unpacklo_epi16(dst_xmm0, zeros);
-      dst_xmm0 = _mm_unpackhi_epi16(dst_xmm0, zeros);
-      dst_xmm3 = _mm_unpacklo_epi16(dst_xmm2, zeros);
-      dst_xmm2 = _mm_unpackhi_epi16(dst_xmm2, zeros);
-      // Unpack Lower Scope Color Pixels
-      ext_xmm1 = _mm_unpacklo_epi16(ext_xmm0, zeros);
-      ext_xmm0 = _mm_unpackhi_epi16(ext_xmm0, zeros);
-      ext_xmm3 = _mm_unpacklo_epi16(ext_xmm2, zeros);
-      ext_xmm2 = _mm_unpackhi_epi16(ext_xmm2, zeros);
+
+      // Load 8 Destination Pixels
+      dst_xmm0 = _mm_load_si128((__m128i*) dst_x);
+      dst_xmm1 = _mm_load_si128((__m128i*) dst_x + 1);
+      dst_xmm2 = _mm_load_si128((__m128i*) dst_x + 2);
+      dst_xmm3 = _mm_load_si128((__m128i*) dst_x + 3);
+      // Load 8 Source Pixels
+      ext_xmm0 = _mm_load_si128((__m128i*) ext_x);
+      ext_xmm1 = _mm_load_si128((__m128i*) ext_x + 1);
+      ext_xmm2 = _mm_load_si128((__m128i*) ext_x + 2);
+      ext_xmm3 = _mm_load_si128((__m128i*) ext_x + 3);
+
+      // Unpack 8 Mask Pixels to RGBA
+      src_xmm0 = _mm_unpacklo_epi16(mask, mask);
+      src_xmm2 = _mm_unpackhi_epi16(mask, mask);
+      src_xmm1 = _mm_unpackhi_epi32(src_xmm0, src_xmm0);
+      src_xmm0 = _mm_unpacklo_epi32(src_xmm0, src_xmm0);
+      src_xmm3 = _mm_unpackhi_epi32(src_xmm2, src_xmm2);
+      src_xmm2 = _mm_unpacklo_epi32(src_xmm2, src_xmm2);
 
       // Apply Mask Pixel Opacity
-      src_xmm0 = _mm_multiply_mask(src_xmm0, alpha);
-      src_xmm1 = _mm_multiply_mask(src_xmm1, alpha);
-      src_xmm2 = _mm_multiply_mask(src_xmm2, alpha);
-      src_xmm3 = _mm_multiply_mask(src_xmm3, alpha);
+      src_xmm0 = _mm_mul_mask16(src_xmm0, alpha);
+      src_xmm1 = _mm_mul_mask16(src_xmm1, alpha);
+      src_xmm2 = _mm_mul_mask16(src_xmm2, alpha);
+      src_xmm3 = _mm_mul_mask16(src_xmm3, alpha);
       // Apply Source Mask Pixel
-      dst_xmm0 = _mm_mix_color(ext_xmm0, dst_xmm0, src_xmm0);
-      dst_xmm1 = _mm_mix_color(ext_xmm1, dst_xmm1, src_xmm1);
-      dst_xmm2 = _mm_mix_color(ext_xmm2, dst_xmm2, src_xmm2);
-      dst_xmm3 = _mm_mix_color(ext_xmm3, dst_xmm3, src_xmm3);
-      // Pack Destination Pixels to 8x16 bit channels
-      dst_xmm0 = _mm_packus_epi32(dst_xmm1, dst_xmm0);
-      dst_xmm2 = _mm_packus_epi32(dst_xmm3, dst_xmm2);
+      dst_xmm0 = _mm_mix_color16(ext_xmm0, dst_xmm0, src_xmm0);
+      dst_xmm1 = _mm_mix_color16(ext_xmm1, dst_xmm1, src_xmm1);
+      dst_xmm2 = _mm_mix_color16(ext_xmm2, dst_xmm2, src_xmm2);
+      dst_xmm3 = _mm_mix_color16(ext_xmm3, dst_xmm3, src_xmm3);
+
+      // Store 8 Pixels
+      if (__builtin_expect(count >= 8, 1)) {
+        _mm_store_si128((__m128i*) dst_x, dst_xmm0);
+        _mm_store_si128((__m128i*) dst_x + 1, dst_xmm1);
+        _mm_store_si128((__m128i*) dst_x + 2, dst_xmm2);
+        _mm_store_si128((__m128i*) dst_x + 3, dst_xmm3);
+
+        // Next 8 Pixels
+        dst_x += 64;
+        ext_x += 64;
+        src_x += 16;
+        count -= 8;
+        continue;
+      }
 
       // Store 4 Pixels
-      if (__builtin_expect(count >= 4, 1)) {
+      if (count >= 4) {
         _mm_store_si128((__m128i*) dst_x, dst_xmm0);
-        _mm_store_si128((__m128i*) dst_x + 1, dst_xmm2);
-
-        // Next 4 Pixels
+        _mm_store_si128((__m128i*) dst_x + 1, dst_xmm1);
+        dst_xmm0 = dst_xmm2;
+        dst_xmm1 = dst_xmm3;
+        // Next 2 Pixels
         dst_x += 32;
-        ext_x += 32;
-        src_x += 8;
         count -= 4;
-        continue;
       }
 
       // Store 2 Pixels
       if (count >= 2) {
         _mm_store_si128((__m128i*) dst_x, dst_xmm0);
-        dst_xmm0 = dst_xmm2;
+        dst_xmm0 = dst_xmm1;
         // Next 2 Pixels
         dst_x += 16;
         count -= 2;
@@ -445,9 +481,10 @@ void composite_passmask_uniform(image_composite_t* co) {
   __m128i mask = _mm_loadl_epi64((__m128i*) co->src.buffer);
   __m128i alpha = _mm_loadu_si32(&co->alpha);
   mask = _mm_xor_si128(mask, ones);
-  mask = _mm_cvtepu16_epi32(mask);
+  mask = _mm_unpacklo_epi64(mask, mask);
+  alpha = _mm_unpacklo_epi16(alpha, alpha);
   alpha = _mm_shuffle_epi32(alpha, 0);
-  mask = _mm_multiply_mask(mask, alpha);
+  mask = _mm_mul_mask16(mask, alpha);
 
   for (int y = 0; y < h; y++) {
     dst_x = dst_y;
@@ -458,46 +495,51 @@ void composite_passmask_uniform(image_composite_t* co) {
     // Blend Pixels
     while (count > 0) {
       dst_xmm0 = _mm_load_si128((__m128i*) dst_x);
-      dst_xmm2 = _mm_load_si128((__m128i*) dst_x + 1);
+      dst_xmm1 = _mm_load_si128((__m128i*) dst_x + 1);
+      dst_xmm2 = _mm_load_si128((__m128i*) dst_x + 2);
+      dst_xmm3 = _mm_load_si128((__m128i*) dst_x + 3);
+      // Load 8 Source Pixels
       ext_xmm0 = _mm_load_si128((__m128i*) ext_x);
-      ext_xmm2 = _mm_load_si128((__m128i*) ext_x + 1);
-      // Unpack Destination Color Pixels
-      dst_xmm1 = _mm_unpacklo_epi16(dst_xmm0, zeros);
-      dst_xmm0 = _mm_unpackhi_epi16(dst_xmm0, zeros);
-      dst_xmm3 = _mm_unpacklo_epi16(dst_xmm2, zeros);
-      dst_xmm2 = _mm_unpackhi_epi16(dst_xmm2, zeros);
-      // Unpack Lower Scope Color Pixels
-      ext_xmm1 = _mm_unpacklo_epi16(ext_xmm0, zeros);
-      ext_xmm0 = _mm_unpackhi_epi16(ext_xmm0, zeros);
-      ext_xmm3 = _mm_unpacklo_epi16(ext_xmm2, zeros);
-      ext_xmm2 = _mm_unpackhi_epi16(ext_xmm2, zeros);
+      ext_xmm1 = _mm_load_si128((__m128i*) ext_x + 1);
+      ext_xmm2 = _mm_load_si128((__m128i*) ext_x + 2);
+      ext_xmm3 = _mm_load_si128((__m128i*) ext_x + 3);
 
       // Apply Source Mask Pixel
-      dst_xmm0 = _mm_mix_color(ext_xmm0, dst_xmm0, mask);
-      dst_xmm1 = _mm_mix_color(ext_xmm1, dst_xmm1, mask);
-      dst_xmm2 = _mm_mix_color(ext_xmm2, dst_xmm2, mask);
-      dst_xmm3 = _mm_mix_color(ext_xmm3, dst_xmm3, mask);
-      // Pack Destination Pixels to 8x16 bit channels
-      dst_xmm0 = _mm_packus_epi32(dst_xmm1, dst_xmm0);
-      dst_xmm2 = _mm_packus_epi32(dst_xmm3, dst_xmm2);
+      dst_xmm0 = _mm_mix_color16(ext_xmm0, dst_xmm0, mask);
+      dst_xmm1 = _mm_mix_color16(ext_xmm1, dst_xmm1, mask);
+      dst_xmm2 = _mm_mix_color16(ext_xmm2, dst_xmm2, mask);
+      dst_xmm3 = _mm_mix_color16(ext_xmm3, dst_xmm3, mask);
+
+      // Store 8 Pixels
+      if (__builtin_expect(count >= 8, 1)) {
+        _mm_store_si128((__m128i*) dst_x, dst_xmm0);
+        _mm_store_si128((__m128i*) dst_x + 1, dst_xmm1);
+        _mm_store_si128((__m128i*) dst_x + 2, dst_xmm2);
+        _mm_store_si128((__m128i*) dst_x + 3, dst_xmm3);
+
+        // Next 8 Pixels
+        dst_x += 64;
+        ext_x += 64;
+        src_x += 16;
+        count -= 8;
+        continue;
+      }
 
       // Store 4 Pixels
-      if (__builtin_expect(count >= 4, 1)) {
+      if (count >= 4) {
         _mm_store_si128((__m128i*) dst_x, dst_xmm0);
-        _mm_store_si128((__m128i*) dst_x + 1, dst_xmm2);
-
-        // Next 4 Pixels
+        _mm_store_si128((__m128i*) dst_x + 1, dst_xmm1);
+        dst_xmm0 = dst_xmm2;
+        dst_xmm1 = dst_xmm3;
+        // Next 2 Pixels
         dst_x += 32;
-        ext_x += 32;
-        src_x += 8;
         count -= 4;
-        continue;
       }
 
       // Store 2 Pixels
       if (count >= 2) {
         _mm_store_si128((__m128i*) dst_x, dst_xmm0);
-        dst_xmm0 = dst_xmm2;
+        dst_xmm0 = dst_xmm1;
         // Next 2 Pixels
         dst_x += 16;
         count -= 2;

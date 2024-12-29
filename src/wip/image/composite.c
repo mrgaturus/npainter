@@ -3,23 +3,22 @@
 #include "image.h"
 
 __attribute__((always_inline))
-static inline __m128i _mm_blend_color(__m128i src, __m128i dst) {
+static inline __m128i _mm_blend_color16(__m128i src, __m128i dst) {
   __m128i xmm0, xmm1;
 
   // Apply Source Alpha to Destination
-  xmm0 = _mm_shuffle_epi32(src, 0xFF);
-  xmm1 = _mm_mullo_epi32(dst, xmm0);
-  xmm1 = _mm_add_epi32(xmm1, xmm0);
-  xmm1 = _mm_srli_epi32(xmm1, 16);
+  xmm0 = _mm_shufflelo_epi16(src, 0xFF);
+  xmm0 = _mm_shufflehi_epi16(xmm0, 0xFF);
+  xmm1 = _mm_mul_color16(dst, xmm0);
   // SRC + (DST - DST * A_SRC)
-  xmm1 = _mm_sub_epi32(dst, xmm1);
-  xmm1 = _mm_add_epi32(src, xmm1);
+  xmm1 = _mm_subs_epu16(dst, xmm1);
+  xmm1 = _mm_adds_epu16(src, xmm1);
 
   return xmm1;
 }
 
 __attribute__((always_inline))
-static inline __m128i _mm_weight_color(__m128i src, __m128i dst) {
+static inline __m128i _mm_weight_color32(__m128i src, __m128i dst) {
   __m128i xmm0, xmm1;
 
   // Apply Destination Alpha to Source
@@ -58,6 +57,7 @@ void composite_blend(image_composite_t* co) {
   const __m128i zeros = _mm_setzero_si128();
   // Load Alpha and Unpack to 4x32
   __m128i alpha = _mm_loadu_si32(&co->alpha);
+  alpha = _mm_unpacklo_epi16(alpha, alpha);
   alpha = _mm_shuffle_epi32(alpha, 0);
 
   for (int count, y = 0; y < h; y++) {
@@ -68,50 +68,55 @@ void composite_blend(image_composite_t* co) {
     // Blend Pixels
     while (count > 0) {
       src_xmm0 = _mm_load_si128((__m128i*) src_x);
-      src_xmm2 = _mm_load_si128((__m128i*) src_x + 1);
+      src_xmm1 = _mm_load_si128((__m128i*) src_x + 1);
+      src_xmm2 = _mm_load_si128((__m128i*) src_x + 2);
+      src_xmm3 = _mm_load_si128((__m128i*) src_x + 3);
+      // Load 8 Destination Pixels
       dst_xmm0 = _mm_load_si128((__m128i*) dst_x);
-      dst_xmm2 = _mm_load_si128((__m128i*) dst_x + 1);
-
-      // Unpack to 4x32 bit Color
-      src_xmm1 = _mm_unpacklo_epi16(src_xmm0, zeros);
-      dst_xmm1 = _mm_unpacklo_epi16(dst_xmm0, zeros);
-      src_xmm0 = _mm_unpackhi_epi16(src_xmm0, zeros);
-      dst_xmm0 = _mm_unpackhi_epi16(dst_xmm0, zeros);
-      src_xmm3 = _mm_unpacklo_epi16(src_xmm2, zeros);
-      dst_xmm3 = _mm_unpacklo_epi16(dst_xmm2, zeros);
-      src_xmm2 = _mm_unpackhi_epi16(src_xmm2, zeros);
-      dst_xmm2 = _mm_unpackhi_epi16(dst_xmm2, zeros);
+      dst_xmm1 = _mm_load_si128((__m128i*) dst_x + 1);
+      dst_xmm2 = _mm_load_si128((__m128i*) dst_x + 2);
+      dst_xmm3 = _mm_load_si128((__m128i*) dst_x + 3);
 
       // Apply Opacity to Source Pixels
-      src_xmm0 = _mm_multiply_color(src_xmm0, alpha);
-      src_xmm1 = _mm_multiply_color(src_xmm1, alpha);
-      src_xmm2 = _mm_multiply_color(src_xmm2, alpha);
-      src_xmm3 = _mm_multiply_color(src_xmm3, alpha);
+      src_xmm0 = _mm_mul_color16(src_xmm0, alpha);
+      src_xmm1 = _mm_mul_color16(src_xmm1, alpha);
+      src_xmm2 = _mm_mul_color16(src_xmm2, alpha);
+      src_xmm3 = _mm_mul_color16(src_xmm3, alpha);
       // Apply Blending to Destination Pixels
-      dst_xmm0 = _mm_blend_color(src_xmm0, dst_xmm0);
-      dst_xmm1 = _mm_blend_color(src_xmm1, dst_xmm1);
-      dst_xmm2 = _mm_blend_color(src_xmm2, dst_xmm2);
-      dst_xmm3 = _mm_blend_color(src_xmm3, dst_xmm3);
-      // Pack Destination Pixels to 8x16 bit channels
-      dst_xmm0 = _mm_packus_epi32(dst_xmm1, dst_xmm0);
-      dst_xmm2 = _mm_packus_epi32(dst_xmm3, dst_xmm2);
+      dst_xmm0 = _mm_blend_color16(src_xmm0, dst_xmm0);
+      dst_xmm1 = _mm_blend_color16(src_xmm1, dst_xmm1);
+      dst_xmm2 = _mm_blend_color16(src_xmm2, dst_xmm2);
+      dst_xmm3 = _mm_blend_color16(src_xmm3, dst_xmm3);
+
+      // Store 8 Pixels
+      if (__builtin_expect(count >= 8, 1)) {
+        _mm_store_si128((__m128i*) dst_x, dst_xmm0);
+        _mm_store_si128((__m128i*) dst_x + 1, dst_xmm1);
+        _mm_store_si128((__m128i*) dst_x + 2, dst_xmm2);
+        _mm_store_si128((__m128i*) dst_x + 3, dst_xmm3);
+
+        // Next 8 Pixels
+        dst_x += 64;
+        src_x += 64;
+        count -= 8;
+        continue;
+      }
 
       // Store 4 Pixels
-      if (__builtin_expect(count >= 4, 1)) {
+      if (count >= 4) {
         _mm_store_si128((__m128i*) dst_x, dst_xmm0);
-        _mm_store_si128((__m128i*) dst_x + 1, dst_xmm2);
-
-        // Next 4 Pixels
+        _mm_store_si128((__m128i*) dst_x + 1, dst_xmm1);
+        dst_xmm0 = dst_xmm2;
+        dst_xmm1 = dst_xmm3;
+        // Next 2 Pixels
         dst_x += 32;
-        src_x += 32;
         count -= 4;
-        continue;
       }
 
       // Store 2 Pixels
       if (count >= 2) {
         _mm_store_si128((__m128i*) dst_x, dst_xmm0);
-        dst_xmm0 = dst_xmm2;
+        dst_xmm0 = dst_xmm1;
         // Next 2 Pixels
         dst_x += 16;
         count -= 2;
@@ -147,11 +152,12 @@ void composite_blend_uniform(image_composite_t* co) {
   // Load Color and Initialize Zeros
   const __m128i zeros = _mm_setzero_si128();
   color = _mm_loadl_epi64((__m128i*) co->src.buffer);
-  color = _mm_cvtepu16_epi32(color);
+  color = _mm_unpacklo_epi64(color, color);
   // Load Alpha and Apply to Color
   xmm0 = _mm_loadu_si32(&co->alpha);
+  xmm0 = _mm_unpacklo_epi16(xmm0, xmm0);
   xmm0 = _mm_shuffle_epi32(xmm0, 0);
-  color = _mm_multiply_color(color, xmm0);
+  color = _mm_mul_color16(color, xmm0);
 
   for (int count, y = 0; y < h; y++) {
     dst_x = dst_y;
@@ -161,34 +167,42 @@ void composite_blend_uniform(image_composite_t* co) {
     while (count > 0) {
       xmm0 = _mm_load_si128((__m128i*) dst_x);
       xmm1 = _mm_load_si128((__m128i*) dst_x + 1);
-      // Unpack to 4x32 bit Color
-      xmm3 = _mm_unpackhi_epi16(xmm1, zeros);
-      xmm2 = _mm_unpacklo_epi16(xmm1, zeros);
-      xmm1 = _mm_unpackhi_epi16(xmm0, zeros);
-      xmm0 = _mm_unpacklo_epi16(xmm0, zeros);
+      xmm2 = _mm_load_si128((__m128i*) dst_x + 2);
+      xmm3 = _mm_load_si128((__m128i*) dst_x + 3);
       // Blend Normal Mode Pixels
-      xmm0 = _mm_blend_color(color, xmm0);
-      xmm1 = _mm_blend_color(color, xmm1);
-      xmm2 = _mm_blend_color(color, xmm2);
-      xmm3 = _mm_blend_color(color, xmm3);
-      // Pack to 8x16 bit Color
-      xmm0 = _mm_packus_epi32(xmm0, xmm1);
-      xmm2 = _mm_packus_epi32(xmm2, xmm3);
+      xmm0 = _mm_blend_color16(color, xmm0);
+      xmm1 = _mm_blend_color16(color, xmm1);
+      xmm2 = _mm_blend_color16(color, xmm2);
+      xmm3 = _mm_blend_color16(color, xmm3);
+
+      // Store 8 Pixels
+      if (__builtin_expect(count >= 8, 1)) {
+        _mm_store_si128((__m128i*) dst_x, xmm0);
+        _mm_store_si128((__m128i*) dst_x + 1, xmm1);
+        _mm_store_si128((__m128i*) dst_x + 2, xmm2);
+        _mm_store_si128((__m128i*) dst_x + 3, xmm3);
+
+        // Next 8 Pixels
+        dst_x += 64;
+        count -= 8;
+        continue;
+      }
 
       // Store 4 Pixels
-      if (__builtin_expect(count >= 4, 1)) {
+      if (count >= 4) {
         _mm_store_si128((__m128i*) dst_x, xmm0);
-        _mm_store_si128((__m128i*) dst_x + 1, xmm2);
+        _mm_store_si128((__m128i*) dst_x + 1, xmm1);
+        xmm0 = xmm2;
+        xmm1 = xmm3;
         // Next 4 Pixels
         dst_x += 32;
         count -= 4;
-        continue;
       }
 
       // Store 2 Pixels
       if (count >= 2) {
         _mm_store_si128((__m128i*) dst_x, xmm0);
-        xmm0 = xmm2;
+        xmm0 = xmm1;
         // Next 2 Pixels
         dst_x += 16;
         count -= 2;
@@ -255,17 +269,17 @@ void composite_fn(image_composite_t* co) {
       src_xmm0 = _mm_unpackhi_epi16(src_xmm0, zeros);
       dst_xmm0 = _mm_unpackhi_epi16(dst_xmm0, zeros);
       // Apply Opacity to Source Pixels
-      src_xmm0 = _mm_multiply_color(src_xmm0, alpha);
-      src_xmm1 = _mm_multiply_color(src_xmm1, alpha);
+      src_xmm0 = _mm_mul_color32(src_xmm0, alpha);
+      src_xmm1 = _mm_mul_color32(src_xmm1, alpha);
 
       // Porter-Duff Blending Function
       src_xmm2 = fn(src_xmm0, dst_xmm0);
       src_xmm3 = fn(src_xmm1, dst_xmm1);
       // Porter-Duff Source/Destination Weights
-      dst_xmm2 = _mm_weight_color(dst_xmm0, src_xmm0);
-      dst_xmm3 = _mm_weight_color(dst_xmm1, src_xmm1);
-      src_xmm0 = _mm_weight_color(src_xmm0, dst_xmm0);
-      src_xmm1 = _mm_weight_color(src_xmm1, dst_xmm1);
+      dst_xmm2 = _mm_weight_color32(dst_xmm0, src_xmm0);
+      dst_xmm3 = _mm_weight_color32(dst_xmm1, src_xmm1);
+      src_xmm0 = _mm_weight_color32(src_xmm0, dst_xmm0);
+      src_xmm1 = _mm_weight_color32(src_xmm1, dst_xmm1);
       src_xmm0 = _mm_and_si128(src_xmm0, clip);
       src_xmm1 = _mm_and_si128(src_xmm1, clip);
       // fn + (s - s * da) + (d - d * sa)
@@ -328,7 +342,7 @@ void composite_fn_uniform(image_composite_t* co) {
   // Load Alpha and Apply to Color
   src_xmm0 = _mm_loadu_si32(&co->alpha);
   src_xmm0 = _mm_shuffle_epi32(src_xmm0, 0);
-  color = _mm_multiply_color(color, src_xmm0);
+  color = _mm_mul_color32(color, src_xmm0);
 
   for (int count, y = 0; y < h; y++) {
     dst_x = dst_y;
@@ -345,10 +359,10 @@ void composite_fn_uniform(image_composite_t* co) {
       src_xmm0 = fn(color, dst_xmm0);
       src_xmm1 = fn(color, dst_xmm1);
       // Porter-Duff Source/Destination Weights
-      src_xmm2 = _mm_weight_color(color, dst_xmm0);
-      src_xmm3 = _mm_weight_color(color, dst_xmm1);
-      dst_xmm2 = _mm_weight_color(dst_xmm0, color);
-      dst_xmm3 = _mm_weight_color(dst_xmm1, color);
+      src_xmm2 = _mm_weight_color32(color, dst_xmm0);
+      src_xmm3 = _mm_weight_color32(color, dst_xmm1);
+      dst_xmm2 = _mm_weight_color32(dst_xmm0, color);
+      dst_xmm3 = _mm_weight_color32(dst_xmm1, color);
       src_xmm2 = _mm_and_si128(src_xmm2, clip);
       src_xmm3 = _mm_and_si128(src_xmm3, clip);
       // fn + (s - s * da) + (d - d * sa)
