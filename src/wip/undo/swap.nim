@@ -15,13 +15,12 @@ type
     file*: File
     # Swap Stamping
     seekWrite: NUndoSeek
-    stampWrite0: NUndoSkip
     stampWrite: NUndoSkip
+    stampPrev: int64
     # Swap Seeking
     posWrite: int64
     posRead: int64
     side: NUndoSide
-    chain: bool
 
 # ------------------------------
 # Undo Swap Creation/Destruction
@@ -35,9 +34,9 @@ proc configure*(swap: var NUndoSwap, file: File) =
     echo "[ERROR]: failed configure swap file"
     quit(1)
   # Initialize Current Seeking
-  let pos = getFilePos(file)
-  swap.posWrite = pos
-  swap.posRead = pos
+  swap.stampPrev = head
+  swap.posWrite = head
+  swap.posRead = head
   swap.file = file
 
 proc destroy*(swap: var NUndoSwap) =
@@ -62,49 +61,58 @@ proc makeCurrent(swap: var NUndoSwap, side: NUndoSide) =
     setFilePos(swap.file, swap.posRead)
   swap.side = side
 
-# ------------------
-# Undo Swap Writting
-# ------------------
+# ----------------------------
+# Undo Swap Writting: Stamping
+# ----------------------------
 
 proc skipWrite(swap: var NUndoSwap, skip: ptr NUndoSkip) =
-  let pos = skip.pos
   const bytes = sizeof(NUndoSkip)
+  # Locate Swap Seeking
+  let pos = skip.pos
   setFilePos(swap.file, pos)
   # Write Swap Seeking Header
   if writeBuffer(swap.file, skip, bytes) != bytes:
     echo "[WARNING] corrupted stamp write at: ", pos
-  # Set Write Position
   swap.posWrite = pos + bytes
-  swap.chain = true
+
+proc connectWrite(swap: var NUndoSwap, skip: ptr NUndoSkip) =
+  const bytes = sizeof(skip.pos)
+  let prev = abs(skip.prev)
+  # Patch Next of Previous
+  setFilePos(swap.file, prev + bytes)
+  if writeBuffer(swap.file, addr skip.pos, bytes) != bytes:
+    echo "[WARNING] corrupted stamp connect at: ", prev
+  setFilePos(swap.file, swap.posWrite)
+
+# ------------------
+# Undo Swap Writting
+# ------------------
 
 proc setWrite*(swap: var NUndoSwap, skip: NUndoSkip) =
   swap.makeCurrent(sideWrite)
+  if skip == default(NUndoSkip):
+    return
   # Locate Swap to Seeking
   setFilePos(swap.file, skip.pos)
   swap.posWrite = skip.pos
-  swap.stampWrite0 = skip
+  swap.stampPrev = skip.prev
   swap.stampWrite = skip
-  swap.chain = false
 
 proc startWrite*(swap: var NUndoSwap) =
   swap.makeCurrent(sideWrite)
-  let pos = swap.posWrite
-  let stamp0 = addr swap.stampWrite0
   let stamp = addr swap.stampWrite
+  let pos = swap.posWrite
   # Initialize Current Seeking
   stamp.pos = pos
   stamp.next = pos
   stamp.bytes = 0
-  # Check Previous Seeking
-  if stamp.prev == 0:
-    stamp.prev = pos
-  elif swap.chain:
-    stamp.prev = stamp0.pos
-    stamp0.next = pos
-    swap.skipWrite(stamp0)
-  # Write Current Seeking
+  # Connect Previous Stamp
+  stamp.prev = swap.stampPrev
+  if stamp.pos != stamp.prev:
+    swap.connectWrite(stamp)
+  # Write Current Stamping
+  swap.stampPrev = pos
   swap.skipWrite(stamp)
-  stamp0[] = stamp[]
 
 proc write*(swap: var NUndoSwap, data: pointer, size: int) =
   swap.makeCurrent(sideWrite)
@@ -137,7 +145,6 @@ proc endSeek*(swap: var NUndoSwap): NUndoSeek =
 
 proc endWrite*(swap: var NUndoSwap): NUndoSkip =
   swap.makeCurrent(sideWrite)
-  let stamp0 = addr swap.stampWrite0
   let stamp = addr swap.stampWrite
   # Current Write Position
   let pos = swap.posWrite
@@ -150,9 +157,8 @@ proc endWrite*(swap: var NUndoSwap): NUndoSkip =
   swap.posWrite = pos
   setFilePos(swap.file, pos)
   flushFile(swap.file)
-  # Update Stamp
+  # Return Stamping
   result = stamp[]
-  stamp0[] = result
 
 # -----------------
 # Undo Swap Reading
@@ -208,3 +214,34 @@ proc skipSeek*(swap: var NUndoSwap): NUndoSeek =
   # Skip Seeking Bytes
   swap.posRead += result.bytes
   setFilePos(swap.file, swap.posRead)
+
+# --------------------------
+# Undo Swap Reading: Predict
+# --------------------------
+
+func predictPrev*(skip: NUndoSkip): NUndoSkip =
+  result = default(NUndoSkip)
+  let prev = skip.prev
+  let pos = skip.pos
+  if pos == prev:
+    return skip
+  # Locate at Previous
+  result.prev = prev
+  result.next = pos
+  result.pos = prev
+  # Calculate Byte Size
+  let bytes = pos - prev - sizeof(NUndoSkip)
+  result.bytes = max(bytes, 0)
+
+func predictNext*(skip: NUndoSkip): NUndoSkip =
+  result = default(NUndoSkip)
+  if skip.bytes == 0:
+    return skip
+  # Predict a Next Endpoint
+  let pos = skip.pos
+  var next = pos + skip.bytes
+  next += sizeof(NUndoSkip)
+  # Locate at Next
+  result.prev = pos
+  result.next = next
+  result.pos = next

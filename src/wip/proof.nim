@@ -26,8 +26,8 @@ proc loadFile*(image: NImage, undo0: NImageUndo): set[NUndoEffect] =
   let undo = createImageUndo(image, file)
   let stream = addr undo.stream
   image.owner.ticket = readNumber[uint32](stream)
-  image.t0 = readNumber[cint](stream)
-  image.t1 = readNumber[cint](stream)
+  image.t0 = readNumber[uint32](stream)
+  image.t1 = readNumber[uint32](stream)
   let skip = stream.swap[].readSkip()
   # Restore Root Layer
   undo.seed(skip)

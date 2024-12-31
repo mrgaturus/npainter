@@ -105,7 +105,7 @@ controller CXBrushSection:
   proc createSection =
     let 
       button = button(iconFold0, self.cbFold)
-      combo = combobox(self.model).clear()
+      combo = combobox(self.model).glass()
     # Set Attributes
     self.button = button
     self.combo = combo
@@ -113,7 +113,7 @@ controller CXBrushSection:
     self.section =
       vertical().child:
         min: horizontal().child:
-          min: button.clear()
+          min: button.glass()
           combo
 
   new cxbrushsection(menu: UXMenu):
@@ -134,7 +134,7 @@ controller CXBrushSection:
 widget UXButtonCover:
   new uxbuttoncover(w: GUIWidget, cb: GUICallback):
     result.flags = {wMouse}
-    result.add button("", cb).clear()
+    result.add button("", cb).glass()
     result.add w
 
   method update =
@@ -169,7 +169,7 @@ proc cxbrushsection*(label: string, w: GUIWidget): CXBrushSection =
   # Create Header
   let header =
     horizontal().child:
-      min: button.clear()
+      min: button.glass()
       label(label, hoLeft, veMiddle)
   # Create Section Template
   result.button = button

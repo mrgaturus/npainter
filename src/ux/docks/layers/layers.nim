@@ -36,37 +36,64 @@ icons "dock/layers", 16:
 
 controller CXLayersDock:
   attributes:
-    # Combomodel
     layers: CXLayers
     list: UXLayerList
-    mode: ComboModel
+    # Combobox Modes
+    modeMask: ComboModel
+    modeColor: ComboModel
+    modeCombo: UXComboBox
+    itemNormal: UXComboItem
+    itemPass: UXComboItem
     # Usable Dock
     {.public.}:
       dock: UXDockContent
 
   callback cbUpdate:
-    let
-      m = peek(self.layers.mode)[]
-      mode {.cursor.} = self.mode
+    let layer = self.layers.target
+    let mode = layer.props.mode
+    # Detach Passthrough
+    let pass = self.itemPass
+    if not isNil(pass.prev):
+      pass.detach()
+      wasMoved(pass.prev)
+    # Select Current Model
+    let model {.cursor.} =
+      if layer.kind != lkMask:
+        self.modeColor
+      else: self.modeMask
+    if layer.kind == lkFolder:
+      attachNext(self.itemNormal, pass)
     # Select Without Callback
-    wasMoved(mode.onchange)
-    mode.select(ord m)
-    mode.onchange = self.cbChangeMode
+    wasMoved(model.onchange)
+    model.select(ord mode)
+    model.onchange = self.cbChangeMode
+    model(self.modeCombo, model)
+    send(self.modeCombo, wsLayout)
 
   callback cbChangeMode:
+    let layer = self.layers.target
+    let model {.cursor.} =
+      if layer.kind != lkMask:
+        self.modeColor
+      else: self.modeMask
+    # Change Current Blend Mode
     let m = react(self.layers.mode)
-    m[] = NBlendMode(self.mode.selected.value)
+    m[] = NBlendMode(model.selected.value)
 
   callback cbStructure:
     self.list.reload()
 
-  callback cbDummy:
-    discard
-
   proc createCombo() =
-    self.mode = 
+    self.itemNormal = comboitem(bmNormal)
+    self.itemPass = comboitem(bmPassthrough)
+    self.modeMask =
       combomodel(): menu("").child:
-        comboitem(bmNormal)
+        comboitem(bmMask)
+        comboitem(bmStencil)
+    self.modeColor =
+      combomodel(): menu("").child:
+        self.itemNormal
+        self.itemPass
         menuseparator("Dark")
         comboitem(bmMultiply)
         comboitem(bmDarken)
@@ -97,12 +124,12 @@ controller CXLayersDock:
         comboitem(bmColor)
         comboitem(bmLuminosity)
     # Change Blending Callback
-    self.mode.onchange = self.cbChangeMode
+    self.modeColor.onchange = self.cbChangeMode
+    self.modeMask.onchange = self.cbChangeMode
+    self.modeCombo = combobox(self.modeColor)
 
   proc createWidget: GUIWidget =
-    let
-      cb = self.cbDummy
-      la = self.layers
+    let la = self.layers
     # Create Layer List
     self.list = layerlist(self.layers)
     self.list.reload()
@@ -112,7 +139,7 @@ controller CXLayersDock:
       min: margin(4):
         vertical().child:
           form().child:
-            field("Blending"): combobox(self.mode)
+            field("Blending"): self.modeCombo
             field("Opacity"): slider(la.opacity)
           grid(2, 2).child:
             cell(0, 0): button("Protect Alpha", iconAlpha, la.protect)
@@ -122,17 +149,18 @@ controller CXLayersDock:
       # Layer Control
       min: level().child:
         # Layer Creation
-        tooltip("Add Layer", button(iconAddLayer, la.cbCreateLayer).clear())
-        tooltip("Add Mask", button(iconAddMask, cb).clear())
-        tooltip("Add Folder", button(iconAddFolder, la.cbCreateFolder).clear())
-        vseparator() # Layer Manipulation
-        tooltip("Duplicate Layer", button(iconDuplicate, la.cbDuplicateLayer).clear())
-        tooltip("Merge Layer", button(iconMerge, la.cbMergeLayer).clear())
-        tooltip("Clear Layer", button(iconClear, la.cbClearLayer).clear())
-        tooltip("Delete Layer", button(iconDelete, la.cbRemoveLayer).clear())
+        tooltip("Add Layer"): glass: button(iconAddLayer, la.cbCreateLayer)
+        tooltip("Add Mask"): glass: button(iconAddMask, la.cbCreateMask)
+        tooltip("Add Folder"): glass: button(iconAddFolder, la.cbCreateFolder)
+        vseparator()
+        # Layer Manipulation
+        tooltip("Duplicate Layer"): glass: button(iconDuplicate, la.cbDuplicateLayer)
+        tooltip("Merge Layer"): glass: button(iconMerge, la.cbMergeLayer)
+        tooltip("Clear Layer"): glass: button(iconClear, la.cbClearLayer)
+        tooltip("Delete Layer"): glass: button(iconDelete, la.cbRemoveLayer)
         # Layer Reordering Buttons
-        tail: tooltip("Raise Layer", button(iconUp, la.cbRaiseLayer).clear())
-        tail: tooltip("Lower Layer", button(iconDown, la.cbLowerLayer).clear())
+        tail: glass: button(iconUp, la.cbRaiseLayer)
+        tail: glass: button(iconDown, la.cbLowerLayer)
       # Layer Item
       scrollview():
         self.list

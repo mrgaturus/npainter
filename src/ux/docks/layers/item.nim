@@ -23,6 +23,8 @@ icons "dock/layers", 32:
 const blendname*: array[NBlendMode, cstring] = [
   bmNormal: "Normal",
   bmPassthrough: "Passthrough",
+  bmMask: "Mask",
+  bmStencil: "Stencil",
   # -- Darker --
   bmMultiply: "Multiply",
   bmDarken: "Darken",
@@ -126,8 +128,12 @@ widget UXLayerThumb:
       layer = self.layer[]
       r = self.rect
     # TODO: draw thumbnail texture here
-    ctx.color 0xFFFFFFFF'u32
-    if layer.kind != lkFolder:
+    case layer.kind
+    of lkColor16, lkColor8:
+      ctx.color rgba(255, 255, 255, 255)
+      ctx.fill rect(r)
+    of lkMask:
+      ctx.color rgba(0, 0, 0, 255)
       ctx.fill rect(r)
     # Draw Folder Collapsed
     elif lpFolded notin layer.props.flags:
@@ -413,7 +419,7 @@ widget UXLayerItem:
     # Check Layer Selected
     let level = self.laLevel.level
     var flags = self.flags - {wHold, wHidden}
-    if self.layer == self.layers.selected:
+    if self.layer == self.layers.target:
       flags.incl(wHold)
     # Check Level Folded/Hidden
     if level.folded: flags.incl(wHidden)

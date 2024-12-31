@@ -19,14 +19,12 @@ type
     ext*: pointer
   # Layer Properties
   NLayerKind* = enum
-    lkColor
+    lkColor16
+    lkColor8
     lkMask
-    lkStencil
-    # Layer Tree
     lkFolder
   NLayerFlag* = enum
     lpVisible
-    # Layer Props
     lpClipping
     lpProtectAlpha
     lpTarget
@@ -38,7 +36,6 @@ type
     mode*: NBlendMode
     flags*: set[NLayerFlag]
     opacity*: cfloat
-    # GUI Labeling
     label*: string
   NLayerLevel* = object
     depth*: cint
@@ -61,18 +58,16 @@ type
   # -- Layer Tree Object --
   NLayer* = ptr object
     next*, prev*: NLayer
+    first*, last*: NLayer
     folder*: NLayer
     # Layer Properties
+    kind*: NLayerKind
     code*: NLayerCode
     user*: NLayerUser
     hook*: NLayerHook
+    # Layer Buffer
     props*: NLayerProps
-    # Layer Data
-    case kind*: NLayerKind
-    of lkColor, lkMask, lkStencil:
-      tiles*: NTileImage
-    of lkFolder:
-      first*, last*: NLayer
+    tiles*: NTileImage
 
 # ---------------------------
 # Layer Creation/Deallocation
@@ -82,10 +77,13 @@ proc createLayer*(kind: NLayerKind): NLayer =
   result = create(result[].typeof)
   result.kind = kind
   # Prepare Tiled Image
-  if kind != lkFolder:
-    let bpp: cint = # Bytes-per-pixel
-      if kind == lkColor: 4 else: 1
-    result.tiles = createTileImage(bpp)
+  const bits = [
+    lkColor16: depth8bpp,
+    lkColor8: depth4bpp,
+    lkMask: depth2bpp,
+    lkFolder: depth0bpp
+  ]; result.tiles =
+    createTileImage(bits[kind])
 
 proc deallocBase(layer: NLayer) =
   let code = addr layer.code

@@ -620,7 +620,7 @@ widget UXBrushDispatch:
     self.prepareColor()
 
   method event(state: ptr GUIState) =
-    if self.brush.engine.canvas.image.selected.kind == lkFolder:
+    if self.brush.engine.canvas.image.target.kind == lkFolder:
       return
     if state.kind == evCursorClick:
       self.prepareDispatch()
@@ -633,7 +633,7 @@ widget UXBrushDispatch:
     echo "brush reason: ", reason
     let win = getWindow()
     if reason == inHover:
-      if self.brush.engine.canvas.image.selected.kind != lkFolder:
+      if self.brush.engine.canvas.image.target.kind != lkFolder:
         win.cursor(cursorBasic)
       else: win.cursor(cursorForbidden)
     elif reason == outHover:

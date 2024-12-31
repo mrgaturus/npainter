@@ -10,10 +10,10 @@ type
     buffer*: pointer
   # Image Context
   NImageContext* = object
-    # Image Size
     w*, h*: cint
-    # Image Size Padded
-    w32*, h32*, s32*: cint
+    # Image Padded
+    w32*, h32*: cint
+    s32*: cint
     # Image Buffers
     flat: array[6, pointer]
     aux: seq[pointer]
@@ -215,15 +215,14 @@ iterator cells(m: NImageMark): cint =
   # Iterate Tile Flags
   for ty in m.y0 ..< m.y1:
     for tx in m.x0 ..< m.x1:
-      # Lookup Current Flags
       yield ty * stride + tx
 
-proc mark32*(status: var NImageStatus, tx, ty: cint) =
+proc mark32*(status: var NImageStatus, x32, y32: cint) =
   let w32 = status.w
   let h32 = status.h
   # Mark if is Inside Boundaries
-  if tx >= 0 and ty >= 0 and tx < w32 and ty < h32:
-    let idx = ty * w32 + tx
+  if x32 >= 0 and y32 >= 0 and x32 < w32 and y32 < h32:
+    let idx = y32 * w32 + x32
     let check = status.aux[idx]
     status.aux[idx] += uint8(check == 0)
     status.flat[idx] = 0

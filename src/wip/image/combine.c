@@ -18,10 +18,10 @@ static void buffer_clip(image_buffer_t* src, const image_clip_t clip) {
   if (x1 > cx1) x1 = cx1;
   if (y1 > cy1) y1 = cy1;
   // Clip Buffer Deltas
-  int dx = x0 - src->x;
-  int dy = y0 - src->y;
+  long long dx = x0 - src->x;
+  long long dy = y0 - src->y;
   // Apply Buffer Delta to Pointer
-  if (src->stride != src->bpp)
+  if (src->stride > src->bpp)
     src->buffer += dy * src->stride + dx * src->bpp;
 
   // Apply Clipping
@@ -49,26 +49,41 @@ void combine_clip(image_combine_t* co, image_clip_t clip) {
   buffer_clip(&co->dst, clip);
 }
 
-// -----------------------
-// Combine Buffer Clearing
-// -----------------------
+// ---------------------
+// Combine Buffer Basics
+// ---------------------
 
 void combine_clear(image_combine_t* co) {
-  // Load Destination Pointer
   unsigned char *dst = co->dst.buffer;
+  int stride, bytes, rows;
 
-  int bytes, rows, stride;
-  // Load Region Information
+  // Load Combine Region
+  stride = co->dst.stride;
   bytes = co->dst.w * co->dst.bpp;
   rows = co->dst.h;
-  // Load Strides
-  stride = co->dst.stride;
 
   for (int y = 0; y < rows; y++) {
-    // Clear Pixels
     memset(dst, 0, bytes);
-    // Step Y Buffer
     dst += stride;
+  }
+}
+
+void combine_copy(image_combine_t* co) {
+  unsigned char *src = co->src.buffer;
+  unsigned char *dst = co->dst.buffer;
+
+  // Load Combine Region
+  const int bytes = co->src.w * co->src.bpp;
+  const int rows = co->src.h;
+  // Load Combine Strides
+  int src_stride = co->src.stride;
+  int dst_stride = co->dst.stride;
+
+  for (int y = 0; y < rows; y++) {
+    memcpy(dst, src, bytes);
+    // Step Y Buffer
+    src += src_stride;
+    dst += dst_stride;
   }
 }
 

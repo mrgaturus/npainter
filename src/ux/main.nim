@@ -54,7 +54,6 @@ controller NCMainFrame:
     let state = npainterstate0proof(w, h, checker)
     state.tool.cb = result.cbSelectTool
     state.tool.react[] = stBrush
-    state.proof0default()
     # Create Frame Docks
     let
       dispatch = npainterdispatch(state)
@@ -68,5 +67,6 @@ controller NCMainFrame:
     let frame = result.createFrame()
     result.frame = frame
     # XXX: proof of concept
+    state.proof0default()
     docks.proof0arrange()
     result.proof0shortcuts()

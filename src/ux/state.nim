@@ -64,7 +64,7 @@ controller NPainterState:
     if ueLayerTiles in flags:
       update(self.engine.canvas)
     if ueLayerProps in flags:
-      let layer {.cursor.} = layers.selected
+      let layer {.cursor.} = layers.target
       let user {.cursor.} = cast[GUIWidget](layer.user)
       # Reflect Props Changes to Widget
       if ueLayerList notin flags:
@@ -75,11 +75,15 @@ controller NPainterState:
 
   callback cbUndo:
     let canvas = self.engine.canvas
+    wasMoved(canvas.image.status.clip)
+    # Dispatch Undo Step
     let flags = undo(canvas.undo)
     self.reactUndo(flags)
 
   callback cbRedo:
     let canvas = self.engine.canvas
+    wasMoved(canvas.image.status.clip)
+    # Dispatch Redo Step
     let flags = redo(canvas.undo)
     self.reactUndo(flags)
 
@@ -116,11 +120,13 @@ controller NPainterState:
   proc proof0default*() =
     # Locate Canvas to Center
     let engine {.cursor.} = self.engine
-    self.canvas.x.peek[] = cfloat(engine.canvas.image.ctx.w) * 0.5
-    self.canvas.y.peek[] = cfloat(engine.canvas.image.ctx.h) * 0.5
+    let ctx {.cursor.} = engine.canvas.image.ctx
+    self.canvas.x.peek[] = cfloat(ctx.w) * 0.5
+    self.canvas.y.peek[] = cfloat(ctx.h) * 0.5
     lorp self.canvas.zoom.peek[], -1.0
     # Default Brush Values
     proof0default(self.brush)
+    proof0default(self.layers)
 
 # ---------------
 # State Exporting

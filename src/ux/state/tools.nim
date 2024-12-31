@@ -67,7 +67,7 @@ widget UXBucketDispatch:
     let
       bucket {.cursor.} = self.bucket
       engine {.cursor.} = bucket.engine
-    if self.bucket.engine.canvas.image.selected.kind == lkFolder:
+    if self.bucket.engine.canvas.image.target.kind == lkFolder:
       return
     if state.kind != evCursorClick:
       return
@@ -99,7 +99,7 @@ widget UXBucketDispatch:
     echo "bucket reason: ", reason
     let win = getWindow()
     if reason == inHover:
-      if self.bucket.engine.canvas.image.selected.kind != lkFolder:
+      if self.bucket.engine.canvas.image.target.kind != lkFolder:
         win.cursor(cursorBasic)
       else: win.cursor(cursorForbidden)
     elif reason == outHover:
