@@ -228,13 +228,11 @@ controller CXLayers:
       layer = image.target
       target = layer.next
     # Avoid Merge Invalid Layer
-    if isNil(target) or
-        target.kind == lkFolder or
-        layer.kind == lkFolder:
-      return
+    if isNil(target): return
+    let la = image.mergeLayer(layer, target)
+    if isNil(la): return
     # Create Undo Steps
     let
-      la = image.mergeLayer(layer, target)
       step0 = undo.chain(ucLayerCreate)
       step1 = undo.chain(ucLayerDelete)
       step2 = undo.chain(ucLayerDelete)

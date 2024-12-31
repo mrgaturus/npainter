@@ -9,6 +9,9 @@ const miplocs = [0, 1024, 1280, 1344, 1408, 1472]
 proc pixel*(src: NImageBuffer): uint64 =
   cast[ptr uint64](src.buffer)[]
 
+proc pixel*(dst: NImageBuffer, color: uint64) =
+  cast[ptr uint64](dst.buffer)[] = color
+
 # -------------------------
 # Compositor Buffer Combine
 # -------------------------
@@ -42,7 +45,6 @@ proc combine_reduce*(co: ptr NImageCombine, lod: cint) =
 # ------------------------
 
 proc chunk*(tile: NTile): NImageBuffer =
-  # TODO: MIPMAPPING
   let data = tile.data
   # Configure Map Chunk
   result = NImageBuffer(

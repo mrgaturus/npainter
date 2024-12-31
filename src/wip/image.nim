@@ -278,58 +278,112 @@ proc mergeRegion(src, dst: NLayer): NTileReserved =
   result.w = max(r0.w, r1.w)
   result.h = max(r0.h, r1.h)
 
-proc mergeFill(dst: var NTile) =
-  var color {.align: 16.}: uint64 = 0
-  if dst.status > tsInvalid:
-    color = dst.data.color
-  # Convert to Buffer
-  dst.toBuffer()
-  let c1 = dst.chunk()
-  var c0 = c1
-  # Fill Both Buffers
-  c0.buffer = addr color
-  var co = combine(c0, c1)
-  proxy_uniform_fill(addr co)
+proc mergeComposite(src, dst: NLayer): NImageComposite =
+  let flags = src.props.flags - dst.props.flags
+  let props = addr src.props
+  var mode = props.mode
+  # Configure Layer Blending
+  result = default(NImageComposite)
+  result.alpha = cuint(props.opacity * 65535.0)
+  result.clip = cast[cuint](lpClipping in flags)
+  result.fn = blend_procs[mode]
+  # Configure Layer Blending: Mask
+  if src.kind == lkMask:
+    result.clip = cast[cuint](mode == bmStencil)
+    result.fn = composite_mask
+  # Configure Destination Auxiliar
+  let tile = NTile(bpp: 8)
+  var dst = tile.chunk()
+  dst.stride = dst.bpp * dst.w
+  dst.buffer = alloc(dst.stride * dst.h)
+  result.ext = dst
+  result.dst = dst
 
-proc mergeTile(src, dst: var NTile, co: ptr NImageComposite) =
-  if src.status < tsColor: return
-  if dst.status < tsBuffer:
-    dst.mergeFill()
-  # Blend Layer Tile
+proc mergeTile(co: ptr NImageComposite, src, dst: NTile): bool =
+  result =
+    src.status >= tsColor or
+    dst.status >= tsColor
+  if not result: return result
+  # Optimize Uniform Destination
+  let check = src.status >= tsColor or
+    (src.bpp == 2 and co.clip != 0)
+  if dst.status == tsColor and not check:
+    co.dst = co.ext
+    co.dst.stride = co.dst.bpp
+    # Copy Uniform Pixel to Data
+    pixel(co.dst, dst.data.color)
+    return result
+  # Unpack Destination Pixels
+  var c = combine(dst.chunk, co.ext)
+  if dst.status < tsColor: combine_clear(addr c)
+  elif dst.status == tsColor: proxy_uniform_fill(addr c)
+  elif dst.bpp == 8: proxy_stream16(addr c)
+  elif dst.bpp == 4: proxy_stream8(addr c)
+  # Blend Source Pixels
+  if not check: return
+  co.dst = co.ext
   co.src = src.chunk()
-  co.dst = dst.chunk()
+  # Check Zero Pixel
+  var zero {.align: 16.}: uint64 = 0
+  if isNil(co.src.buffer):
+    co.src.buffer = addr zero
+  # Blend Source Pixel
   blendChunk(co)
-  # Check Layer Uniform
-  let co0 = cast[ptr NImageCombine](co)
-  co0.src = co0.dst
-  proxy_uniform_check(co0)
-  # Convert to Uniform if was Uniform
-  if co0.src.stride == co0.src.bpp:
-    dst.toColor(co.src.pixel)
-  # Generate Mipmaps
-  else: dst.mipmaps()
+
+proc packTile(co: ptr NImageComposite, tile: var NTile) =
+  if co.dst.bpp == co.dst.stride:
+    tile.toColor(co.dst.pixel)
+    co.dst = co.ext
+    return
+  # Prepare Buffer Check
+  var c = combine(co.ext, co.ext)
+  c.dst.stride = tile.bpp * c.dst.w
+  c.dst.bpp = tile.bpp
+  # Pack Pixels and Check Uniform
+  if tile.bpp == 4: mipmap_pack8(addr c)
+  c.src = c.dst; proxy_uniform_check(addr c)
+  if c.src.bpp == c.src.stride:
+    tile.toColor(c.src.pixel)
+    return
+  # Copy Buffer to Tile
+  tile.toBuffer()
+  c.dst = tile.chunk()
+  combine_copy(addr c)
+  tile.mipmaps()
 
 proc mergeLayer*(img: NImage, src, dst: NLayer): NLayer =
-  result = img.copyLayer(dst)
-  let g0 = addr src.tiles
-  let g1 = addr result.tiles
+  result = default(NLayer)
+  # Avoid Merge Invalid Cases
+  let clip = lpClipping in src.props.flags
+  if src.kind == lkFolder or
+    (src.kind == lkMask and not clip) or
+    dst.kind > lkColor8:
+      return result
+  # Create New Layer Base
+  result = img.copyLayerBase(dst)
+  if src.kind == lkColor16:
+    dst.kind = lkColor16
   # Ensure Layer Tiles
   let r = mergeRegion(src, dst)
-  g1[].ensure(r.x, r.y,
+  result.tiles.ensure(r.x, r.y,
     r.w - r.x, r.h - r.y)
-  # Configure Layer Blending
-  let props = addr src.props
-  var co = default(NImageComposite)
-  co.alpha = cuint(props.opacity * 65535.0)
-  co.fn = blend_procs[props.mode]
-  # Configure Layer Blending: Clipping
-  let flags = props.flags - dst.props.flags
-  co.clip = cast[cuint](lpClipping in flags)
-  # Blend Layer Tiles
+  # Perpare Merge Composite
+  let g0 = addr src.tiles
+  let g1 = addr dst.tiles
+  let g2 = addr result.tiles
+  var co = mergeComposite(src, dst)
+  # Merge Layer Tiles
   for y in r.y ..< r.h:
     for x in r.x ..< r.w:
-      var
-        t0 = g0[].find(x, y)
-        t1 = g1[].find(x, y)
+      var t0 = g0[].find(x, y)
+      let t1 = g1[].find(x, y)
+      # Locate Buffer Combine
+      co.ext.x = x shl 5
+      co.ext.y = y shl 5
       # Merge Layer Tile
-      mergeTile(t0, t1, addr co)
+      if mergeTile(addr co, t0, t1):
+        t0 = g2[].find(x, y)
+        packTile(addr co, t0)
+  # Dealloc Temporal Buffer
+  dealloc(co.ext.buffer)
+  result.tiles.shrink()
