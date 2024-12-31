@@ -73,39 +73,38 @@ nopack
 ## ⚙️ Roadmap Features
   - [x] Pen Pressure Support
   - [x] Multithreading and SIMD Optimization
-  - [x] Anti-Aliased and Amazing Brush Engine
-  - [x] Anti-Aliased Bucket Fill + Gap Closing
+  - [x] Anti-Aliased and Amazing Brush Engine *
+  - [x] Anti-Aliased Bucket Fill + Gap Closing *
   - [x] GPU Accelerated Canvas
   - [x] Tiled Layering
     - [x] Raster Layers
-    - [ ] Mask/Stencil Layers
+    - [x] Mask/Stencil Layers
     - [x] Folder Layers
-    - [x] Fundamental Blending Modes
-    - [x] Clipping Group & Alpha Lock
+    - [x] 25 Blending Modes
+    - [x] Clipping Group
+    - [ ] Alpha Lock
+  - [ ] Selection Tools
   - [ ] Transform Tool
     - [ ] Perspective
     - [ ] Mesh
     - [ ] Liquify
-  - [ ] Selection Tools
-  - [x] Infinite Undo using Compressed Files
   - [ ] Fundamental Filters
   - [ ] Intuitive and Professional UI/UX
+  - [x] Infinite Undo using Compressed Files
   - [x] Multi Platform Support
     - [x] Linux/X11
     - [x] Windows
     - [ ] macOS
 
 ### 🕙 Planned Features
-  * Vector Layer
-    - Catmull
-    - Bezier
+  * Vector & Shape Layers
+  * On-canvas Text Layers
   * Frame by Frame Animation
-  * On-canvas Text Tool
   * Android and iPad
 
 ### ❌ Not-Planned Features
-  - Maximum Color Accuracy
-  - The Fastest Painting Software ever
-  - Very Realistic Brushes
+  - Perfect Color Accuracy
+  - Realistic Color Mixing
+  - The Fastest Painting Software Ever
   - 1:1 Features with Similar Software
-  - AI, Machine Learning and Cryptocurrency
+  - AI, Machine Learning and NFT
