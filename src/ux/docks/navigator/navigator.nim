@@ -74,13 +74,13 @@ controller CXNavigatorDock:
       min: horizontal().child:
         level().child:
           # Zoom Control
-          button(iconZoomFit, canvas.cbZoomReset).clear()
-          button(iconZoomPlus, canvas.cbZoomInc).clear()
-          button(iconZoomMinus, canvas.cbZoomDec).clear()
+          glass: button(iconZoomFit, canvas.cbZoomReset)
+          glass: button(iconZoomPlus, canvas.cbZoomInc)
+          glass: button(iconZoomMinus, canvas.cbZoomDec)
           vseparator() # Angle Control
-          button(iconRotateReset, canvas.cbAngleReset).clear()
-          button(iconRotateLeft, canvas.cbAngleDec).clear()
-          button(iconRotateRight, canvas.cbAngleInc).clear()
+          glass: button(iconRotateReset, canvas.cbAngleReset)
+          glass: button(iconRotateLeft, canvas.cbAngleDec)
+          glass: button(iconRotateRight, canvas.cbAngleInc)
           # Mirror Control
           tail: button(iconMirrorVer, canvas.mirrorY)
           tail: button(iconMirrorHor, canvas.mirrorX)

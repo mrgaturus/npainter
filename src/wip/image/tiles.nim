@@ -2,7 +2,9 @@
 # Copyright (c) 2024 Cristian Camilo Ruiz <mrgaturus>
 
 type
-  NTileCell {.union.} = object
+  NTileStatus* {.pure, size: 4.} = enum
+    tsInvalid, tsZero, tsColor, tsBuffer
+  NTileCell* {.union.} = object
     color*: uint64
     buffer*: pointer
   # Tile Grid Pointers
@@ -21,18 +23,23 @@ type
     cells: NTileCells
     bits: NTileBits
   # -- Tiled Image --
+  NTileDepth* {.pure size: 4.} = enum
+    depth0bpp
+    depth2bpp
+    depth4bpp
+    depth8bpp
   NTileImage* = object
+    bits*: NTileDepth
     bpp*, bytes*: cshort
     grid: NTileGrid
 
 type
   NTile* = object
     x*, y*: cint
-    # Tile Checks
-    uniform*: bool
-    found*: bool
-    # Tile Pointers
+    # Tile Information
+    status*: NTileStatus
     bpp*, bytes*: cshort
+    # Tile Pointers
     data*: ptr NTileCell
     grid: ptr NTileGrid
 
@@ -219,15 +226,17 @@ proc mask(grid: var NTileGrid, idx: cint): uint32 =
 # Tile Image Creation
 # -------------------
 
-proc createTileImage*(bpp: 0..4): NTileImage =
-  const
-    bits = cshort sizeof(cushort)
-    size = cshort 1024 * bits
-  # Store Tile Image Bytes
-  result.bpp = bpp * bits
-  result.bytes = bpp * size
+proc createTileImage*(bits: NTileDepth): NTileImage =
+  let bpp = cshort(1 shl bits.ord)
+  result = default(NTileImage)
+  result.bits = bits
+  # Define Tile Bytes
+  if bits > depth0bpp:
+    result.bytes = bpp * 1024
+    result.bpp = bpp
 
 proc region*(tiles: var NTileImage): NTileReserved =
+  assert tiles.bits > depth0bpp
   let grid = addr tiles.grid
   # Return Reserved Grid Region
   result.x = grid.ox
@@ -245,12 +254,12 @@ proc clear*(tiles: var NTileImage) =
 # ---------------------
 
 proc ensure*(tiles: var NTileImage, x, y, w, h: cint) =
-  let
-    src = addr tiles.grid
-    # Source Copy Region
-    r = src[].region(x, y)
-    w0 = max(src.w, x + w - src.ox) + r.ox
-    h0 = max(src.h, y + h - src.oy) + r.oy
+  assert tiles.bits > depth0bpp
+  # Source Copy Region
+  let src = addr tiles.grid
+  let r = src[].region(x, y)
+  let w0 = max(src.w, x + w - src.ox) + r.ox
+  let h0 = max(src.h, y + h - src.oy) + r.oy
   # Create Expanded Grid
   if src.len == 0:
     src[] = createTileGrid(w, h)
@@ -272,9 +281,9 @@ proc ensure*(tiles: var NTileImage, x, y, w, h: cint) =
     src[] = dst
 
 proc shrink*(tiles: var NTileImage) =
-  let
-    src = addr tiles.grid
-    r = src[].bounds()
+  assert tiles.bits > depth0bpp
+  let src = addr tiles.grid
+  let r = src[].bounds()
   # Deallocate Grid if there is nothing
   if (r.w or r.h) <= 0 and src.len > 0:
     dealloc(src.cells)
@@ -301,16 +310,19 @@ proc shrink*(tiles: var NTileImage) =
 # ----------------------
 
 proc lookup(tiles: var NTileImage, idx: cint): NTile {.inline.} =
+  result = default(NTile)
   let grid = addr tiles.grid
+  var test = uint32(idx < grid.len)
   # Tile Information
   result.bpp = tiles.bpp
   result.bytes = tiles.bytes
   result.grid = grid
   # Tile Content
-  if idx < grid.len:
+  if test > 0:
     result.data = addr grid.cells[idx]
-    result.uniform = grid[].mask(idx) == 0
-    result.found = result.data.color > 0
+    test += uint32 result.data.color > 0
+    test += uint32 grid[].mask(idx) > 0
+  result.status = cast[NTileStatus](test)
 
 proc find*(tiles: var NTileImage, x, y: cint): NTile =
   let idx = tiles.grid.index(x, y)
@@ -349,29 +361,28 @@ iterator items*(tiles: var NTileImage): var NTile =
 # --------------------------
 
 proc toColor*(tile: var NTile, color: uint64) =
-  let
-    data = tile.data
-    grid = tile.grid
-  assert not isNil(data)
+  let data = tile.data
+  let grid = tile.grid
+  let status = tile.status
+  assert status > tsInvalid
   # Deallocate Previous Buffer
-  if not tile.uniform:
+  if status == tsBuffer:
     deallocShared(data.buffer)
     grid[].blank(data)
   # Update Tile Data
   data.color = color
-  tile.found = color > 0
-  tile.uniform = true
+  const test = [false: tsZero, true: tsColor]
+  tile.status = test[color > 0]
 
 proc toBuffer*(tile: var NTile) =
-  let
-    data = tile.data
-    grid = tile.grid
-  assert not isNil(data)
+  let data = tile.data
+  let grid = tile.grid
+  let status = tile.status
+  assert status > tsInvalid
   # Allocate Buffer
-  if not tile.uniform: return
+  if status == tsBuffer: return
   let p = allocShared(tile.bytes shl 1)
   data.buffer = p
   grid[].mark(data)
   # Update Tile Data
-  tile.found = not isNil(p)
-  tile.uniform = false
+  tile.status = tsBuffer

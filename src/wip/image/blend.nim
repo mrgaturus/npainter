@@ -1,13 +1,14 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
-# Copyright (c) 2023 Cristian Camilo Ruiz <mrgaturus>
+# Copyright (c) 2024 Cristian Camilo Ruiz <mrgaturus>
 import ffi, context, composite, layer, tiles, chunk
 
-# -------------------------
-# Blending Compositor Dirty
-# -------------------------
+type
+  NBlendCombine* {.pure, union.} = object
+    co0*: NImageCombine
+    co1*: NImageComposite
 
 proc full*(state: ptr NCompositorState): bool {.inline.} =
-  state.chunk.dirty == 0xFFFF and state.mipmap == 0
+  state.mipmap == 0 and state.chunk.dirty == 0xFFFF
 
 iterator scan*(state: ptr NCompositorState): tuple[tx, ty: cint] =
   var dirty = state.chunk.dirty
@@ -21,42 +22,59 @@ iterator scan*(state: ptr NCompositorState): tuple[tx, ty: cint] =
       # Next Dirty Bit
       dirty = dirty shr 1
 
-# --------------------------
-# Blending Compositor Chunks
-# --------------------------
-
-type
-  NBlendCombine* {.union.} = object
-    co0*: NImageCombine
-    co1*: NImageComposite
+# ---------------------------
+# Blending Compositor Prepare
+# ---------------------------
 
 proc blendCombine*(state: ptr NCompositorState): NBlendCombine =
-  let
-    co1 = addr result.co1
-    # State Information
-    props = addr state.layer.props
-    scope = state.scope
-    mode = props.mode
-    # Accumulated Opacity
-    alpha = props.opacity * scope.alpha1
+  result = default(NBlendCombine)
+  let step = state.step
+  let co = addr result.co1
+  # Prepare Props
+  let mode = step.mode
+  let alpha = uint32(step.alpha)
   # Prepare Opacity, Clipping and Blending
-  co1.alpha = cuint(alpha * 65535.0)
-  co1.clip = cast[cuint](state.clip)
-  co1.fn = blend_procs[mode]
-  # Reset when Preparing Clipping
-  if state.cmd == cmScopeClip:
-    co1.alpha = 65535
-    co1.fn = blend_normal
+  co.alpha = (alpha shl 8) or alpha
+  co.clip = cast[cuint](step.clip)
+  co.fn = blend_procs[mode]
+  # Special Blending Modes
+  case step.cmd
+  of cmScopeClip, cmScopeMask:
+    co.alpha = 65535
+    # Special Scoping Function
+    if mode notin {bmMask, bmStencil}:
+      co.fn = blend_normal
+    else: co.fn = composite_mask
+  of cmBlendMask:
+    co.clip = cast[cuint](mode == bmStencil)
+    if state.scope.step.mode == bmPassthrough:
+      co.opaque = addr state.lower.buffer
+      co.fn = composite_passmask
+    else: co.fn = composite_mask
+  else: co.fn = blend_procs[mode]
 
 proc blendChunk*(co: ptr NImageComposite) =
-  let uniform = co.src.stride == co.src.bpp
-  # Basic Blending Equation
+  let bpp = co.src.bpp
+  let uniform = co.src.stride == bpp
+  # Dispatch Normal Blending
   if co.fn == blend_normal and co.clip == 0:
     if uniform: composite_blend_uniform(co)
-    else: composite_blend(co)
+    elif bpp == 8: composite_blend16(co)
+    elif bpp == 4: composite_blend8(co)
+  # Masking Blending Equation
+  elif co.fn == composite_mask:
+    if uniform: composite_mask_uniform(co)
+    else: composite_mask(co)
+  elif co.fn == composite_passmask:
+    let ext = cast[ptr NImageBuffer](co.opaque)
+    co.ext = combine(co.dst, ext[]).dst
+    # Dispatch Passthrough Masking
+    if uniform: composite_passmask_uniform(co)
+    else: composite_passmask(co)
   # Advanced Blending Equation
   elif uniform: composite_fn_uniform(co)
-  else: composite_fn(co)
+  elif bpp == 8: composite_fn16(co)
+  elif bpp == 4: composite_fn8(co)
 
 # -------------------------
 # Blending Compositor Scope
@@ -97,9 +115,9 @@ proc blendScope*(state: ptr NCompositorState) =
 proc packScope(state: ptr NCompositorState) =
   let 
     lod = state.mipmap
-    ctx = state.chunk.com.ctx
     src = state.scope.buffer
   # Configure Buffer Combine
+  let ctx = cast[ptr NImageContext](state.ext)
   var dst = ctx[].mapFlat(lod).chunk()
   dst.w = dst.w shl lod
   dst.h = dst.h shl lod
@@ -117,8 +135,9 @@ proc packScope(state: ptr NCompositorState) =
 # Blending Compositor Buffer
 # --------------------------
 
-proc blendRaw(state: ptr NCompositorState, src: NImageBuffer) =
+proc blendRaw*(state: ptr NCompositorState, src: NImageBuffer) =
   let
+    lod = state.mipmap
     dst = state.scope.buffer
     co0 = combine(src, dst)
   var co = blendCombine(state)
@@ -129,82 +148,115 @@ proc blendRaw(state: ptr NCompositorState, src: NImageBuffer) =
     return
   # Blend Buffer Tiles
   for tx, ty in state.scan():
-    co.co0 = co0.clip32(tx, ty)
-    blendChunk(addr co.co1)
-
-proc blendBuffer*(state: ptr NCompositorState, src: NImageBuffer) =
-  let lod = state.mipmap
-  if lod == 0:
-    state.blendRaw(src)
-    return
-  # LOD Blending
-  let
-    tmp = state.stack.pushBuffer()
-    dst = state.scope.buffer
-    # Combine Buffers
-    ro0 = combine(src, tmp)
-    co0 = combine(tmp, dst)
-  var co = blendCombine(state)
-  # Reduce and Blend Buffer Tiles
-  for tx, ty in state.scan():
-    var ro = ro0.clip32(tx, ty)
-    combine_reduce(addr ro, lod)
-    # Blend Reduced Tile
     co.co0 = co0.clip32(tx, ty, lod)
     blendChunk(addr co.co1)
-  # Clear Temporal Buffer
-  state.stack.popBuffer()
 
 proc blendLayer*(state: ptr NCompositorState) =
   let
     lod = state.mipmap
     # Layer Objects
-    layer = state.layer
+    layer = state.step.layer
+    mode = state.step.mode
     tiles = addr layer.tiles
     dst = state.scope.buffer
     # Layer Region Size
     tx0 = dst.x shr 5
     ty0 = dst.y shr 5
   # Layer Region Blending
+  var zero = default(NTileCell)
   var co = blendCombine(state)
   # Blend Layer Tiles
   for tx, ty in state.scan():
-    let tile = tiles[].find(tx + tx0, ty + ty0)
-    if not tile.found: continue
+    var tile = tiles[].find(tx + tx0, ty + ty0)
+    if tile.status < tsColor:
+      if mode != bmStencil:
+        continue
+      # Zero Fill for Stencil
+      tile.status = tsZero
+      tile.data = addr zero
     # Prepare Tile Chunk
     let chunk = tile.chunk(lod)
     co.co0 = combine(chunk, dst)
     # Blend Layer Chunk
     blendChunk(addr co.co1)
 
+# -------------------------------
+# Blending Compositor Passthrough
+# -------------------------------
+
+proc copyScope*(state: ptr NCompositorState) =
+  let
+    lod = state.mipmap
+    src = state.lower.buffer
+    dst = state.scope.buffer
+    co0 = combine(src, dst)
+  # Clear all if is Fully Dirty
+  if state.full():
+    combine_copy(addr co0)
+    return
+  # Clear Buffer Tiles
+  for tx, ty in state.scan():
+    let co = co0.clip32(tx, ty, lod)
+    combine_copy(addr co)
+
+proc passScope*(state: ptr NCompositorState) =
+  let
+    lod = state.mipmap
+    src = state.scope
+    dst = state.lower
+  # Optimize Passthrough Copy
+  let alpha: uint32 = state.step.alpha
+  if alpha == 255:
+    state.scope = dst
+    state.lower = src
+    state.copyScope()
+    state.scope = src
+    state.lower = dst
+    return
+  # Prepare Layer Passthrough
+  var co = default(NBlendCombine)
+  co.co1.alpha = (alpha shl 8) or alpha
+  let co0 = combine(src.buffer, dst.buffer)
+  # Passthrough All When Full
+  if state.full():
+    co.co0 = co0
+    composite_pass(addr co.co1)
+    return
+  # Passthrough Buffer Tiles
+  for tx, ty in state.scan():
+    co.co0 = co0.clip32(tx, ty, lod)
+    composite_pass(addr co.co1)
+
 # -------------------------
 # Blending Compositor Procs
 # -------------------------
 
 proc blend16proc*(state: ptr NCompositorState) =
-  case state.cmd
-  of cmBlendLayer:
+  const pass = {bmPassthrough, bmMask, bmStencil}
+  let step = state.step
+  # Dispatch Layer Blending
+  case step.cmd
+  of cmBlendDiscard: discard
+  of cmBlendLayer, cmBlendMask:
     state.blendLayer()
-  # Blend Scoping
-  of cmBlendScope, cmBlendClip:
-    state.blendScope()
-  of cmScopeRoot, cmScopeImage:
-    state.clearScope()
-  # Blend Clipping
-  of cmScopeClip:
-    # Skip folder because has image already
-    if state.layer.kind == lkFolder: return
-    if state.scope.mode != bmPassthrough:
+  of cmBlendScope:
+    if step.mode notin pass:
+      state.blendScope()
+    else: state.passScope()
+  # Blending Compositor Scope
+  of cmScopeImage: state.clearScope()
+  of cmScopePass: state.copyScope()
+  of cmScopeClip, cmScopeMask:
+    case step.layer.kind
+    of lkColor16, lkColor8:
       state.clearScope()
+    of lkMask: state.copyScope()
+    of lkFolder: return
+    # Blend Layer to Scope
     state.blendLayer()
-  # Blend Discard
-  else: discard
 
 proc root16proc*(state: ptr NCompositorState) =
-  case state.cmd
-  of cmScopeRoot:
-    state.clearScope()
-  of cmBlendScope:
-    state.packScope()
-  # Blend Discard
+  case state.step.cmd
+  of cmBlendScope: state.packScope()
+  of cmScopeImage: state.clearScope()
   else: discard

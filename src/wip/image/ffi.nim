@@ -5,6 +5,7 @@ type
   NBlendMode* {.pure.} = enum
     bmNormal
     bmPassthrough
+    bmMask, bmStencil
     # Darker
     bmMultiply
     bmDarken
@@ -43,6 +44,7 @@ type
 {.compile: "blend.c".}
 {.compile: "combine.c".}
 {.compile: "composite.c".}
+{.compile: "mask.c".}
 {.compile: "mipmap.c".}
 {.compile: "proxy.c".}
 {.push header: "wip/image/image.h".}
@@ -61,9 +63,11 @@ type
     dst*, src*: NImageBuffer
   NImageComposite* {.importc: "image_composite_t".} = object
     dst*, src*: NImageBuffer
+    ext*: NImageBuffer
     # Combine Properties
     alpha*, clip*: cuint
     fn*: NBlendProc
+    opaque*: pointer
 
 {.push importc.}
 
@@ -71,44 +75,40 @@ type
 proc combine_intersect*(co: ptr NImageCombine)
 proc combine_clip*(co: ptr NImageCombine, clip: NImageClip)
 proc combine_clear*(co: ptr NImageCombine)
+proc combine_copy*(co: ptr NImageCombine)
 proc combine_pack*(co: ptr NImageCombine)
+
 # composite.c
-proc composite_blend*(co: ptr NImageComposite)
+proc composite_blend16*(co: ptr NImageComposite)
+proc composite_blend8*(co: ptr NImageComposite)
 proc composite_blend_uniform*(co: ptr NImageComposite)
-proc composite_fn*(co: ptr NImageComposite)
+proc composite_fn16*(co: ptr NImageComposite)
+proc composite_fn8*(co: ptr NImageComposite)
 proc composite_fn_uniform*(co: ptr NImageComposite)
 
+# mask.c
+proc composite_mask*(co: ptr NImageComposite)
+proc composite_mask_uniform*(co: ptr NImageComposite)
+proc composite_pass*(co: ptr NImageComposite)
+proc composite_passmask*(co: ptr NImageComposite)
+proc composite_passmask_uniform*(co: ptr NImageComposite)
+
 # mipmap.c
-proc mipmap_reduce*(co: ptr NImageCombine)
+proc mipmap_pack8*(co: ptr NImageCombine)
+proc mipmap_pack2*(co: ptr NImageCombine)
+proc mipmap_reduce16*(co: ptr NImageCombine)
+proc mipmap_reduce8*(co: ptr NImageCombine)
+proc mipmap_reduce2*(co: ptr NImageCombine)
+
 # proxy.c
-proc proxy_stream*(co: ptr NImageCombine)
-proc proxy_fill*(co: ptr NImageCombine)
-proc proxy_uniform*(co: ptr NImageCombine)
+proc proxy_stream16*(co: ptr NImageCombine)
+proc proxy_stream8*(co: ptr NImageCombine)
+proc proxy_stream2*(co: ptr NImageCombine)
+proc proxy_uniform_fill*(co: ptr NImageCombine)
+proc proxy_uniform_check*(co: ptr NImageCombine)
 
 {.pop.} # importc
 {.pop.} # image.h
-
-# -------------------
-# image.h ffi combine
-# -------------------
-
-proc combine*(src, dst: NImageBuffer): NImageCombine =
-  result.src = src
-  result.dst = dst
-  # Prepare Clipping if is not same
-  if src.buffer != dst.buffer:
-    combine_intersect(addr result)
-
-proc combine_reduce*(co: ptr NImageCombine, lod: cint) =
-  var ro = co[]
-  assert co.src.w == co.dst.w
-  assert co.src.h == co.dst.h
-  # Apply Mipmap Reduction
-  for _ in 0 ..< lod:
-    {.emit: "`ro.dst.w` >>= 1;".}
-    {.emit: "`ro.dst.h` >>= 1;".}
-    mipmap_reduce(addr ro)
-    ro.src = ro.dst
 
 # ----------------------
 # image.h ffi blend proc

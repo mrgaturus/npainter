@@ -48,9 +48,11 @@ type
     first, last: NUndoStep
     firs0, las0: NUndoStep
     # Step Cursor
-    swipe, busy: bool
     cursor: NUndoStep
-    curso0: NUndoStep
+    peak: NUndoSkip
+    # Step Cursor Status
+    busy, bus0: bool
+    swipe: bool
 
 # ---------------------------------
 # Undo Manager Creation/Destruction
@@ -91,8 +93,6 @@ proc detach(step: NUndoStep) =
     undo.first = step.next
   if step == undo.last:
     undo.last = step.prev
-  if step == undo.firs0:
-    undo.firs0 = step.nex0
   # Detach From Undo
   let prev = step.prev
   let next = step.next
@@ -111,69 +111,71 @@ proc destroy(step: NUndoStep) =
   detach(step)
   dealloc(step)
 
-proc cutdown(step: NUndoStep): NUndoStep =
-  result = step.prev
-  # Cutdown Next Steps
-  var trunk = step
+proc cutdown(down: NUndoStep): NUndoStep =
+  if isNil(down): return down
+  result = down.prev
+  # Cutdown Steps
+  var trunk = down
   while not isNil(trunk):
     let next = trunk.next
     # Destroy or Detach
-    if trunk.where == inStage:
+    case trunk.where
+    of inRAM: trunk.destroy()
+    of inStage:
       trunk.where = inTrash
       trunk.detach()
-    elif trunk.where == inSwap:
-      result = trunk
-    else: trunk.destroy()
+    of inTrash, inSwap:
+      discard
     # Next Step Trunk
     trunk = next
 
-proc cutswap(swap, step: NUndoStep): NUndoStep =
+proc cutswap(swap: NUndoStep): NUndoStep =
+  discard cutdown(swap.next)
+  let undo = swap.undo
+  let skip = swap.skip
   result = swap
-  if isNil(result) or result.where != inSwap:
+  # Cutdown Swap Peak
+  if not undo.swipe:
+    undo.peak = skip.predictNext()
     return result
-  # Cutdown Swap to Step
-  let skip = addr swap.skip
-  if swap.undo.swipe:
-    step.skip = skip[]
-    if skip.pos != skip.prev:
-      skip.next = skip.pos
-      skip.pos = skip.prev
-      return result
-    # Destroy Swap
-    result.destroy()
-    return nil
-  # Redirect Swap to Step
-  if skip.pos != skip.next:
-    let s = addr step.skip
-    s.next = skip.next
-    s.prev = skip.pos
-    s.pos = skip.next
-    s.bytes = skip.bytes
+  # Cutdown Swap Backwards
+  undo.peak = skip
+  if skip.pos != skip.prev:
+    swap.skip = skip.predictPrev()
+    return result
+  # Destroy Swap Step
+  wasMoved(result)
+  swap.destroy()
 
 # ---------------------------
 # Undo Step Capture: Creation
 # ---------------------------
 
 proc pushed(undo: NImageUndo, cmd: NUndoCommand): NUndoStep =
+  var down = undo.cursor
   result = create(result[].typeof)
   result.undo = undo
   result.cmd = cmd
-  # Cutdown Cursor
-  var cursor = undo.cursor
-  if undo.swipe:
-    cursor = cutdown(cursor)
-  elif cursor != undo.last:
-    cursor = cutdown(cursor.next)
-  cursor = cutswap(cursor, result)
-  # Add Step After Cursor
-  if not isNil(cursor):
-    cursor.next = result
-    result.prev = cursor
-  else: undo.first = result
-  # Replace Current Cursors
+  # Cutdown Swap Tree
+  if isNil(down): discard
+  elif down.where == inSwap:
+    down = cutswap(down)
+  elif undo.swipe:
+    down = cutdown(down)
+  elif not isNil(down.next):
+    down = cutdown(down.next)
+  # Add Step After Down
+  if not isNil(down):
+    down.next = result
+    result.prev = down
+  elif isNil(down):
+    undo.first = result
+  # Replace Cursors
   undo.cursor = result
   undo.last = result
+  # Replace Cursors Status
   undo.swipe = false
+  undo.busy = true
 
 proc chained(step: NUndoStep, rev: bool) =
   let prev = if not rev: step.prev else: step.next
@@ -298,11 +300,10 @@ proc stageHeader(task: ptr NUndoTask) =
   let stream = task.state.stream
   let swap = stream.swap
   let step = task.cursor
-  # Locate to Current Skip
-  if step.skip.bytes > 0:
-    swap[].setWrite(step.skip)
-  # Write Undo Step Header
+  # Locate Undo Step
+  swap[].setWrite(step.skip)
   swap[].startWrite()
+  # Write Undo Step Header
   stream.writeNumber(step.layer)
   stream.writeNumber(step.msg)
   stream.writeNumber(uint32 step.cmd)
@@ -336,95 +337,91 @@ proc nextWrite(task: ptr NUndoTask): bool =
 
 proc swap0book(coro: Coroutine[NUndoTask])
 proc swap0coro(coro: Coroutine[NUndoTask])
-proc swap0stage(undo: NImageUndo) =
+proc swap0stage(undo: NImageUndo, curso0: NUndoStep) =
   undo.firs0 = undo.first
   undo.las0 = undo.last
   # Ghost Current Stack
-  var step = undo.curso0
+  var step = curso0
   while not isNil(step):
     step.nex0 = step.next
     step.pre0 = step.prev
     step.where = inStage
     # Next Undo Step
     step = step.next
+  wasMoved(curso0.pre0)
+  curso0.skip = undo.peak
   # Configure Coroutine
-  wasMoved(undo.curso0.pre0)
   let task = undo.coro.data
-  task.cursor = undo.curso0
+  task.cursor = curso0
   task.stage = 0
   # Execute Coroutine
   undo.coro.pass(swap0coro)
   undo.coro.spawn()
-  undo.busy = true
+  undo.bus0 = true
 
 proc swap0check(undo: NImageUndo) =
   var step = default(NUndoStep)
-  if undo.last.chain == chainStep:
-    discard
-  # Check for Steps inRAM
-  elif undo.first != undo.firs0:
-    step = undo.first
-  elif undo.last != undo.las0:
-    step = undo.last
-    while true:
-      let prev = step.prev
-      # Locate at First inRAM
-      if isNil(prev): break
-      elif prev.where != inRAM:
-        break
-      step = prev
-  # Dispatch Coroutine
-  undo.busy = false
-  undo.curso0 = step
+  var peek = undo.last
+  # Check Busy Indicator
+  undo.bus0 = false
+  if undo.busy:
+    return
+  # Select First inRAM
+  while not isNil(peek):
+    if peek.where == inRAM:
+      step = peek
+      peek = peek.prev
+    else: break
+  # Dispatch Coroutine  
   if not isNil(step):
-    undo.swap0stage()
+    undo.swap0stage(step)
 
-proc swap0ghost(undo: NImageUndo) =
-  let cursor = undo.cursor
-  if undo.firs0.where == inStage:
-    let ghost = create(cursor[].typeof)
+proc swap0ghost(undo: NImageUndo, step: NUndoStep) =
+  var ghost = undo.first
+  if ghost.where != inSwap:
     let first = undo.first
+    ghost = create(step[].typeof)
     ghost.where = inSwap
     ghost.undo = undo
     # Change Undo First
     ghost.next = first
     first.prev = ghost
     undo.first = ghost
-    undo.firs0 = ghost
-  # Change Cursor if Staged
+  # Assert Ghost Valid
+  assert step.where == inStage
+  assert ghost.where == inSwap
+  # Replace Cursor With Ghost
+  let cursor = undo.cursor
   if cursor.where == inStage:
-    let ghost = undo.first
     ghost.skip = cursor.skip
     ghost.chain = cursor.chain
-    ghost.where = inSwap
-    # Destroy Cursor
     undo.cursor = ghost
-    undo.las0 = ghost
-    cursor.destroy()
+  # Locate Ghost at End
+  elif cursor != ghost:
+    ghost.skip = step.skip
+    ghost.chain = step.chain
 
 # TODO: allow keep some steps in RAM
 proc swap0clean(undo: NImageUndo) =
-  var skip = default(NUndoSkip)
   var step = undo.las0
+  wasMoved(undo.las0)
   # Destroy Trash Steps
   while not isNil(step):
     if step.where == inTrash:
-      skip = step.skip
+      let pre0 = step.pre0
       step.destroy()
+      step = pre0
     else: break
-    step = step.pre0
   # Stamp Next Stage
-  if isNil(step): return
-  elif not isNil(step.next):
-    step.next.skip = skip
-  # Destroy Stage Steps
-  let cursor = undo.cursor
-  while not isNil(step):
-    if step != cursor:
+  if not isNil(step):
+    undo.peak = predictNext(step.skip)
+    undo.swap0ghost(step)
+    # Destroy Stage Steps
+    while not isNil(step):
+      let pre0 = step.pre0
       step.destroy()
-    step = step.pre0
-  # Check Swap Ghost
-  undo.swap0ghost()
+      step = pre0
+  # Stage Swap Again
   undo.swap0check()
 
 # -------------------
@@ -464,7 +461,6 @@ proc preload(step: NUndoStep) =
   let skip = addr step.skip
   skip[] = swap[].setRead(skip.pos)
   # Preload Step Description
-  destroy(step.data, step.cmd)
   step.layer = readNumber[uint32](stream)
   step.msg = readNumber[uint32](stream)
   step.cmd = cast[NUndoCommand](readNumber[uint32](stream))
@@ -501,15 +497,15 @@ proc nextStep(undo: NImageUndo): NUndoStep =
   if isNil(result) or swipe:
     return result
   # Check Step Swap
-  let next = result.next
   if result.where == inSwap:
     let skip = addr result.skip
-    if isNil(next) or skip.next != next.skip.pos:
-      if skip.pos != skip.next:
+    # Check Swap Next Step
+    if skip.pos != skip.next and
+      skip.pos != undo.peak.prev:
         skip.pos = skip.next
         return result
   # Change Current Cursor
-  result = next
+  result = result.next
   if not isNil(result):
     undo.cursor = result
 
@@ -526,7 +522,8 @@ proc flush*(undo: NImageUndo) =
   of chainStep: chainEnd
   else: peek.chain
   # Swap if not Busy
-  if not undo.busy:
+  undo.busy = false
+  if not undo.bus0:
     swap0check(undo)
 
 proc undo*(undo: NImageUndo): set[NUndoEffect] =
@@ -547,6 +544,8 @@ proc undo*(undo: NImageUndo): set[NUndoEffect] =
       result.incl effect(step.cmd)
       undo.state.step = step.pass0()
       undo.state.undo()
+      # Destroy Temporal Data
+      destroy(step.data, step.cmd)
     # Check Undo Step Chain
     if step.chain in {chainNone, chainStart}:
       break
@@ -569,6 +568,8 @@ proc redo*(undo: NImageUndo): set[NUndoEffect] =
       result.incl effect(step.cmd)
       undo.state.step = step.pass0()
       undo.state.redo()
+      # Destroy Temporal Data
+      destroy(step.data, step.cmd)
     # Check Redo Step Chain
     if step.chain in {chainNone, chainEnd}:
       break

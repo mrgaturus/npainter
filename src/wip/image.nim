@@ -27,11 +27,12 @@ type
     status*: NImageStatus
     com*: NCompositor
     # Image Layering
-    t0*, t1*: cint
+    t0*, t1*, t2*: uint32
     owner*: NLayerOwner
     root*: NLayer
     # Image Proxy
-    selected*: NLayer
+    test*: NLayer
+    target*: NLayer
     proxy*: NImageProxy
 
 # ----------------------------
@@ -46,20 +47,21 @@ proc configure(img: NImage) =
   # Compositor Configure
   block compositor:
     let c = addr img.com
-    c.root = root
-    c.ctx = ctx
     # Configure Root Layer
     root.props.flags = {lpVisible}
+    root.props.opacity = 1.0
     root.hook.fn = cast[NLayerProc](root16proc)
+    root.hook.ext = cast[ptr NImageContext](ctx)
+    # Confgure Compositor Context
     c.fn = cast[NCompositorProc](blend16proc)
+    c.ext = cast[ptr NImageContext](ctx)
+    c[].configure(ctx.w32, ctx.h32)
   # Proxy Configure
   block proxy:
     let p = addr img.proxy
-    p.ctx = ctx
     p.status = status
-  # Configure Compositor & Proxy
-  img.com.configure()
-  img.proxy.configure()
+    p.ctx = ctx
+    p[].configure()
 
 proc createImage*(w, h: cint): NImage =
   result = create(result[].typeof)
@@ -82,21 +84,20 @@ proc destroy*(img: NImage) =
   `=destroy`(img[])
   dealloc(img)
 
-# ------------------------
-# Image Layer Manipulation
-# ------------------------
+# ------------------
+# Image Layer Basics
+# ------------------
 
 proc createLayer*(img: NImage, kind: NLayerKind): NLayer =
   result = createLayer(kind)
   # Register to Owner and Define Label
   if img.owner.register(addr result.code):
     let props = addr result.props
-    if kind != lkFolder:
-      props.label = "Layer " & $img.t0
-      inc(img.t0)
-    else: # Define Folder Label
-      props.label = "Folder " & $img.t1
-      inc(img.t1)
+    case result.kind
+    of lkColor16: props.label = "Layer " & $img.t0; inc(img.t0)
+    of lkColor8: props.label = "Layer8 " & $img.t0; inc(img.t0)
+    of lkMask: props.label = "Mask " & $img.t1; inc(img.t1)
+    of lkFolder: props.label = "Folder " & $img.t2; inc(img.t2)
 
 proc attachLayer*(img: NImage, layer: NLayer, tag: NLayerTag) =
   let owner = addr img.owner
@@ -118,23 +119,104 @@ proc attachLayer*(img: NImage, layer: NLayer, tag: NLayerTag) =
 proc selectLayer*(img: NImage, layer: NLayer) =
   let check = layer.code.tree == addr img.owner
   assert check, "layer owner mismatch"
-  # Configure Proxy Selected
-  img.selected = layer
-  img.proxy.layer = layer
+  img.target = layer
 
-proc markLayer*(img: NImage, layer: NLayer) =
+# -------------------------
+# Image Layer Marking: Base
+# -------------------------
+
+proc markBase(img: NImage, layer: NLayer) =
   let status = addr img.status
-  # Mark Tiles if is a Image Layer
-  if layer.kind == lkColor:
+  # Mark Color Layer
+  case layer.kind
+  of lkColor16, lkColor8:
     for tile in layer.tiles:
       status[].mark32(tile.x, tile.y)
-  # Mark Recursive if is a Folder
-  elif layer.kind == lkFolder:
+  # Mark Folder Recursive
+  of lkMask: discard
+  of lkFolder:
     var la = layer.first
     # Walk Folder Childrens
     while not isNil(la):
-      img.markLayer(la)
+      img.markBase(la)
       la = la.next
+
+proc markClip(img: NImage, layer: NLayer) =
+  var la = layer.prev
+  # Mark Layer Clips
+  while not isNil(la) and
+    lpClipping in la.props.flags:
+      img.markBase(la)
+      la = la.prev
+
+proc markScope(img: NImage, layer: NLayer) =
+  var la = layer
+  while not isNil(la) and
+    lpClipping in la.props.flags:
+      la = la.next
+  if not isNil(la) and
+    la.kind == lkMask:
+      la = la.folder
+  # Mark Layer Scope
+  if not isNil(la):
+    img.markBase(la)
+
+# -------------------
+# Image Layer Marking
+# -------------------
+
+proc markFolder(img: NImage, layer: NLayer) =
+  let mode = layer.props.mode
+  img.markBase(layer)
+  # Mark Passthrough Clips
+  if mode == bmPassthrough:
+    img.markClip(layer)
+
+proc markMask(img: NImage, layer: NLayer) =
+  let mode = layer.props.mode
+  # Mark Layer Mask
+  if mode != bmStencil:
+    let status = addr img.status
+    for tile in layer.tiles:
+      status[].mark32(tile.x, tile.y)
+    img.markClip(layer)
+  else: img.markScope(layer)
+
+proc markLayer*(img: NImage, layer: NLayer) =
+  case layer.kind
+  of lkColor16, lkColor8:
+    img.markBase(layer)
+  of lkFolder: img.markFolder(layer)
+  of lkMask: img.markMask(layer)
+
+proc markSafe*(img: NImage, layer: NLayer) =
+  let prev = layer.prev
+  let next = layer.next
+  let folder = layer.folder
+  # Redundant Mark Checking
+  let mode = layer.props.mode
+  let special = layer.kind == lkMask
+  let clipper = not isNil(prev) and
+    lpClipping in prev.props.flags
+  # Mark Folder if Special
+  var scope = layer
+  if special and not isNil(folder):
+    scope = layer.folder
+  elif clipper:
+    if mode != bmPassthrough:
+      img.markClip(scope)
+    if not isNil(next):
+      img.markLayer(next)
+  # Check Redundant Marked
+  let test = img.test
+  if not isNil(test):
+    var check = scope
+    while not isNil(check):
+      if check == test: return
+      check = check.folder
+  # Mark Current Layer
+  img.markLayer(scope)
+  img.test = scope
 
 # ---------------------
 # Image Layer Duplicate
@@ -157,18 +239,18 @@ proc copyTiles(src, dst: NLayer) =
   for t0 in g0[]:
     var t1 = g1[].find(t0.x, t0.y)
     # Copy Uniform Tile
-    if t0.uniform:
+    if t0.status < tsBuffer:
       t1.data.color = t0.data.color
       continue
     # Copy Buffer Tile
     t1.toBuffer()
     copyMem(t1.data.buffer, 
-      t0.data.buffer, t0.bytes)
+      t0.data.buffer, t0.bytes * 2)
 
 proc copyLayer*(img: NImage, layer: NLayer): NLayer =
   result = img.copyLayerBase(layer)
   # Copy Buffer Color Tiles
-  if layer.kind == lkColor:
+  if layer.kind != lkFolder:
     layer.copyTiles(result)
   elif layer.kind == lkFolder:
     var la0 = layer.last
@@ -196,59 +278,112 @@ proc mergeRegion(src, dst: NLayer): NTileReserved =
   result.w = max(r0.w, r1.w)
   result.h = max(r0.h, r1.h)
 
-proc mergeFill(dst: var NTile) =
-  var color {.align: 16.}: uint64
-  if dst.found:
-    color = dst.data.color
-  # Convert to Buffer
-  dst.toBuffer()
-  let c1 = dst.chunk()
-  var c0 = c1
-  # Fill Both Buffers
-  c0.buffer = addr color
-  var co = combine(c0, c1)
-  proxy_fill(addr co)
+proc mergeComposite(src, dst: NLayer): NImageComposite =
+  let flags = src.props.flags - dst.props.flags
+  let props = addr src.props
+  var mode = props.mode
+  # Configure Layer Blending
+  result = default(NImageComposite)
+  result.alpha = cuint(props.opacity * 65535.0)
+  result.clip = cast[cuint](lpClipping in flags)
+  result.fn = blend_procs[mode]
+  # Configure Layer Blending: Mask
+  if src.kind == lkMask:
+    result.clip = cast[cuint](mode == bmStencil)
+    result.fn = composite_mask
+  # Configure Destination Auxiliar
+  let tile = NTile(bpp: 8)
+  var dst = tile.chunk()
+  dst.stride = dst.bpp * dst.w
+  dst.buffer = alloc(dst.stride * dst.h)
+  result.ext = dst
+  result.dst = dst
 
-proc mergeTile(src, dst: var NTile, co: ptr NImageComposite) =
-  if not src.found:
-    return
-  if dst.uniform:
-    dst.mergeFill()
-  # Blend Layer Tile
+proc mergeTile(co: ptr NImageComposite, src, dst: NTile): bool =
+  result =
+    src.status >= tsColor or
+    dst.status >= tsColor
+  if not result: return result
+  # Optimize Uniform Destination
+  let check = src.status >= tsColor or
+    (src.bpp == 2 and co.clip != 0)
+  if dst.status == tsColor and not check:
+    co.dst = co.ext
+    co.dst.stride = co.dst.bpp
+    # Copy Uniform Pixel to Data
+    pixel(co.dst, dst.data.color)
+    return result
+  # Unpack Destination Pixels
+  var c = combine(dst.chunk, co.ext)
+  if dst.status < tsColor: combine_clear(addr c)
+  elif dst.status == tsColor: proxy_uniform_fill(addr c)
+  elif dst.bpp == 8: proxy_stream16(addr c)
+  elif dst.bpp == 4: proxy_stream8(addr c)
+  # Blend Source Pixels
+  if not check: return
+  co.dst = co.ext
   co.src = src.chunk()
-  co.dst = dst.chunk()
+  # Check Zero Pixel
+  var zero {.align: 16.}: uint64 = 0
+  if isNil(co.src.buffer):
+    co.src.buffer = addr zero
+  # Blend Source Pixel
   blendChunk(co)
-  # Check Layer Uniform
-  let co0 = cast[ptr NImageCombine](co)
-  co0.src = co0.dst
-  proxy_uniform(co0)
-  # Convert to Uniform if was Uniform
-  if co0.src.stride == co0.src.bpp:
-    let color = cast[ptr uint64](co.src.buffer)[]
-    dst.toColor(color)
-  # Generate Mipmaps
-  else: dst.mipmaps()
+
+proc packTile(co: ptr NImageComposite, tile: var NTile) =
+  if co.dst.bpp == co.dst.stride:
+    tile.toColor(co.dst.pixel)
+    co.dst = co.ext
+    return
+  # Prepare Buffer Check
+  var c = combine(co.ext, co.ext)
+  c.dst.stride = tile.bpp * c.dst.w
+  c.dst.bpp = tile.bpp
+  # Pack Pixels and Check Uniform
+  if tile.bpp == 4: mipmap_pack8(addr c)
+  c.src = c.dst; proxy_uniform_check(addr c)
+  if c.src.bpp == c.src.stride:
+    tile.toColor(c.src.pixel)
+    return
+  # Copy Buffer to Tile
+  tile.toBuffer()
+  c.dst = tile.chunk()
+  combine_copy(addr c)
+  tile.mipmaps()
 
 proc mergeLayer*(img: NImage, src, dst: NLayer): NLayer =
-  result = img.copyLayer(dst)
-  let g0 = addr src.tiles
-  let g1 = addr result.tiles
+  result = default(NLayer)
+  # Avoid Merge Invalid Cases
+  let clip = lpClipping in src.props.flags
+  if src.kind == lkFolder or
+    (src.kind == lkMask and not clip) or
+    dst.kind > lkColor8:
+      return result
+  # Create New Layer Base
+  result = img.copyLayerBase(dst)
+  if src.kind == lkColor16:
+    dst.kind = lkColor16
   # Ensure Layer Tiles
   let r = mergeRegion(src, dst)
-  g1[].ensure(r.x, r.y,
+  result.tiles.ensure(r.x, r.y,
     r.w - r.x, r.h - r.y)
-  # Configure Layer Properties
-  var co: NImageComposite
-  let props = addr src.props
-  # Configure Layer Properties
-  co.alpha = cuint(props.opacity * 65535.0)
-  co.clip = cast[cuint](lpClipping in props.flags)
-  co.fn = blend_procs[props.mode]
-  # Blend Layer Tiles
+  # Perpare Merge Composite
+  let g0 = addr src.tiles
+  let g1 = addr dst.tiles
+  let g2 = addr result.tiles
+  var co = mergeComposite(src, dst)
+  # Merge Layer Tiles
   for y in r.y ..< r.h:
     for x in r.x ..< r.w:
-      var
-        t0 = g0[].find(x, y)
-        t1 = g1[].find(x, y)
+      var t0 = g0[].find(x, y)
+      let t1 = g1[].find(x, y)
+      # Locate Buffer Combine
+      co.ext.x = x shl 5
+      co.ext.y = y shl 5
       # Merge Layer Tile
-      mergeTile(t0, t1, addr co)
+      if mergeTile(addr co, t0, t1):
+        t0 = g2[].find(x, y)
+        packTile(addr co, t0)
+  # Dealloc Temporal Buffer
+  dealloc(co.ext.buffer)
+  result.tiles.shrink()

@@ -177,15 +177,16 @@ proc write(codec: var NBookWrite, tile: NTile) =
   let t0 = addr list.tiles[idx]
   t0.point(tile.x, tile.y)
   # Define Tile Data
-  if not tile.found:
-    discard
-  elif not tile.uniform:
+  case tile.status
+  of tsInvalid, tsZero: discard
+  of tsColor: t0.asUniform(tile.data.color)
+  of tsBuffer:
     let idx = codec.nextSlab()
     t0.asIndex(uint64 idx)
     # Copy Tile Buffer
     copyMem(codec.chunk,
-      tile.data.buffer, tile.bytes)
-  else: t0.asUniform(tile.data.color)
+      tile.data.buffer,
+      tile.bytes)
   # Next Tile from List
   inc(list.count)
 
@@ -398,11 +399,11 @@ proc readBook(stage: ptr NUndoStage, book: ptr NUndoBook) =
     commit(codec, stage)
 
 proc readRegion(stage: ptr NUndoStage) =
-  let r0 = stage.before.region
+  var r0 = stage.before.region
   let r1 = stage.after.region
   # Check Stage Region
   if r0 != r1:
-    var m: NImageMark
+    var m = default(NImageMark)
     m.expand(r0.x, r0.y, r0.w, r0.h)
     m.expand(r1.x, r1.y, r1.w, r1.h)
     m.x0 *= 32; m.y0 *= 32
@@ -410,6 +411,12 @@ proc readRegion(stage: ptr NUndoStage) =
     # Mark Status Tiles
     stage.status[].clip = m
     stage.status[].mark(m)
+  elif stage.before == stage.after:
+    r0.x *= 32; r0.y *= 32
+    r0.w *= 32; r0.h *= 32
+    # Expand Status Tiles
+    expand(stage.status.clip,
+      r0.x, r0.y, r0.w, r0.h)
 
 proc readBefore*(stage: ptr NUndoStage) =
   stage.readBook(stage.before)

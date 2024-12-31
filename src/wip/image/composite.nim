@@ -1,43 +1,35 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
-# Copyright (c) 2023 Cristian Camilo Ruiz <mrgaturus>
+# Copyright (c) 2024 Cristian Camilo Ruiz <mrgaturus>
 import nogui/async/pool
-import ffi, context, layer
+import ffi, layer
 
 type
   NCompositorCmd* = enum
-    cmDiscard
-    # Layer Blending
+    cmBlendDiscard
     cmBlendLayer
+    cmBlendMask
     cmBlendScope
-    cmBlendClip
     # Layer Scoping
-    cmScopeRoot
     cmScopeImage
     cmScopePass
     cmScopeClip
-  NCompositorScope* = object
+    cmScopeMask
+  NCompositorStep* = object
+    layer*: NLayer
+    # Step Information
     cmd*: NCompositorCmd
     mode*: NBlendMode
+    alpha*: uint8
     clip*: bool
-    # Layer Attributes
-    layer*: NLayer
-    alpha0*: cfloat
-    alpha1*: cfloat
-    # Scope Image Buffer
+  # -- Compositor Scoping --
+  NCompositorScope* = object
+    step*: NCompositorStep
     buffer*: NImageBuffer
-  # -- Compositor State Machine --
-  NCompositorStep = object
-    root, folder: NLayer
-    # Step Command
-    layer: NLayer
-    cmd, cmd0: NCompositorCmd
   NCompositorStack = object
-    x, y: cint
-    # Scope Lists
+    x, y, buf: cint
+    # Compositor Scoping Buffers
     scopes: seq[NCompositorScope]
     buffers: seq[pointer]
-    # Scope Indexes
-    buf: cint
 
 type
   # 128x128 Compositor Blocks
@@ -48,128 +40,170 @@ type
     dirty*, unused: cushort
   # -- Compositor Dispatch --
   NCompositorState* = object
-    layer*: NLayer
-    fn, ext*: pointer
-    # Dispatch Command
-    cmd*: NCompositorCmd
-    mode*: NBlendMode
-    clip*: bool
-    mipmap*: int8
+    step*: NCompositorStep
+    ext*: pointer
+    mipmap*: int32
+    idx: uint32
     # Dispatch 128x128 Scopes
     scope*: ptr NCompositorScope
     lower*: ptr NCompositorScope
     # Dispatch 128x128 Block
     stack*: NCompositorStack
     chunk*: ptr NCompositorBlock
+  # -- Compositor Manager --
   NCompositorProc* =  # NLayerProc.fn
     proc(state: ptr NCompositorState) {.nimcall.}
-  # -- Compositor Manager --
   NCompositor* = object
-    ctx*: ptr NImageContext
-    # Image Content
-    root*: NLayer
     fn*: NCompositorProc
+    ext*: pointer
     # Compositor Blocks
     mipmap*: cint
     w128, h128: cint
     blocks: seq[NCompositorBlock]
+    stack: seq[NCompositorStep]
+    steps: seq[NCompositorStep]
 
-# ---------------------
-# Compositor Block Step
-# ---------------------
+proc step*(layer: NLayer): NCompositorStep =
+  let props = addr layer.props
+  let clip = lpClipping in props.flags
+  # Check Step Visibility
+  var alpha = uint8(props.opacity * 255.0 + 0.5)
+  if lpVisible notin props.flags:
+    alpha = 0
+  # Check Step Mask
+  var mode = props.mode
+  if layer.kind == lkMask and
+      mode != bmStencil:
+    mode = bmMask
+  # Prepare Compositor Step
+  NCompositorStep(
+    layer: layer,
+    # Step Information
+    cmd: cmBlendDiscard,
+    mode: mode,
+    alpha: alpha,
+    clip: clip
+  )
 
-proc checkClip(layer: NLayer): bool =
-  let
-    kind = layer.kind
-    # Check Clipping or Mask
-    check0 = kind in {lkMask, lkStencil}
-    check1 = lpClipping in layer.props.flags
-  # Check if has Clipping
-  check0 or check1
+# --------------------------------
+# Compositor Step Machine: Scoping
+# --------------------------------
 
-proc commandClip(layer: NLayer): NCompositorCmd =
-  let
-    prev = layer.prev
-    clip0 = layer.checkClip()
-  # Check Clipping Scope
-  if not isNil(prev):
-    let clip = prev.checkClip()
-    # Check Clipping Scoping
-    if not clip0 and clip:
-      result = cmScopeClip
-    elif clip0 and not clip:
-      result = cmBlendClip
-  # Check Clipping Ending
-  elif clip0:
-    result = cmBlendClip
+proc stepPushScope(com: var NCompositor, layer: NLayer): bool =
+  var step = layer.step()
+  # Check Scope Visibility
+  result = step.alpha > 0
+  if not result:
+    com.steps.add(step)
+    return result
+  # Configure Scoping
+  step.cmd = cmScopeImage
+  if step.mode == bmPassthrough:
+    step.cmd = cmScopePass
+  # Add Scope to Stack
+  com.steps.add(step)
+  com.stack.add(step)
 
-proc command(layer: NLayer, leave: bool): NCompositorCmd =
-  let
-    kind = layer.kind
-    props = addr layer.props
-    pass = props.mode == bmPassthrough
-  # Check Layer Kind
-  if lpVisible in props.flags:
-    if leave: result = cmBlendScope
-    elif kind in {lkColor, lkMask, lkStencil}:
-      result = cmBlendLayer
-    # Enter Folder
-    elif kind == lkFolder:
-      result = if not pass:
-        cmScopeImage
-      else: cmScopePass
+proc stepPopScope(com: var NCompositor) =
+  var step = com.stack.pop()
+  # Add Scope Blending
+  step.cmd = cmBlendScope
+  com.steps.add(step)
 
-# -- Compositor Walking --
-proc createStep(root: NLayer): NCompositorStep =
-  result.root = root
-  result.layer = root
-  # Initial Compositor State
-  result.cmd = cmScopeRoot
+proc stepPopScope(com: var NCompositor, cmd: NCompositorCmd) =
+  {.push checks: off.}
+  if len(com.stack) > 0 and
+      com.stack[^1].cmd == cmd:
+    com.stepPopScope()
+  {.pop.}
 
-proc next(step: var NCompositorStep): bool =
-  const cmEnter = cmScopeRoot..cmScopePass
-  let layer0 = step.layer
-  # Current State
-  var
-    layer = layer0.prev
-    folder = step.folder
-    leave = false
-  # Enter Scope
-  if step.cmd in cmEnter:
-    layer = layer0.last
-    folder = layer0
-  elif layer0 == step.root:
-    return leave
-  # Leave Scope
-  if isNil(layer):
-    layer = folder
-    folder = layer.folder
-    leave = true
-  # Layer Command
-  var cmd = layer.command(leave)
-  if cmd notin cmEnter:
-    let clip = layer.commandClip()
-    # Replace as Clipping Command
-    if clip != cmDiscard:
-      step.cmd0 = cmd
-      cmd = clip
-  # Replace Command
-  step.cmd = cmd
-  step.layer = layer
-  step.folder = folder
-  # Step Command
-  result = true
+proc stepClipScope(com: var NCompositor) =
+  var peek = com.steps[^1]
+  let next = peek.layer.prev
+  # Check Next Clipping
+  var nextClip = false
+  var nextMask = false
+  if not isNil(next):
+    nextClip = lpClipping in next.props.flags
+    nextMask = next.kind == lkMask
+  # Check Clipping Scopes
+  let peekClip = peek.clip
+  let peekMask = peek.layer.kind == lkMask
+  if peekClip and not nextClip:
+    com.stepPopScope(cmScopeMask)
+    com.stepPopScope(cmScopeMask)
+    com.stepPopScope(cmScopeClip)
+    com.stepPopScope(cmScopeClip)
+    return
+  elif not peekClip and nextClip:
+    let cmd = peek.cmd
+    peek.cmd = cmScopeClip
+    # Add Clipping Scope
+    com.steps[^1] = peek
+    com.stack.add(peek)
+    if cmd == cmBlendScope:
+      com.stack.add(peek)
+    # Add Mask Scope
+    if nextMask:
+      peek.cmd = cmScopeMask
+      com.steps.add(peek)
+      com.stack.add(peek)
+    return
+  # Check Mask Sub-Scopes
+  if not peekClip: return
+  if peekMask and not nextMask:
+    com.stepPopScope(cmScopeMask)
+    com.stepPopScope(cmScopeMask)
+  elif not peekMask and nextMask:
+    let cmd = peek.cmd
+    peek.cmd = cmScopeMask
+    com.steps[^1] = peek
+    com.stack.add(peek)
+    # Check Masking to Scope
+    if cmd == cmBlendScope:
+      com.stack.add(peek)
 
-# ------------------------
-# Compositor Block Scoping
-# ------------------------
+# -----------------------
+# Compositor Step Machine
+# -----------------------
 
-# -- Stack Buffer --
+proc stepClear*(com: var NCompositor) =
+  com.stack.setLen(0)
+  com.steps.setLen(0)
+
+proc stepUnsafe*(com: var NCompositor, step: NCompositorStep) =
+  com.steps.add(step)
+
+proc stepLayer*(com: var NCompositor, layer: NLayer) =
+  if layer.kind != lkFolder:
+    var step = layer.step()
+    # Check Color or Mask
+    if step.alpha == 0: discard
+    elif layer.kind != lkMask:
+      step.cmd = cmBlendLayer
+    else: step.cmd = cmBlendMask
+    # Add Simple Command
+    com.steps.add(step)
+    return
+  # Enter Layer Scope
+  if com.stepPushScope(layer):
+    var layer = layer.last
+    # Add Layer Commands
+    while not isNil(layer):
+      com.stepLayer(layer)
+      com.stepClipScope()
+      layer = layer.prev
+    com.stepPopScope()
+
+# ---------------------------------
+# Compositor State Machine: Buffers
+# ---------------------------------
+
 proc pushBuffer*(stack: var NCompositorStack): NImageBuffer =
   let idx = stack.buf
   # 128x128 Image Buffer
   const
-    bpp = sizeof(cushort) shl 2
+    bpp = sizeof(uint16) * 4
     stride = bpp * 128
   result = NImageBuffer(
     x: stack.x,
@@ -182,12 +216,11 @@ proc pushBuffer*(stack: var NCompositorStack): NImageBuffer =
   # Needs New Buffer?
   if idx == len(stack.buffers):
     const bytes = stride * 128
-    # Allocate New Buffer And Add to Stack
+    # Allocate New Buffer
     result.buffer = alloc(bytes)
     stack.buffers.add(result.buffer)
-  else: # Lookup Current Buffer
-    result.buffer = stack.buffers[idx]
-  # Next Buffer Index
+  else: result.buffer = stack.buffers[idx]
+  # Buffer Stack Index
   stack.buf = idx + 1
 
 proc popBuffer*(stack: var NCompositorStack) =
@@ -195,202 +228,152 @@ proc popBuffer*(stack: var NCompositorStack) =
   assert idx >= 0
   stack.buf = idx
 
-# -- Stack Scoping --
-proc elevate(stack: var NCompositorStack, step: NCompositorStep) =
-  let
-    layer = step.layer
-    props = addr layer.props
-    # Layer Checks
-    visible = lpVisible in props.flags
-    clip = step.cmd == cmScopeClip
-  # Create New Scope
-  var scope = NCompositorScope(
-    cmd: step.cmd,
-    mode: props.mode,
-    # Layer Attributes
-    layer: layer,
-    alpha0: props.opacity
-  )
-  # Optimize Clipping Scope
-  if clip and visible:
-    let last = addr stack.scopes[^1]
-    # Optimize Leave Folder
-    if layer.kind == lkFolder:
-      if last.cmd == cmScopeImage:
-        last.cmd = scope.cmd
-        last.clip = clip
-      # No Scope
+# ---------------------------------
+# Compositor State Machine: Scoping
+# ---------------------------------
+
+proc pushScope(stack: var NCompositorStack, step: NCompositorStep) =
+  var scope = NCompositorScope(step: step)
+  # Optimize Scope Buffer
+  if len(stack.scopes) > 0:
+    let lower = stack.scopes[^1]
+    let mask = step.mode in {bmMask, bmStencil}
+    # Check Same Layer or Cancel Clip
+    if step.layer == lower.step.layer:
+      scope.buffer = lower.buffer
+    elif step.cmd == cmScopeMask and mask:
+      scope.buffer = lower.buffer
+      scope.step.alpha = 0
+    elif lower.step.cmd == cmScopePass:
+      scope.step.clip =
+        scope.step.clip or
+        lower.step.clip
+    # Check Scope Optimized Buffer
+    if scope.buffer == lower.buffer:
+      stack.scopes.add(scope)
       return
-    # Optimize Last Layer when has Full Opacity
-    if isNil(layer.next) and props.opacity >= 1.0:
-      scope.cmd = cmScopePass
-      scope.mode = bmPassthrough
-  # Create Passthrough Scope
-  if scope.mode == bmPassthrough:
-    let last = addr stack.scopes[^1]
-    # Pass Opacity and Clipping from Last
-    scope.clip = clip or last.clip
-    scope.alpha1 = scope.alpha0 * last.alpha1
-    scope.buffer = last.buffer
-  # Create Buffer Scope
-  elif visible:
-    scope.clip = clip
-    scope.alpha1 = 1.0
-    scope.buffer = stack.pushBuffer()
-  # Create Discard Scope
-  else:
-    scope.cmd = cmDiscard
-    scope.mode = bmPassthrough
-  # Add Created Scope
+  # Create Scope Buffer
+  scope.buffer = stack.pushBuffer()
   stack.scopes.add(scope)
 
-proc lower(stack: var NCompositorStack) =
-  let
-    l = len(stack.scopes)
-    idx = l - 1
-  if idx == 0: return
-  # Buffer Lowering
-  if stack.scopes[idx].mode != bmPassthrough:
-    stack.popBuffer()
-  # Remove Scope
-  setLen(stack.scopes, idx)
+proc popScope(stack: var NCompositorStack) =
+  let scope = stack.scopes.pop()
+  # Optimize Scope Buffer
+  if len(stack.scopes) > 0:
+    let lower = stack.scopes[^1]
+    if scope.buffer == lower.buffer:
+      return
+  # Remove Scope Buffer
+  stack.popBuffer()
 
-# -- Stack Destroy --
-proc destroy(stack: var NCompositorStack) =
-  # Dealloc Scopes
-  for buffer in items(stack.buffers):
-    dealloc(buffer)
-  # Reset Scopes
-  setLen(stack.scopes, 0)
-  setLen(stack.buffers, 0)
-  stack.buf = 0
+# ----------------------------------
+# Compositor State Machine: Dispatch
+# ----------------------------------
 
-# ----------------------
-# Compositor Block State
-# ----------------------
+proc next(state: var NCompositorState): bool =
+  let com = state.chunk.com
+  var idx = int(state.idx)
+  result = idx < len(com.steps)
+  # Step Current Index
+  if result:
+    state.step = com.steps[idx]
+    inc(state.idx)
 
-proc scope(state: var NCompositorState) =
-  let
-    stack = addr state.stack
-    last = high(stack.scopes)
-    last1 = max(last - 1, 0)
-    # Scope Pointers
-    scope = addr stack.scopes[last]
-    lower = addr stack.scopes[last1]
-  # Prepare Layer Scopes
+proc check(state: var NCompositorState): bool =
+  let stack = addr state.stack
+  let idx0 = high(stack.scopes)
+  var idx1 = max(0, idx0 - 1)
+  # Define Current Scope
+  let scope = addr stack.scopes[idx0]
+  let lower = addr stack.scopes[idx1]
   state.scope = scope
-  state.lower = lower
+  # Check Scope Clipping: Lower
+  while idx1 >= 0:
+    let lo = addr stack.scopes[idx1]
+    if scope.step.layer != lo.step.layer:
+      state.lower = lo; break
+    dec(idx1)
+  # Check Scope Clipping: Pass
+  let step = addr state.step
+  var pass {.cursor.} = scope
+  if step.cmd == cmBlendScope:
+    pass = lower
+  # Check Scope Clipping
+  if pass.step.cmd == cmScopePass:
+    step.clip = step.clip or pass.step.clip
+  elif pass.step.cmd != cmScopeClip:
+    step.clip = false
+  # Check Current Scope
+  if scope != lower and
+    scope.step.layer == lower.step.layer and
+    step.cmd >= cmBlendScope: false
+  elif state.step.alpha == 0: false
+  elif scope.step.alpha == 0: false
+  else: true
 
-proc dispatch(state: var NCompositorState, step: NCompositorStep) =
-  let
-    layer = step.layer
-    hook = layer.hook
-    scope = state.scope
-  # Discard Scope Command
-  if scope.cmd == cmDiscard:
+proc dispatch(state: var NCompositorState) =
+  if not state.check():
     return
-  # Prepare Command
-  state.layer = layer
-  state.cmd = step.cmd
-  state.mode = layer.props.mode
-  # Prepare Command Scoping
-  state.clip = scope.clip
-  if step.cmd > cmBlendLayer:
-    # Use Lower Clipping when Scope Blend
-    if step.cmd == cmBlendScope:
-      state.clip = state.lower.clip
-    elif step.cmd in {cmBlendClip, cmScopeClip}:
-      state.clip = false
-    # Avoid Passthrough Blending
-    if scope.cmd == cmScopePass:
-      if step.cmd in {cmBlendScope, cmBlendClip}:
-        return
-  # Prepare Layer Rendering Hook
+  # Prepare Dispatch Hook
+  let step = state.step
+  let hook = step.layer.hook
   var fn = cast[NCompositorProc](hook.fn)
-  if isNil(fn): fn = state.chunk.com.fn
-  else: state.ext = hook.ext
-  # Dispatch Layer Rendering
-  if state.mode != bmPassthrough:
-    fn(addr state)
+  state.ext = hook.ext
+  # Default Dispatch Hook
+  if isNil(fn):
+    let com = state.chunk.com
+    state.ext = com.ext
+    fn = com.fn
+  # Dispatch Rendering
+  fn(addr state)
 
-proc process(state: var NCompositorState, step: NCompositorStep) =
-  case step.cmd
-  of cmBlendLayer:
-    state.dispatch(step)
-  # Dispatch Elevate Scope
-  of cmScopeRoot..cmScopeClip:
-    elevate(state.stack, step)
-    state.scope()
-    # after Elevate
-    state.dispatch(step)
-  # Dispatch Lower Scope
-  of cmBlendScope, cmBlendClip:
-    state.dispatch(step)
-    # after Dispatch
-    lower(state.stack)
-    state.scope()
-  # Discard Dispatch
-  of cmDiscard:
-    discard
+# ------------------------------------
+# Compositor State Machine: Processing
+# ------------------------------------
 
 proc createState(chunk: ptr NCompositorBlock): NCompositorState =
-  let
-    com = chunk.com
-    stack = addr result.stack
+  result = default(NCompositorState)
   # Locate Stack Scopes
+  let com = chunk.com
+  let stack = addr result.stack
   stack.x = chunk.x128 shl 7
   stack.y = chunk.y128 shl 7
   # Prepare State Chunk
+  result.mipmap = int32(com.mipmap)
   result.chunk = chunk
-  result.mipmap = int8(com.mipmap)
 
-# --------------------------
-# Compositor Block Rendering
-# --------------------------
+proc process(state: var NCompositorState) =
+  case state.step.cmd
+  of cmBlendDiscard: discard
+  of cmBlendLayer, cmBlendMask:
+    state.dispatch()
+  of cmScopeImage..cmScopeMask:
+    state.stack.pushScope(state.step)
+    state.dispatch()
+  of cmBlendScope:
+    state.dispatch()
+    state.stack.popScope()
+
+proc destroy(stack: var NCompositorStack) =
+  for buffer in items(stack.buffers):
+    dealloc(buffer)
 
 proc render(chunk: ptr NCompositorBlock) =
-  var
-    walking = true
-    # Create State Machine
-    state = createState(chunk)
-    step = createStep(chunk.com.root)
-  # Walk Layer Tree
-  while walking:
-    if step.cmd == cmBlendClip:
-      step.cmd = step.cmd0
-      state.process(step)
-      # Dispatch Clipped Scope
-      let scope = state.scope
-      if scope.cmd in {cmDiscard, cmScopeClip, cmScopePass}:
-        let layer0 = step.layer
-        # Prepare Scoping Layer
-        step.cmd = cmBlendClip
-        step.layer = scope.layer
-        # Dispatch Scoping Layer
-        state.process(step)
-        step.layer = layer0
-    # Next Layer Step
-    else: state.process(step)
-    walking = step.next()
+  var state = createState(chunk)
+  while state.next():
+    state.process()
   # Destroy Stack and Dirty
   state.stack.destroy()
   chunk.dirty = 0
 
-# --------------------------
-# Compositor Block Configure
-# --------------------------
+# --------------------
+# Compositor Configure
+# --------------------
 
-proc configure*(com: var NCompositor) =
-  # Locate 128x128 Blocks
-  let
-    ctx = com.ctx
-    # Context Dimensions
-    w = ctx.w32
-    h = ctx.h32
-    # 128x128 Grid Dimensions
-    w128 = (w + 0x7F) shr 7
-    h128 = (h + 0x7F) shr 7
-    l = w128 * h128
+proc configure*(com: var NCompositor, w, h: int32) =
+  let w128 = (w + 0x7F) shr 7
+  let h128 = (h + 0x7F) shr 7
+  let l = w128 * h128
   # Initialize Blocks
   setLen(com.blocks, l)
   # Locate Blocks
@@ -408,16 +391,16 @@ proc configure*(com: var NCompositor) =
   com.w128 = w128
   com.h128 = h128
 
-proc mark*(com: var NCompositor, tx, ty: cint) =
+proc mark*(com: var NCompositor, x32, y32: cint) =
   let
     bw = com.w128
-    bx = tx shr 2
-    by = ty shr 2
+    bx = x32 shr 2
+    by = y32 shr 2
     # Lookup Compositor Block
     b = addr com.blocks[by * bw + bx]
     # Dirty Position
-    dx = tx and 0x3
-    dy = ty and 0x3
+    dx = x32 and 0x3
+    dy = y32 and 0x3
     # Bit Position
     bit = 1 shl (dy shl 2 + dx)
   # Mark Block To Render
@@ -428,9 +411,8 @@ proc mark*(com: var NCompositor, tx, ty: cint) =
 # ----------------------------
 
 proc dispatch*(com: var NCompositor, pool: NThreadPool) =
-  # Render Prepared Blocks
   for b in mitems(com.blocks):
     if b.dirty > 0:
       pool.spawn(render, addr b)
-  # Wait Thread Pool
+  # Wait Rendering
   pool.sync()

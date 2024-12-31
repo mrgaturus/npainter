@@ -4,7 +4,7 @@
 
 __m128i blend_normal(__m128i src, __m128i dst) {
   dst = _mm_shuffle_epi32(dst, 0xFF);
-  src = _mm_multiply_color(src, dst);
+  src = _mm_mul_color32(src, dst);
 
   return src;
 }
@@ -14,7 +14,7 @@ __m128i blend_normal(__m128i src, __m128i dst) {
 // -------------------------
 
 __m128i blend_multiply(__m128i src, __m128i dst) {
-  return _mm_multiply_color(src, dst);
+  return _mm_mul_color32(src, dst);
 }
 
 __m128i blend_darken(__m128i src, __m128i dst) {
@@ -22,8 +22,8 @@ __m128i blend_darken(__m128i src, __m128i dst) {
   xmm0 = _mm_shuffle_epi32(src, 0xFF);
   xmm1 = _mm_shuffle_epi32(dst, 0xFF);
   // min(src, dst) * sa * da
-  src = _mm_multiply_color(src, xmm1);
-  dst = _mm_multiply_color(dst, xmm0); 
+  src = _mm_mul_color32(src, xmm1);
+  dst = _mm_mul_color32(dst, xmm0); 
   xmm0 = _mm_min_epi32(src, dst);
 
   return xmm0;
@@ -33,9 +33,8 @@ __m128i blend_colorburn(__m128i src, __m128i dst) {
   const __m128 zeros = _mm_setzero_ps();
   const __m128 ones = _mm_set1_ps(1.0);
   const __m128 xmm65535 = _mm_set1_ps(65535.0);
-  const __m128 rcp65535 = _mm_rcp_ps(xmm65535);
+  const __m128 rcp65535 = _mm_set1_ps(1.0 / 65535.0);
 
-  __m128 xmm0, xmm1;
   // Convert to Float and Normalize
   __m128 src0 = _mm_cvtepi32_ps(src);
   __m128 dst0 = _mm_cvtepi32_ps(dst);
@@ -44,17 +43,16 @@ __m128i blend_colorburn(__m128i src, __m128i dst) {
   // Convert to Straight Alpha
   __m128 sa = _mm_shuffle_ps(src0, src0, 0xFF);
   __m128 da = _mm_shuffle_ps(dst0, dst0, 0xFF);
+  __m128 xmm0 = _mm_cmpeq_ps(src0, zeros);
+  __m128 xmm1 = _mm_cmpeq_ps(dst0, da);
   src0 = _mm_div_ps(src0, sa);
   dst0 = _mm_div_ps(dst0, da);
-  // Calculate Clamping
-  xmm0 = _mm_cmpeq_ps(src0, zeros);
-  xmm1 = _mm_cmpeq_ps(dst0, ones);
+
   // 1.0 - (1.0 - d) / s
-  src0 = _mm_rcp_ps(src0);
   dst0 = _mm_sub_ps(ones, dst0);
-  src0 = _mm_mul_ps(dst0, src0);
+  src0 = _mm_div_ps(dst0, src0);
   src0 = _mm_sub_ps(ones, src0);
-  // Apply Clamping
+  // Apply Clamping and Conditions
   src0 = _mm_max_ps(src0, zeros);
   src0 = _mm_blendv_ps(src0, zeros, xmm0);
   src0 = _mm_blendv_ps(src0, ones, xmm1);
@@ -72,9 +70,9 @@ __m128i blend_linearburn(__m128i src, __m128i dst) {
   xmm0 = _mm_shuffle_epi32(src, 0xFF);
   xmm1 = _mm_shuffle_epi32(dst, 0xFF);
   // Apply Premultipled Complement
-  xmm2 = _mm_multiply_color(xmm0, xmm1);
-  src = _mm_multiply_color(src, xmm1);
-  dst = _mm_multiply_color(dst, xmm0);
+  xmm2 = _mm_mul_color32(xmm0, xmm1);
+  src = _mm_mul_color32(src, xmm1);
+  dst = _mm_mul_color32(dst, xmm0);
   // s + d - 1.0
   xmm0 = _mm_add_epi32(src, dst);
   xmm0 = _mm_sub_epi32(xmm0, xmm2);
@@ -89,8 +87,8 @@ __m128i blend_darkercolor(__m128i src, __m128i dst) {
   xmm0 = _mm_shuffle_epi32(src, 0xFF);
   xmm1 = _mm_shuffle_epi32(dst, 0xFF);
   // Apply Premultipled Complement
-  src = _mm_multiply_color(src, xmm1);
-  dst = _mm_multiply_color(dst, xmm0);
+  src = _mm_mul_color32(src, xmm1);
+  dst = _mm_mul_color32(dst, xmm0);
   // Convert to Gray Scale
   xmm0 = _mm_mullo_epi32(src, gray);
   xmm1 = _mm_mullo_epi32(dst, gray);
@@ -118,9 +116,9 @@ __m128i blend_screen(__m128i src, __m128i dst) {
   xmm0 = _mm_shuffle_epi32(src, 0xFF);
   xmm1 = _mm_shuffle_epi32(dst, 0xFF);
   // Apply Premultipled Complement
-  xmm2 = _mm_multiply_color(src, dst);
-  src = _mm_multiply_color(src, xmm1);
-  dst = _mm_multiply_color(dst, xmm0);
+  xmm2 = _mm_mul_color32(src, dst);
+  src = _mm_mul_color32(src, xmm1);
+  dst = _mm_mul_color32(dst, xmm0);
   // s + d - s * d
   xmm0 = _mm_add_epi32(src, dst);
   xmm0 = _mm_sub_epi32(xmm0, xmm2);
@@ -133,8 +131,8 @@ __m128i blend_lighten(__m128i src, __m128i dst) {
   xmm0 = _mm_shuffle_epi32(src, 0xFF);
   xmm1 = _mm_shuffle_epi32(dst, 0xFF);
   // max(src, dst) * sa * da
-  src = _mm_multiply_color(src, xmm1);
-  dst = _mm_multiply_color(dst, xmm0); 
+  src = _mm_mul_color32(src, xmm1);
+  dst = _mm_mul_color32(dst, xmm0); 
   xmm0 = _mm_max_epi32(src, dst);
 
   return xmm0;
@@ -144,9 +142,8 @@ __m128i blend_colordodge(__m128i src, __m128i dst) {
   const __m128 zeros = _mm_setzero_ps();
   const __m128 ones = _mm_set1_ps(1.0);
   const __m128 xmm65535 = _mm_set1_ps(65535.0);
-  const __m128 rcp65535 = _mm_rcp_ps(xmm65535);
+  const __m128 rcp65535 = _mm_set1_ps(1.0 / 65535.0);
 
-  __m128 xmm0, xmm1;
   // Convert to Float and Normalize
   __m128 src0 = _mm_cvtepi32_ps(src);
   __m128 dst0 = _mm_cvtepi32_ps(dst);
@@ -155,15 +152,15 @@ __m128i blend_colordodge(__m128i src, __m128i dst) {
   // Convert to Straight Alpha
   __m128 sa = _mm_shuffle_ps(src0, src0, 0xFF);
   __m128 da = _mm_shuffle_ps(dst0, dst0, 0xFF);
+  __m128 xmm0 = _mm_cmpeq_ps(src0, sa);
+  __m128 xmm1 = _mm_cmpeq_ps(dst0, zeros);
   src0 = _mm_div_ps(src0, sa);
   dst0 = _mm_div_ps(dst0, da);
-  // Calculate Clamping
-  xmm0 = _mm_cmpeq_ps(src0, ones);
-  xmm1 = _mm_cmpeq_ps(dst0, zeros);
+
   // d / (1 - s)
   src0 = _mm_sub_ps(ones, src0);
   src0 = _mm_div_ps(dst0, src0);
-  // Apply Clamping
+  // Apply Clamping and Conditions
   src0 = _mm_min_ps(src0, ones);
   src0 = _mm_blendv_ps(src0, ones, xmm0);
   src0 = _mm_blendv_ps(src0, zeros, xmm1);
@@ -180,11 +177,11 @@ __m128i blend_lineardodge(__m128i src, __m128i dst) {
   __m128i xmm0, xmm1, alpha;
   xmm0 = _mm_shuffle_epi32(src, 0xFF);
   xmm1 = _mm_shuffle_epi32(dst, 0xFF);
-  alpha = _mm_multiply_color(xmm0, xmm1);
+  alpha = _mm_mul_color32(xmm0, xmm1);
 
   // s + d
-  src = _mm_multiply_color(src, xmm1);
-  dst = _mm_multiply_color(dst, xmm0);
+  src = _mm_mul_color32(src, xmm1);
+  dst = _mm_mul_color32(dst, xmm0);
   xmm0 = _mm_add_epi32(src, dst);
   xmm0 = _mm_min_epi32(xmm0, alpha);
 
@@ -198,8 +195,8 @@ __m128i blend_lightercolor(__m128i src, __m128i dst) {
   xmm0 = _mm_shuffle_epi32(src, 0xFF);
   xmm1 = _mm_shuffle_epi32(dst, 0xFF);
   // Apply Premultipled Complement
-  src = _mm_multiply_color(src, xmm1);
-  dst = _mm_multiply_color(dst, xmm0);
+  src = _mm_mul_color32(src, xmm1);
+  dst = _mm_mul_color32(dst, xmm0);
   // Convert to Gray Scale
   xmm0 = _mm_mullo_epi32(src, gray);
   xmm1 = _mm_mullo_epi32(dst, gray);
@@ -226,10 +223,10 @@ __m128i blend_overlay(__m128i src, __m128i dst) {
   xmm0 = _mm_shuffle_epi32(src, 0xFF);
   xmm1 = _mm_shuffle_epi32(dst, 0xFF);
   // Apply Premultipled Complement
-  alpha = _mm_multiply_color(xmm0, xmm1);
-  mullo = _mm_multiply_color(src, dst);
-  src = _mm_multiply_color(src, xmm1);
-  dst = _mm_multiply_color(dst, xmm0);
+  alpha = _mm_mul_color32(xmm0, xmm1);
+  mullo = _mm_mul_color32(src, dst);
+  src = _mm_mul_color32(src, xmm1);
+  dst = _mm_mul_color32(dst, xmm0);
 
   xmm0 = _mm_add_epi32(src, dst);
   xmm1 = _mm_add_epi32(alpha, mullo);
@@ -366,9 +363,9 @@ __m128i blend_linearlight(__m128i src, __m128i dst) {
   xmm0 = _mm_shuffle_epi32(src, 0xFF);
   xmm1 = _mm_shuffle_epi32(dst, 0xFF);
   // Apply Premultipled Complement
-  alpha = _mm_multiply_color(xmm0, xmm1);
-  src = _mm_multiply_color(src, xmm1);
-  dst = _mm_multiply_color(dst, xmm0);
+  alpha = _mm_mul_color32(xmm0, xmm1);
+  src = _mm_mul_color32(src, xmm1);
+  dst = _mm_mul_color32(dst, xmm0);
   
   // 2 * s + d - 1
   src = _mm_add_epi32(src, src);
@@ -385,8 +382,8 @@ __m128i blend_pinlight(__m128i src, __m128i dst) {
   xmm1 = _mm_shuffle_epi32(dst, 0xFF);
   // Apply Premultipled Complement
   const __m128i half = _mm_set1_epi32(32767);
-  src = _mm_multiply_color(src, xmm1);
-  dst = _mm_multiply_color(dst, xmm0);
+  src = _mm_mul_color32(src, xmm1);
+  dst = _mm_mul_color32(dst, xmm0);
 
   xmm0 = _mm_cmpgt_epi32(src, half);
   xmm2 = _mm_sub_epi32(src, half);
@@ -406,9 +403,9 @@ __m128i blend_hardmix(__m128i src, __m128i dst) {
   xmm1 = _mm_shuffle_epi32(dst, 0xFF);
   // Apply Premultiplied Complement
   const __m128i zeros = _mm_setzero_si128();
-  alpha = _mm_multiply_color(xmm0, xmm1);
-  src = _mm_multiply_color(src, xmm1);
-  dst = _mm_multiply_color(dst, xmm0);
+  alpha = _mm_mul_color32(xmm0, xmm1);
+  src = _mm_mul_color32(src, xmm1);
+  dst = _mm_mul_color32(dst, xmm0);
 
   // (s + d) > 1 ? 1 : 0
   xmm0 = _mm_add_epi32(src, dst);
@@ -427,9 +424,9 @@ __m128i blend_difference(__m128i src, __m128i dst) {
   xmm0 = _mm_shuffle_epi32(src, 0xFF);
   xmm1 = _mm_shuffle_epi32(dst, 0xFF);
   // Apply Premultipled Complement
-  alpha = _mm_multiply_color(xmm0, xmm1);
-  src = _mm_multiply_color(src, xmm1);
-  dst = _mm_multiply_color(dst, xmm0);
+  alpha = _mm_mul_color32(xmm0, xmm1);
+  src = _mm_mul_color32(src, xmm1);
+  dst = _mm_mul_color32(dst, xmm0);
 
   // abs(s - d)
   xmm0 = _mm_sub_epi32(src, dst);
@@ -444,10 +441,10 @@ __m128i blend_exclusion(__m128i src, __m128i dst) {
   xmm0 = _mm_shuffle_epi32(src, 0xFF);
   xmm1 = _mm_shuffle_epi32(dst, 0xFF);
   // Apply Premultipled Complement
-  alpha = _mm_multiply_color(xmm0, xmm1);
-  mullo = _mm_multiply_color(src, dst);
-  src = _mm_multiply_color(src, xmm1);
-  dst = _mm_multiply_color(dst, xmm0);
+  alpha = _mm_mul_color32(xmm0, xmm1);
+  mullo = _mm_mul_color32(src, dst);
+  src = _mm_mul_color32(src, xmm1);
+  dst = _mm_mul_color32(dst, xmm0);
 
   // s + d - 2 * s * d
   xmm0 = _mm_add_epi32(src, dst);
@@ -463,9 +460,9 @@ __m128i blend_substract(__m128i src, __m128i dst) {
   xmm0 = _mm_shuffle_epi32(src, 0xFF);
   xmm1 = _mm_shuffle_epi32(dst, 0xFF);
   // Apply Premultipled Complement
-  alpha = _mm_multiply_color(xmm0, xmm1);
-  src = _mm_multiply_color(src, xmm1);
-  dst = _mm_multiply_color(dst, xmm0);
+  alpha = _mm_mul_color32(xmm0, xmm1);
+  src = _mm_mul_color32(src, xmm1);
+  dst = _mm_mul_color32(dst, xmm0);
 
   // d - s
   xmm0 = _mm_sub_epi32(dst, src);
@@ -478,17 +475,14 @@ __m128i blend_divide(__m128i src, __m128i dst) {
   const __m128 zeros = _mm_setzero_ps();
   const __m128 ones = _mm_set1_ps(1.0);
   const __m128 xmm65535 = _mm_set1_ps(65535.0);
-  const __m128 rcp255 = _mm_set1_ps(1.0 / 255.0);
-  // Quantize to 8 bit RGBA
-  src = _mm_srli_epi32(src, 8);
-  dst = _mm_srli_epi32(dst, 8);
+  const __m128 rcp65535 = _mm_set1_ps(1.0 / 65535.0);
 
   __m128 xmm0, xmm1, xmm2, xmm3;
   // Convert to Float and Normalize
   __m128 src0 = _mm_cvtepi32_ps(src);
   __m128 dst0 = _mm_cvtepi32_ps(dst);
-  src0 = _mm_mul_ps(src0, rcp255);
-  dst0 = _mm_mul_ps(dst0, rcp255);
+  src0 = _mm_mul_ps(src0, rcp65535);
+  dst0 = _mm_mul_ps(dst0, rcp65535);
   // Convert to Straight Alpha
   __m128 sa = _mm_shuffle_ps(src0, src0, 0xFF);
   __m128 da = _mm_shuffle_ps(dst0, dst0, 0xFF);
@@ -728,6 +722,8 @@ __m128i blend_luminosity(__m128i src, __m128i dst) {
 // ---------------
 
 const blend_proc_t blend_procs[] = {
+  blend_normal,
+  blend_normal,
   blend_normal,
   blend_normal,
   // Darker Blendings

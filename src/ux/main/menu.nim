@@ -162,7 +162,7 @@ controller NCMainMenu:
       menuitem("Work in progress", self.dummy)
 
   proc menuLogo: UXNoClick =
-    result = noclick button(iconLogo, self.dummy).clear()
+    result = noclick button(iconLogo, self.dummy).glass()
 
   proc createMenu*(): UXMenuBar =
     menubar().child:
