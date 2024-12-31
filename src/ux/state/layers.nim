@@ -218,8 +218,8 @@ controller CXLayers:
     undo.flush()
     # Select and Render Layer
     force(self.onstructure)
-    self.select(la)
     self.render(layer)
+    self.select(la)
 
   callback cbMergeLayer:
     let
