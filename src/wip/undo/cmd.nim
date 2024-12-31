@@ -368,14 +368,17 @@ proc commit0props(state: var NUndoState, redo: bool) =
   state.layer(step.layer)
   let layer = step.node
   let pro = addr layer.props
-  let folded = layer.props.flags * {lpFolded}
-  # Apply Layer Props and Adjust Flags
-  if redo: pro[] = props.after
-  else: pro[] = props.before
-  pro.flags = pro.flags - {lpFolded} + folded
   # Mark Layer to Status
   complete(image.status.clip)
   image.markLayer(layer)
+  # Apply Layer Props and Adjust Flags
+  let folded = pro.flags * {lpFolded}
+  if redo: pro[] = props.after
+  else: pro[] = props.before
+  pro.flags = pro.flags - {lpFolded} + folded
+  # Mark Stencil Clipping
+  if pro.mode == bmStencil:
+    image.markLayer(layer)
 
 proc commit0reorder(state: var NUndoState, redo: bool) =
   let
