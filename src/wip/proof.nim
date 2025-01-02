@@ -16,14 +16,14 @@ proc loadFile*(image: NImage, undo0: NImageUndo): set[NUndoEffect] =
   result = {}
   # Create Write File
   var file {.noinit.}: File
-  if not open(file, $name, fmReadWriteExisting):
+  if not open(file, $name, fmRead):
     echo "[ERROR]: failed loading save file"
     return result
   # Remove Undo
   hang(undo0)
   flush(undo0)
   # Store Current ID Tickets
-  let undo = createImageUndo(image, file)
+  let undo = createImageUndo(image, file, read = true)
   let stream = addr undo.stream
   image.owner.ticket = readNumber[uint32](stream)
   image.t0 = readNumber[uint32](stream)

@@ -58,13 +58,13 @@ type
 # Undo Manager Creation/Destruction
 # ---------------------------------
 
-proc createImageUndo*(image: NImage, file: File): NImageUndo =
+proc createImageUndo*(image: NImage, file: File, read = false): NImageUndo =
   result = create(result[].typeof)
   let swap = addr result.swap
   let stream = addr result.stream
   let coro = coroutine(NUndoTask)
   # Configure Streaming
-  swap[].configure(file)
+  swap[].configure(file, read)
   stream[].configure(swap)
   # Configure Dispatchers
   configure(result.state, stream, image)

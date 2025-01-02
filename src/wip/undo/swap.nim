@@ -26,14 +26,16 @@ type
 # Undo Swap Creation/Destruction
 # ------------------------------
 
-proc configure*(swap: var NUndoSwap, file: File) =
+proc configure*(swap: var NUndoSwap, file: File, read: bool) =
   # Write Padding Header
   var pad: array[4, uint32]
   const head = sizeof(pad)
-  if writeBuffer(file, addr pad, head) != head:
-    echo "[ERROR]: failed configure swap file"
-    quit(1)
+  if not read:
+    if writeBuffer(file, addr pad, head) != head:
+      echo "[ERROR]: failed configure swap file"
+      quit(1)
   # Initialize Current Seeking
+  setFilePos(file, head)
   swap.stampPrev = head
   swap.posWrite = head
   swap.posRead = head
