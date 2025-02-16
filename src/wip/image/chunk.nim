@@ -1,8 +1,8 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 # Copyright (c) 2023 Cristian Camilo Ruiz <mrgaturus>
 import ffi
-from tiles import NTile, NTileStatus
-from context import NImageMap
+from tiles import
+  NTile, NTileStatus
 # Mipmap Level Buffer Location
 const miplocs = [0, 1024, 1280, 1344, 1408, 1472]
 
@@ -40,9 +40,9 @@ proc combine_reduce*(co: ptr NImageCombine, lod: cint) =
     mipmap_reduce(addr ro)
     ro.src = ro.dst
 
-# ------------------------
-# Compositor Buffer Chunks
-# ------------------------
+# -------------------
+# Layer Buffer Chunks
+# -------------------
 
 proc chunk*(tile: NTile): NImageBuffer =
   let data = tile.data
@@ -60,21 +60,6 @@ proc chunk*(tile: NTile): NImageBuffer =
   if tile.status == tsBuffer:
     result.stride *= 32
     result.buffer = data.buffer
-
-proc chunk*(map: NImageMap): NImageBuffer =
-  # Configure Map Chunk
-  NImageBuffer(
-    w: map.w,
-    h: map.h,
-    # Buffer Information
-    stride: map.stride,
-    bpp: map.bpp,
-    buffer: map.buffer
-  )
-
-# -------------------
-# Layer Buffer Chunks
-# -------------------
 
 proc chunk*(tile: NTile, lod: cint): NImageBuffer =
   result = tile.chunk()

@@ -118,7 +118,7 @@ proc packScope(state: ptr NCompositorState) =
     src = state.scope.buffer
   # Configure Buffer Combine
   let ctx = cast[ptr NImageContext](state.ext)
-  var dst = ctx[].mapFlat(lod).chunk()
+  var dst = ctx[].mapFlat(lod)
   dst.w = dst.w shl lod
   dst.h = dst.h shl lod
   var co0 = combine(src, dst)
