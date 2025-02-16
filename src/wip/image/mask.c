@@ -6,17 +6,6 @@
 // Composite Masking
 // -----------------
 
-__attribute__((always_inline))
-static inline __m128i _mm_mul_mask16(__m128i xmm0, __m128i fract) {
-  const __m128i ones = _mm_cmpeq_epi16(fract, fract);
-  __m128i xmm1 = _mm_mul_color16(xmm0, fract);
-  // ones - fract + fract * xmm0
-  fract = _mm_subs_epu16(ones, fract);
-  xmm0 = _mm_adds_epu16(fract, xmm1);
-
-  return xmm0;
-}
-
 void composite_mask(image_composite_t* co) {
   // Load Buffer Pointers
   unsigned char *dst_x, *dst_y;
@@ -52,6 +41,7 @@ void composite_mask(image_composite_t* co) {
     while (count > 0) {
       __m128i mask = _mm_load_si128((__m128i*) src_x);
       mask = _mm_xor_si128(mask, ones);
+      mask = _mm_alpha_mask16(mask, alpha);
 
       // Load 8 Destination Pixels
       dst_xmm0 = _mm_load_si128((__m128i*) dst_x);
@@ -66,16 +56,11 @@ void composite_mask(image_composite_t* co) {
       src_xmm3 = _mm_unpackhi_epi32(src_xmm2, src_xmm2);
       src_xmm2 = _mm_unpacklo_epi32(src_xmm2, src_xmm2);
 
-      // Apply Mask Pixel Opacity
-      src_xmm0 = _mm_mul_mask16(src_xmm0, alpha);
-      src_xmm1 = _mm_mul_mask16(src_xmm1, alpha);
-      src_xmm2 = _mm_mul_mask16(src_xmm2, alpha);
-      src_xmm3 = _mm_mul_mask16(src_xmm3, alpha);
       // Apply Source Mask Pixel
-      dst_xmm0 = _mm_mul_color16(dst_xmm0, src_xmm0);
-      dst_xmm1 = _mm_mul_color16(dst_xmm1, src_xmm1);
-      dst_xmm2 = _mm_mul_color16(dst_xmm2, src_xmm2);
-      dst_xmm3 = _mm_mul_color16(dst_xmm3, src_xmm3);
+      dst_xmm0 = _mm_mul_fix16(dst_xmm0, src_xmm0);
+      dst_xmm1 = _mm_mul_fix16(dst_xmm1, src_xmm1);
+      dst_xmm2 = _mm_mul_fix16(dst_xmm2, src_xmm2);
+      dst_xmm3 = _mm_mul_fix16(dst_xmm3, src_xmm3);
 
       // Store 8 Pixels
       if (__builtin_expect(count >= 8, 1)) {
@@ -146,7 +131,7 @@ void composite_mask_uniform(image_composite_t* co) {
   mask = _mm_unpacklo_epi64(mask, mask);
   alpha = _mm_unpacklo_epi16(alpha, alpha);
   alpha = _mm_shuffle_epi32(alpha, 0);
-  mask = _mm_mul_mask16(mask, alpha);
+  mask = _mm_alpha_mask16(mask, alpha);
 
   for (int y = 0; y < h; y++) {
     dst_x = dst_y;
@@ -159,10 +144,10 @@ void composite_mask_uniform(image_composite_t* co) {
       dst_xmm2 = _mm_load_si128((__m128i*) dst_x + 2);
       dst_xmm3 = _mm_load_si128((__m128i*) dst_x + 3);
       // Apply Source Mask Pixel
-      dst_xmm0 = _mm_mul_color16(dst_xmm0, mask);
-      dst_xmm1 = _mm_mul_color16(dst_xmm1, mask);
-      dst_xmm2 = _mm_mul_color16(dst_xmm2, mask);
-      dst_xmm3 = _mm_mul_color16(dst_xmm3, mask);
+      dst_xmm0 = _mm_mul_fix16(dst_xmm0, mask);
+      dst_xmm1 = _mm_mul_fix16(dst_xmm1, mask);
+      dst_xmm2 = _mm_mul_fix16(dst_xmm2, mask);
+      dst_xmm3 = _mm_mul_fix16(dst_xmm3, mask);
 
       // Store 8 Pixels
       if (__builtin_expect(count >= 8, 1)) {
@@ -372,6 +357,7 @@ void composite_passmask(image_composite_t* co) {
     while (count > 0) {
       __m128i mask = _mm_load_si128((__m128i*) src_x);
       mask = _mm_xor_si128(mask, ones);
+      mask = _mm_alpha_mask16(mask, alpha);
 
       // Load 8 Destination Pixels
       dst_xmm0 = _mm_load_si128((__m128i*) dst_x);
@@ -392,11 +378,6 @@ void composite_passmask(image_composite_t* co) {
       src_xmm3 = _mm_unpackhi_epi32(src_xmm2, src_xmm2);
       src_xmm2 = _mm_unpacklo_epi32(src_xmm2, src_xmm2);
 
-      // Apply Mask Pixel Opacity
-      src_xmm0 = _mm_mul_mask16(src_xmm0, alpha);
-      src_xmm1 = _mm_mul_mask16(src_xmm1, alpha);
-      src_xmm2 = _mm_mul_mask16(src_xmm2, alpha);
-      src_xmm3 = _mm_mul_mask16(src_xmm3, alpha);
       // Apply Source Mask Pixel
       dst_xmm0 = _mm_mix_color16(ext_xmm0, dst_xmm0, src_xmm0);
       dst_xmm1 = _mm_mix_color16(ext_xmm1, dst_xmm1, src_xmm1);
@@ -484,7 +465,7 @@ void composite_passmask_uniform(image_composite_t* co) {
   mask = _mm_unpacklo_epi64(mask, mask);
   alpha = _mm_unpacklo_epi16(alpha, alpha);
   alpha = _mm_shuffle_epi32(alpha, 0);
-  mask = _mm_mul_mask16(mask, alpha);
+  mask = _mm_alpha_mask16(mask, alpha);
 
   for (int y = 0; y < h; y++) {
     dst_x = dst_y;

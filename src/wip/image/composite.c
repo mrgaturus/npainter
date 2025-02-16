@@ -9,7 +9,7 @@ static inline __m128i _mm_blend_color16(__m128i src, __m128i dst) {
   // Apply Source Alpha to Destination
   xmm0 = _mm_shufflelo_epi16(src, 0xFF);
   xmm0 = _mm_shufflehi_epi16(xmm0, 0xFF);
-  xmm1 = _mm_mul_color16(dst, xmm0);
+  xmm1 = _mm_mul_fix16(dst, xmm0);
   // SRC + (DST - DST * A_SRC)
   xmm1 = _mm_subs_epu16(dst, xmm1);
   xmm1 = _mm_adds_epu16(src, xmm1);
@@ -78,10 +78,10 @@ void composite_blend16(image_composite_t* co) {
       dst_xmm3 = _mm_load_si128((__m128i*) dst_x + 3);
 
       // Apply Opacity to Source Pixels
-      src_xmm0 = _mm_mul_color16(src_xmm0, alpha);
-      src_xmm1 = _mm_mul_color16(src_xmm1, alpha);
-      src_xmm2 = _mm_mul_color16(src_xmm2, alpha);
-      src_xmm3 = _mm_mul_color16(src_xmm3, alpha);
+      src_xmm0 = _mm_mul_fix16(src_xmm0, alpha);
+      src_xmm1 = _mm_mul_fix16(src_xmm1, alpha);
+      src_xmm2 = _mm_mul_fix16(src_xmm2, alpha);
+      src_xmm3 = _mm_mul_fix16(src_xmm3, alpha);
       // Apply Blending to Destination Pixels
       dst_xmm0 = _mm_blend_color16(src_xmm0, dst_xmm0);
       dst_xmm1 = _mm_blend_color16(src_xmm1, dst_xmm1);
@@ -181,10 +181,10 @@ void composite_blend8(image_composite_t* co) {
       src_xmm2 = _mm_unpacklo_epi8(src_xmm2, src_xmm2);
 
       // Apply Opacity to Source Pixels
-      src_xmm0 = _mm_mul_color16(src_xmm0, alpha);
-      src_xmm1 = _mm_mul_color16(src_xmm1, alpha);
-      src_xmm2 = _mm_mul_color16(src_xmm2, alpha);
-      src_xmm3 = _mm_mul_color16(src_xmm3, alpha);
+      src_xmm0 = _mm_mul_fix16(src_xmm0, alpha);
+      src_xmm1 = _mm_mul_fix16(src_xmm1, alpha);
+      src_xmm2 = _mm_mul_fix16(src_xmm2, alpha);
+      src_xmm3 = _mm_mul_fix16(src_xmm3, alpha);
       // Apply Blending to Destination Pixels
       dst_xmm0 = _mm_blend_color16(src_xmm0, dst_xmm0);
       dst_xmm1 = _mm_blend_color16(src_xmm1, dst_xmm1);
@@ -260,7 +260,7 @@ void composite_blend_uniform(image_composite_t* co) {
   xmm0 = _mm_loadu_si32(&co->alpha);
   xmm0 = _mm_unpacklo_epi16(xmm0, xmm0);
   xmm0 = _mm_shuffle_epi32(xmm0, 0);
-  color = _mm_mul_color16(color, xmm0);
+  color = _mm_mul_fix16(color, xmm0);
 
   for (int count, y = 0; y < h; y++) {
     dst_x = dst_y;
@@ -372,8 +372,8 @@ void composite_fn16(image_composite_t* co) {
       src_xmm0 = _mm_unpackhi_epi16(src_xmm0, zeros);
       dst_xmm0 = _mm_unpackhi_epi16(dst_xmm0, zeros);
       // Apply Opacity to Source Pixels
-      src_xmm0 = _mm_mul_color32(src_xmm0, alpha);
-      src_xmm1 = _mm_mul_color32(src_xmm1, alpha);
+      src_xmm0 = _mm_mul_fix32(src_xmm0, alpha);
+      src_xmm1 = _mm_mul_fix32(src_xmm1, alpha);
 
       // Porter-Duff Blending Function
       src_xmm2 = fn(src_xmm0, dst_xmm0);
@@ -463,8 +463,8 @@ void composite_fn8(image_composite_t* co) {
       src_xmm0 = _mm_unpackhi_epi16(src_xmm0, zeros);
 
       // Apply Opacity to Source Pixels
-      src_xmm0 = _mm_mul_color32(src_xmm0, alpha);
-      src_xmm1 = _mm_mul_color32(src_xmm1, alpha);
+      src_xmm0 = _mm_mul_fix32(src_xmm0, alpha);
+      src_xmm1 = _mm_mul_fix32(src_xmm1, alpha);
 
       // Porter-Duff Blending Function
       src_xmm2 = fn(src_xmm0, dst_xmm0);
@@ -536,7 +536,7 @@ void composite_fn_uniform(image_composite_t* co) {
   // Load Alpha and Apply to Color
   src_xmm0 = _mm_loadu_si32(&co->alpha);
   src_xmm0 = _mm_shuffle_epi32(src_xmm0, 0);
-  color = _mm_mul_color32(color, src_xmm0);
+  color = _mm_mul_fix32(color, src_xmm0);
 
   for (int count, y = 0; y < h; y++) {
     dst_x = dst_y;
