@@ -110,7 +110,7 @@ void proxy_stream16(image_combine_t* co);
 void proxy_stream8(image_combine_t* co);
 void proxy_stream2(image_combine_t* co);
 void proxy_uniform_fill(image_combine_t* co);
-void proxy_uniform_check(image_combine_t* co);
+void proxy_uniform_stream(image_combine_t* co);
 
 // --------------------
 // Image Buffer blend.c

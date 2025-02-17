@@ -105,7 +105,7 @@ proc proxy_stream16*(co: ptr NImageCombine)
 proc proxy_stream8*(co: ptr NImageCombine)
 proc proxy_stream2*(co: ptr NImageCombine)
 proc proxy_uniform_fill*(co: ptr NImageCombine)
-proc proxy_uniform_check*(co: ptr NImageCombine)
+proc proxy_uniform_stream*(co: ptr NImageCombine)
 
 {.pop.} # importc
 {.pop.} # image.h

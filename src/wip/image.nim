@@ -300,19 +300,22 @@ proc mergeComposite(src, dst: NLayer): NImageComposite =
   result.dst = dst
 
 proc mergeTile(co: ptr NImageComposite, src, dst: NTile): bool =
-  result =
-    src.status >= tsColor or
-    dst.status >= tsColor
+  let check0 = src.status >= tsColor
+  let check1 = dst.status >= tsColor
+  result = check0 or check1
   if not result: return result
-  # Optimize Uniform Destination
-  let check = src.status >= tsColor or
-    (src.bpp == 2 and co.clip != 0)
-  if dst.status == tsColor and not check:
+  # Optimize Uniform Pixels
+  if not (check0 and check1):
     co.dst = co.ext
     co.dst.stride = co.dst.bpp
-    # Copy Uniform Pixel to Data
-    pixel(co.dst, dst.data.color)
-    return result
+    # Select Uniform Pixel
+    if src.status == tsColor:
+      result = co.clip == 0 and src.bpp != 2
+      pixel(co.dst, src.data.color)
+      return result
+    elif dst.status == tsColor:
+      pixel(co.dst, dst.data.color)
+      return result
   # Unpack Destination Pixels
   var c = combine(dst.chunk, co.ext)
   if dst.status < tsColor: combine_clear(addr c)
@@ -320,7 +323,6 @@ proc mergeTile(co: ptr NImageComposite, src, dst: NTile): bool =
   elif dst.bpp == 8: proxy_stream16(addr c)
   elif dst.bpp == 4: proxy_stream8(addr c)
   # Blend Source Pixels
-  if not check: return
   co.dst = co.ext
   co.src = src.chunk()
   # Check Zero Pixel
@@ -337,19 +339,18 @@ proc packTile(co: ptr NImageComposite, tile: var NTile) =
     return
   # Prepare Buffer Check
   var c = combine(co.ext, co.ext)
-  c.dst.stride = tile.bpp * c.dst.w
   c.dst.bpp = tile.bpp
-  # Pack Pixels and Check Uniform
-  if tile.bpp == 4: mipmap_pack8(addr c)
-  c.src = c.dst; proxy_uniform_check(addr c)
-  if c.src.bpp == c.src.stride:
-    tile.toColor(c.src.pixel)
-    return
-  # Copy Buffer to Tile
+  if tile.bpp == 4:
+    mipmap_pack8(addr c)
+    c.src = c.dst
+  # Copy Buffer Data
   tile.toBuffer()
   c.dst = tile.chunk()
-  combine_copy(addr c)
-  tile.mipmaps()
+  proxy_uniform_stream(addr c)
+  # Check Tile Uniform
+  if c.dst.bpp == c.dst.stride:
+    tile.toColor(c.dst.pixel)
+  else: tile.mipmaps()
 
 proc mergeLayer*(img: NImage, src, dst: NLayer): NLayer =
   result = default(NLayer)

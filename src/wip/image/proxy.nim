@@ -257,19 +257,16 @@ proc commit(proxy: ptr NProxyBlock) =
     assert not isNil(tile.data)
     # Pack Tile 16bit to Depth
     if mipmap_pack != combine_copy:
-      co.dst.bpp = tiles.bpp
       mipmap_pack(addr co)
-      co.src = co.dst
-    # Check Tile Uniform
-    proxy_uniform_check(addr co)
-    if co.src.bpp == co.src.stride:
-      tile.toColor(co.src.pixel)
-      continue
-    # Stream and Reduce
+      co.src.bpp = tiles.bpp
+    # Copy Buffer Data
     tile.toBuffer()
     co.dst = tile.chunk()
-    combine_copy(addr co)
-    tile.mipmaps()
+    proxy_uniform_stream(addr co)
+    # Check Tile Uniform
+    if co.dst.bpp == co.dst.stride:
+      tile.toColor(co.dst.pixel)
+    else: tile.mipmaps()
   # Remove Dirty Mark
   wasMoved(proxy.dirty)
 
