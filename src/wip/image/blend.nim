@@ -41,13 +41,17 @@ proc blendCombine*(state: ptr NCompositorState): NBlendCombine =
   case step.cmd
   of cmScopeClip, cmScopeMask:
     co.alpha = 65535
-    # Special Scoping Function
     if mode notin {bmMask, bmStencil}:
       co.fn = blend_normal
-    else: co.fn = composite_mask
-  of cmBlendMask:
+      return
+    # Mask Scoping Function
     co.clip = cast[cuint](mode == bmStencil)
-    if state.scope.step.mode == bmPassthrough:
+    co.fn = composite_mask
+  of cmBlendMask:
+    const pass = {bmPassthrough, bmMask, bmStencil}
+    co.clip = cast[cuint](mode == bmStencil)
+    # Mask Blending to Passthrough
+    if state.scope.step.mode in pass:
       co.opaque = addr state.lower.buffer
       co.fn = composite_passmask
     else: co.fn = composite_mask
@@ -85,11 +89,11 @@ proc clearScope*(state: ptr NCompositorState) =
     lod = state.mipmap
     dst = state.scope.buffer
     co0 = combine(dst, dst)
-  # Clear all if is Fully Dirty
+  # Clear Full Scope
   if state.full():
     combine_clear(addr co0)
     return
-  # Clear Buffer Tiles
+  # Clear Partial Buffer Tiles
   for tx, ty in state.scan():
     let co = co0.clip32(tx, ty, lod)
     combine_clear(addr co)
@@ -102,12 +106,12 @@ proc blendScope*(state: ptr NCompositorState) =
     # Source to Destination
     co0 = combine(src, dst)
   var co = blendCombine(state)
-  # Blend all if is Fully Dirty
+  # Blend Full Scope
   if state.full():
     co.co0 = co0
     blendChunk(addr co.co1)
     return
-  # Blend Buffer Tiles
+  # Blend Partial Buffer Tiles
   for tx, ty in state.scan():
     co.co0 = co0.clip32(tx, ty, lod)
     blendChunk(addr co.co1)
@@ -141,12 +145,12 @@ proc blendRaw*(state: ptr NCompositorState, src: NImageBuffer) =
     dst = state.scope.buffer
     co0 = combine(src, dst)
   var co = blendCombine(state)
-  # Blend all if is Fully Dirty
+  # Blend Fully Dirty
   if state.full():
     co.co0 = co0
     blendChunk(addr co.co1)
     return
-  # Blend Buffer Tiles
+  # Blend Partial Buffer Tiles
   for tx, ty in state.scan():
     co.co0 = co0.clip32(tx, ty, lod)
     blendChunk(addr co.co1)
@@ -190,11 +194,11 @@ proc copyScope*(state: ptr NCompositorState) =
     src = state.lower.buffer
     dst = state.scope.buffer
     co0 = combine(src, dst)
-  # Clear all if is Fully Dirty
+  # Copy Full Scope
   if state.full():
     combine_copy(addr co0)
     return
-  # Clear Buffer Tiles
+  # Copy Partial Buffer Tiles
   for tx, ty in state.scan():
     let co = co0.clip32(tx, ty, lod)
     combine_copy(addr co)
