@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   viewBox="0 0 24 24"
+   version="1.1"
+   id="svg1"
+   sodipodi:docname="rule_oddeven.svg"
+   inkscape:version="1.4 (e7c3feb100, 2024-10-09)"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg">
+  <defs
+     id="defs1" />
+  <sodipodi:namedview
+     id="namedview1"
+     pagecolor="#ffffff"
+     bordercolor="#000000"
+     borderopacity="0.25"
+     inkscape:showpageshadow="2"
+     inkscape:pageopacity="0.0"
+     inkscape:pagecheckerboard="0"
+     inkscape:deskcolor="#d1d1d1"
+     inkscape:zoom="33.333333"
+     inkscape:cx="12"
+     inkscape:cy="12"
+     inkscape:window-width="1290"
+     inkscape:window-height="1011"
+     inkscape:window-x="315"
+     inkscape:window-y="32"
+     inkscape:window-maximized="0"
+     inkscape:current-layer="svg1" />
+  <path
+     id="path2"
+     style="stroke-width:0.666667"
+     d="M 4.3339844 3 C 3.5939844 3 3 3.5939844 3 4.3339844 L 3 13.666016 A 1.3333333 1.3333333 0 0 0 4.3339844 15 L 9 15 L 9 10.333984 C 9 9.5939847 9.5939847 9 10.333984 9 L 15 9 L 15 4.3339844 C 15 3.5939844 14.399349 3 13.666016 3 L 4.3339844 3 z M 15 9 L 15 13.666016 A 1.3333333 1.3333333 0 0 1 13.666016 15 L 9 15 L 9 19.666016 A 1.3333333 1.3333333 0 0 0 10.333984 21 L 19.666016 21 A 1.3333333 1.3333333 0 0 0 21 19.666016 L 21 10.333984 C 21 9.5939847 20.399349 9 19.666016 9 L 15 9 z " />
+</svg>

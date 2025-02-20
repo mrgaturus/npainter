@@ -29,6 +29,7 @@ type
     # Image Layering
     t0*, t1*, t2*: uint32
     owner*: NLayerOwner
+    mask*: NLayer
     root*: NLayer
     # Image Proxy
     test*: NLayer
@@ -66,14 +67,14 @@ proc configure(img: NImage) =
 proc createImage*(w, h: cint): NImage =
   result = create(result[].typeof)
   result.owner.configure()
-  # Create Image Root Layer
+  # Create Image Root Layers
   let root = createLayer(lkFolder)
-  if result.owner.insert(addr root.code):
-    result.root = root
+  let mask = createLayer(lkMask)
+  if result.owner.insert(addr root.code): result.root = root
+  if result.owner.register(addr mask.code): result.mask = mask
   # Create Image Context and Status
   result.ctx = createImageContext(w, h)
   result.status = createImageStatus(w, h)
-  # Configure Image
   result.configure()
 
 proc destroy*(img: NImage) =

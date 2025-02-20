@@ -15,24 +15,6 @@ import ./state/[
 # NPainter State Controller
 # -------------------------
 
-type
-  CKPainterTool* {.size: int32.sizeof.} = enum
-    # Manipulation Tools
-    stMove
-    stLasso
-    stSelect
-    stWand
-    # Painting Tools
-    stBrush
-    stEraser
-    stFill
-    stEyedrop
-    # Special Tools
-    stShapes
-    stGradient
-    stText
-    stCanvas
-
 controller NPainterState:
   attributes: {.public.}:
     engine: NPainterEngine
@@ -44,6 +26,7 @@ controller NPainterState:
     # Tools State
     brush: CXBrush
     bucket: CXBucket
+    shape: CXShape
 
   new npainterstate0proof(w, h: int32, checker = 0'i32):
     let engine = npainterengine(w, h, checker)
@@ -56,6 +39,7 @@ controller NPainterState:
     result.canvas = cxcanvas(engine)
     result.brush = cxbrush(engine, color)
     result.bucket = cxbucket(engine, color)
+    result.shape = cxshape(engine, color)
 
   # XXX: proof of concept undo
   proc reactUndo(flags: set[NUndoEffect]) =
@@ -98,11 +82,12 @@ controller NPainterState:
     proof0default(self.brush)
     proof0default(self.layers)
 
-# ---------------
-# State Exporting
-# ---------------
+# -----------------------
+# State Prelude Exporting
+# -----------------------
 
 export
+  CKPainterTool,
   engine,
   color,
   canvas,

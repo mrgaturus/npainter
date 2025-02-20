@@ -10,7 +10,8 @@ import docks/[
   brush/brush,
   navigator/navigator,
   layers/layers,
-  tools/bucket
+  tools/bucket,
+  tools/selection
 ]
 
 # ------------------------------------------------
@@ -25,8 +26,11 @@ controller CXToolDock:
     {.cursor.}:
       state: NPainterState
     # Tool Dock Controllers
+    dockLasso: CXLassoDock
+    dockSelect: CXSelectionDock
     dockBrush: CXBrushDock
     dockBucket: CXBucketDock
+    dockShapes: CXShapeDock
     dockDummy: UXDockContent
     # Dock Content Array Lookup
     lookup: array[CKPainterTool, UXDockContent]
@@ -43,8 +47,8 @@ controller CXToolDock:
       dummy = self.dockDummy
     # Manupulation Docks
     lo[stMove] = dummy
-    lo[stLasso] = dummy
-    lo[stSelect] = dummy
+    lo[stLasso] = self.dockLasso.dock
+    lo[stSelect] = self.dockSelect.dock
     lo[stWand] = dummy
     # Painting Tools
     lo[stBrush] = self.dockBrush.dock
@@ -52,7 +56,7 @@ controller CXToolDock:
     lo[stFill] = self.dockBucket.dock
     lo[stEyedrop] = dummy
     # Special Tools
-    lo[stShapes] = dummy
+    lo[stShapes] = self.dockShapes.dock
     lo[stGradient] = dummy
     lo[stText] = dummy
     lo[stCanvas] = dummy
@@ -77,8 +81,11 @@ controller CXToolDock:
   new cxtooldock(state: NPainterState):
     result.state = state
     # Initialize Docks
+    result.dockLasso = cxlassodock(state.shape)
+    result.dockSelect = cxselectiondock(state.shape)
     result.dockBrush = cxbrushdock(state.brush)
     result.dockBucket = cxbucketdock(state.bucket)
+    result.dockShapes = cxshapedock(state.shape)
     # Create Dock Lookups
     result.createDummy()
     result.createLookups()

@@ -4,13 +4,31 @@ import nogui/ux/pivot
 # XXX: This is a proof of concept
 import nogui/data {.all.}
 # Import NPainter Engine
-import ../../wip/[undo, brush, texture, binary, canvas]
 import ../../wip/image/[context, proxy]
+import ../../wip/[undo, brush, texture, binary, canvas]
 from ../../wip/image import createLayer, selectLayer
+from ../../wip/mask/polygon import NPolygon
 # TODO: move to engine side
 import nogui/async/core as async
 import nogui/libs/gl
 import locks
+
+type
+  CKPainterTool* {.size: sizeof(int32).} = enum
+    stMove
+    stLasso
+    stSelect
+    stWand
+    # Painting Tools
+    stBrush
+    stEraser
+    stFill
+    stEyedrop
+    # Special Tools
+    stShapes
+    stGradient
+    stText
+    stCanvas
 
 cursors 16:
   basic *= "basic.svg" (0, 0)
@@ -61,13 +79,14 @@ controller NPainterEngine:
     # Engine Objects
     brush: NBrushStroke
     bucket: NBucketProof
+    shape: NPolygon
     # Engine Canvas
     man: NCanvasManager
     canvas: NCanvasImage
     # XXX: Proof Textures
     [tex0, tex1, tex2]: NTexture
 
-  # TODO: prepare proxy at engine side
+  # TODO: prepare proxy at dispatch side
   proc proxyBrush0proof*: ptr NImageProxy =
     const bpp = cint(sizeof cushort)
     # Prepare Proxy
@@ -93,6 +112,7 @@ controller NPainterEngine:
     # Clear Brush Engine
     self.brush.clear()
 
+  # TODO: prepare proxy at dispatch side
   proc proxyBucket0proof*: ptr NImageProxy =
     const bpp = cint(sizeof cushort)
     # Prepare Proxy
@@ -115,6 +135,23 @@ controller NPainterEngine:
     # We need mark all buffer
     result[].mark(0, 0, ctx.w, ctx.h)
     result[].stream()
+
+  # TODO: commit proxy at dispatch side
+  proc commit0proof*() =
+    let
+      image = self.canvas.image
+      undo = self.canvas.undo
+      layer = image.target
+    self.canvas.update()
+    getWindow().fuse()
+    # Prepare Undo Step
+    let step = undo.push(ucLayerMark)
+    step.capture(layer)
+    # Commit Changes
+    commit(image.proxy)
+    clearAux(image.ctx)
+    step.capture(layer)
+    undo.flush()
 
   proc bindBackground0proof(checker: cint) =
     let info = addr self.canvas.image.info
@@ -147,22 +184,6 @@ controller NPainterEngine:
     a.angle = 0.0
     # Update Canvas
     canvas.transform()
-
-  proc commit0proof*() =
-    let
-      image = self.canvas.image
-      undo = self.canvas.undo
-      layer = image.target
-    self.canvas.update()
-    getWindow().fuse()
-    # Prepare Undo Step
-    let step = undo.push(ucLayerMark)
-    step.capture(layer)
-    # Commit Changes
-    commit(image.proxy)
-    clearAux(image.ctx)
-    step.capture(layer)
-    undo.flush()
 
   # -- NPainter Constructor - proof of concept --
   new npainterengine(proof_W, proof_H: cint, checker = 0'i32):

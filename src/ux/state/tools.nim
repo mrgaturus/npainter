@@ -1,13 +1,15 @@
 import nogui/ux/prelude
 import nogui/builder
-# Import Values
+# Import Engine State
 import ../../wip/canvas/matrix
+import ../../wip/[image, image/layer, image/context]
+import ../../wip/mask/polygon
 import nogui/ux/values/linear
 import engine, color
 
-# ----------------------
-# Bucket Tool Controller
-# ----------------------
+# -----------------------
+# Bucket Tool: Controller
+# -----------------------
 
 type
   CKBucketMode* = enum
@@ -49,9 +51,9 @@ controller CXBucket:
     result.threshold = liBasic
     result.gap = liBasic
 
-# --------------------
-# Bucket Tool Dispatch
-# --------------------
+# -------------------
+# Bucket Tool: Widget
+# -------------------
 
 widget UXBucketDispatch:
   attributes: {.cursor.}:
@@ -98,3 +100,93 @@ widget UXBucketDispatch:
       win.cursor(cursorBasic)
     elif reason == outHover:
       win.cursorReset()
+
+# ----------------------
+# Shape Tool: Controller
+# ----------------------
+
+type
+  CKMaskMode* = enum
+    ckmaskBlit
+    ckmaskUnion
+    ckmaskExclude
+    ckmaskIntersect
+  CKFillMode* = enum
+    ckfillBlend
+    ckfillErase
+  # Polygon Shapes
+  CKPolygonRule* = enum
+    ckruleNonZero
+    ckruleOddEven
+  CKPolygonShape* = enum
+    ckshapeRectangle
+    ckshapeCircle
+    ckshapeConvex
+    ckshapeStar
+    ckshapeFreeform
+    ckshapeLasso
+
+controller CXShape:
+  attributes:
+    {.cursor.}:
+      engine: NPainterEngine
+      color: CXColor
+    # Shape Properties
+    {.public.}:
+      rule: @ CKPolygonRule
+      poly: @ CKPolygonShape
+      # Blending Modes
+      blend: @ NBlendMode
+      mode: @ CKMaskMode
+      fill: @ CKFillMode
+      # Simple Properties
+      opacity: @ Linear
+      sides: @ Linear
+      round: @ Linear
+      antialiasing: @ bool
+      center: @ bool
+      square: @ bool
+      rotate: @ bool
+
+  new cxshape(engine: NPainterEngine, color: CXColor):
+    result.engine = engine
+    result.color = color
+    # Configure Shape Values
+    result.opacity = linear(0, 100)
+    result.round = linear(0, 100)
+    result.sides = linear(0, 32)
+    # XXX: proof of concept
+    result.antialiasing.peek[] = true
+    result.opacity.peek[].lerp(1.0)
+    result.sides.peek[].lorp(8)
+
+  proc prepare() =
+    const bpp = cint(sizeof uint8)
+    let engine {.cursor.} = self.engine
+    let image = engine.canvas.image
+    let ctx = addr image.ctx
+    # Prepare Polygon Buffer
+    let pool = getPool()
+    let map = ctx[].mapAux(bpp)
+    configure(engine.shape, pool, map)
+    clear(engine.shape)
+
+  proc commit() =
+    discard
+
+# ------------------
+# Shape Tool: Widget
+# ------------------
+
+widget UXShapeDispatch:
+  attributes: {.cursor.}:
+    shape: CXShape
+
+  new uxshapedispatch(shape: CXShape):
+    result.shape = shape
+
+  method event(state: ptr GUIState) =
+    discard
+
+  method handle(reason: GUIHandle) =
+    discard
