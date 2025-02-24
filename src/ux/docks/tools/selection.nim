@@ -105,10 +105,11 @@ controller CXSelectionDock:
       field("Shape"): combobox(self.poly)
       field("Sides"): slider(shape.sides)
       field("Round"): slider(shape.round)
+      field("Inset"): dual(shape.inset)
       field(): horizontal().child:
-          button("1:1 Ratio", iconPivotSquare, shape.square)
-          min: button(iconPivotCenter, shape.center)
-          min: button(iconPivotRotate, shape.rotate)
+        button("1:1 Ratio", iconPivotSquare, shape.square)
+        min: button(iconPivotCenter, shape.center)
+        min: button(iconPivotRotate, shape.rotate)
       separator()
       field("Mode"):
         horizontal().child:
@@ -163,10 +164,11 @@ controller CXShapeDock:
       field("Shape"): combobox(self.poly)
       field("Sides"): slider(shape.sides)
       field("Round"): slider(shape.round)
+      field("Inset"): dual(shape.inset)
       field(): horizontal().child:
-          button("1:1 Ratio", iconPivotSquare, shape.square)
-          min: button(iconPivotCenter, shape.center)
-          min: button(iconPivotRotate, shape.rotate)
+        button("1:1 Ratio", iconPivotSquare, shape.square)
+        min: button(iconPivotCenter, shape.center)
+        min: button(iconPivotRotate, shape.rotate)
       separator()
       field("Mode"):
         horizontal().child:

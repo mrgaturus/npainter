@@ -1,10 +1,10 @@
+import nogui/ux/values/[linear, dual]
 import nogui/ux/prelude
 import nogui/builder
 # Import Engine State
 import ../../wip/canvas/matrix
 import ../../wip/[image, image/layer, image/context]
 import ../../wip/mask/polygon
-import nogui/ux/values/linear
 import engine, color
 
 # -----------------------
@@ -139,10 +139,12 @@ controller CXShape:
       blend: @ NBlendMode
       mode: @ CKMaskMode
       fill: @ CKFillMode
-      # Simple Properties
-      opacity: @ Linear
+      # Convex Properties
       sides: @ Linear
       round: @ Linear
+      inset: @ LinearDual
+      # General Properties
+      opacity: @ Linear
       antialiasing: @ bool
       center: @ bool
       square: @ bool
@@ -154,10 +156,12 @@ controller CXShape:
     # Configure Shape Values
     result.opacity = linear(0, 100)
     result.round = linear(0, 100)
+    result.inset = dual(-100, 0, 100)
     result.sides = linear(0, 32)
-    # XXX: proof of concept
+    # XXX: proof of concept values
     result.antialiasing.peek[] = true
     result.opacity.peek[].lerp(1.0)
+    result.inset.peek[].lerp(0.25)
     result.sides.peek[].lorp(8)
 
   proc prepare() =
