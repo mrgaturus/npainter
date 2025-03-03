@@ -292,11 +292,11 @@ proc stencil*(step, mask: NUndoStep, layer: NLayer) =
   target.cmd = ucCanvasNone
   state0[].stencil(target)
 
-# --------------------------
-# Undo Step Coroutine: Write
-# --------------------------
+# ------------------------------
+# Undo Step Coroutine: Coroutine
+# ------------------------------
 
-proc stageHeader(task: ptr NUndoTask) =
+proc swapHeader(task: ptr NUndoTask) =
   let stream = task.state.stream
   let swap = stream.swap
   let step = task.cursor
@@ -310,33 +310,51 @@ proc stageHeader(task: ptr NUndoTask) =
   stream.writeNumber(uint16 step.chain)
   stream.writeNumber(uint16 step.weak)
 
-proc stageWrite(task: ptr NUndoTask): bool =
-  let step = task.cursor
+proc swapStage(coro: Coroutine[NUndoTask]): bool =
+  let task = coro.data
   let state = addr task.state
-  let stage = task.stage
-  state[].step = step.pass0()
-  state[].step.stage = stage
-  # Dispatch Write Stage
-  if stage == 0: task.stageHeader()
-  result = state[].swap0write()
-  inc(task.stage)
+  coro.lock():
+    let step = task.cursor
+    let stage = task.stage
+    state[].step = step.pass0()
+    state[].step.stage = stage
+    # Dispatch Write Stage
+    if stage == 0: task.swapHeader()
+    result = state[].swap0write()
+    inc(task.stage)
+  # Dispatch Write Pages
+  if not result: return result
+  while compressPage(state.codec):
+    coro.pass()
 
-proc nextWrite(task: ptr NUndoTask): bool =
-  let swap = task.state.stream.swap
-  let step = task.cursor
-  let next = step.nex0
-  # Write Seeking and Step Cursor
-  step.skip = swap[].endWrite()
-  result = not isNil(next)
-  task.cursor = next
-  task.stage = 0
+proc swapNext(coro: Coroutine[NUndoTask]): bool =
+  let task = coro.data; coro.lock():
+    let swap = task.state.stream.swap
+    let step = task.cursor
+    let next = step.nex0
+    # Write Seeking and Step Cursor
+    step.skip = swap[].endWrite()
+    result = not isNil(next)
+    task.cursor = next
+    task.stage = 0
+
+proc swap0clean(undo: NImageUndo)
+proc swap0coro(coro: Coroutine[NUndoTask]) =
+  let task = coro.data
+  while true:
+    if coro.swapStage(): continue
+    elif coro.swapNext(): coro.pass()
+    else: break
+  # Send Termination Callback
+  coro.send CoroCallback(
+    data: cast[pointer](task.undo),
+    fn: cast[CoroCallbackProc](swap0clean)
+  )
 
 # -----------------------------
 # Undo Step Coroutine: Ghosting
 # -----------------------------
 
-proc swap0book(coro: Coroutine[NUndoTask])
-proc swap0coro(coro: Coroutine[NUndoTask])
 proc swap0stage(undo: NImageUndo, curso0: NUndoStep) =
   undo.firs0 = undo.first
   undo.las0 = undo.last
@@ -355,7 +373,7 @@ proc swap0stage(undo: NImageUndo, curso0: NUndoStep) =
   task.cursor = curso0
   task.stage = 0
   # Execute Coroutine
-  undo.coro.pass(swap0coro)
+  undo.coro.setProc(swap0coro)
   undo.coro.spawn()
   undo.bus0 = true
 
@@ -423,31 +441,6 @@ proc swap0clean(undo: NImageUndo) =
       step = pre0
   # Stage Swap Again
   undo.swap0check()
-
-# -------------------
-# Undo Step Coroutine
-# -------------------
-
-proc swap0book(coro: Coroutine[NUndoTask]) =
-  let data = addr coro.data.state
-  var more: bool; coro.lock():
-    more = compressPage(data.codec)
-  # Check if Streaming is Finalized
-  if more: coro.pass(swap0book)
-  else: coro.pass(swap0coro)
-
-proc swap0coro(coro: Coroutine[NUndoTask]) =
-  let task = coro.data
-  coro.lock():
-    if task.stageWrite():
-      coro.pass(swap0book)
-    elif task.nextWrite():
-      coro.pass(swap0coro)
-    # Send Termination Callback
-    else: coro.send CoroCallback(
-      data: cast[pointer](task.undo),
-      fn: cast[CoroCallbackProc](swap0clean)
-    )
 
 # ---------------------------
 # Undo Step Manager: Ghosting

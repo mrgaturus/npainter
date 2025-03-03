@@ -33,40 +33,49 @@ type
 cursors 16:
   basic *= "basic.svg" (0, 0)
 
-# ---------------------------
-# NPainter Engine Secure-Lock
-# ---------------------------
+# --------------------------
+# NPainter Engine: Threading
+# --------------------------
 
 type
-  NEngineSecure* = object
-    latch {.align: 64.}: uint64
+  NPainterSecure* = object
     pool: NThreadPool
+    mutex: Lock
 
-proc createSecure(pool: NThreadPool): NEngineSecure =
+proc `=destroy`(secure: NPainterSecure) =
+  deinitLock(secure.mutex)
+
+proc createSecure(pool: NThreadPool): NPainterSecure =
   result.pool = pool
+  initLock(result.mutex)
 
-proc acquire(s: var NEngineSecure) =
-  const e = high(uint64)
-  while true:
-    if atomicExchangeN(addr s.latch, e, ATOMIC_ACQUIRE) == 0: return
-    while atomicLoadN(addr s.latch, ATOMIC_RELAXED) == e:
-      cpuRelax()
+# -- Secure Thread Pool: Secure --
+proc startPool*(secure: var NPainterSecure) =
+  acquire(secure.mutex)
+  secure.pool.start()
 
-proc release(s: var NEngineSecure) =
-  atomicStoreN(addr s.latch, 0, ATOMIC_RELEASE)
+proc stopPool*(secure: var NPainterSecure) =
+  secure.pool.stop()
+  release(secure.mutex)
 
-proc start*(s: ptr NEngineSecure) =
-  s[].acquire()
-  s.pool.start()
+# -- Secure Thread Pool: Raw --
+proc rawStartPool*(secure: var NPainterSecure) =
+  secure.pool.start()
+  
+proc rawStopPool*(secure: var NPainterSecure) =
+  secure.pool.stop()
 
-proc stop*(s: ptr NEngineSecure) =
-  s.pool.stop()
-  s[].release()
+# -- Secure Mutex --
+proc acquire*(secure: var NPainterSecure) {.inline.} =
+  acquire(secure.mutex)
 
-template lock*(s: var NEngineSecure, body: untyped) =
-  block secure:
-    s.acquire(); body
-    s.release()
+proc release*(secure: var NPainterSecure) {.inline.} =
+  release(secure.mutex)
+
+template lock*(secure: var NPainterSecure, body: untyped) =
+  block secure_lock:
+    acquire(secure.mutex); body
+    release(secure.mutex)
 
 # --------------------------
 # NPainter Engine Controller
@@ -74,7 +83,7 @@ template lock*(s: var NEngineSecure, body: untyped) =
 
 controller NPainterEngine:
   attributes: {.public.}:
-    secure: NEngineSecure
+    secure: NPainterSecure
     pivot: GUIStatePivot
     # Engine Objects
     brush: NBrushStroke

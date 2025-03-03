@@ -287,45 +287,47 @@ proc proof0default*(brush: CXBrush) =
 type
   BrushTask = object
     composite: uint64
-    secure: ptr NEngineSecure
+    secure: ptr NPainterSecure
     brush: ptr NBrushStroke
     canvas: NCanvasImage
     # Finalize Callback
     cbRelease: CoroCallback
     cbStream: CoroCallback
 
-proc step0coro(coro: Coroutine[BrushTask]) =
-  let
-    data = coro.data
-    secure = data.secure
-    brush = data.brush
-  # Start Secure Pool
-  secure.start()
-  coro.keep(step0coro)
+proc brush0coro(coro: Coroutine[BrushTask]) =
+  let data = coro.data
+  let secure = data.secure
+  let brush = data.brush
   # Calculate Steps
-  var steps, takes: int
-  coro.lock():
-    steps = brush[].steps()
-  # Renderize Steps
-  while steps > 0:
-    var check: bool
+  while true:
+    var steps = 0
+    var takes = 0
     coro.lock():
-      check = brush[].take()
-    if check: brush[].dispatch()
-    # Next Step
-    takes += int(check)
-    dec(steps)
-  # Composite Canvas
-  if takes > 0 and data.composite == 0:
-    data.canvas.composite()
-    data.composite = high(uint64)
-    coro.send(data.cbStream)
-  # Check Cancelation
-  elif takes == 0:
+      steps = brush[].steps()
+    # Render Brush Points
+    secure[].startPool()
+    while steps > 0:
+      var check = false
+      coro.lock():
+        check = brush[].take()
+      if check: # Render Dabs
+        brush[].dispatch()
+      # Next Point Steps
+      takes += int(check)
+      dec(steps)
+    # Composite Canvas
+    if takes > 0 and data.composite == 0:
+      data.canvas.composite()
+      data.composite = high(uint64)
+      coro.send(data.cbStream)
+    # Check Brush Stroke
+    secure[].stopPool()
+    if takes > 0:
+      coro.pass()
+      continue
+    # Terminate Brush Stroke
     coro.send(data.cbRelease)
-    coro.cancel()
-  # Stop Secure Pool
-  secure.stop()
+    return
 
 # -----------------------------
 # Brush Engine Coroutine Widget
@@ -372,6 +374,7 @@ widget UXBrushTask:
 
   new uxbrushtask(engine: NPainterEngine):
     result.coro = coroutine(BrushTask)
+    result.coro.setProc(brush0coro)
     result.flags = {wMouse, wKeyboard, wVisible}
     result.engine = engine
     # Configure Coroutine
@@ -411,15 +414,15 @@ widget UXBrushTask:
         brush[].skip()
 
   method handle(reason: GUIHandle) =
+    let engine {.cursor.} = self.engine
     let coro = self.coro
     # Spawn/Cancel Coroutine
     case reason
     of inHold:
-      coro.pass(step0coro)
       coro.spawn()
     of outHold:
       coro.wait()
-      self.engine.commit0proof()
+      engine.commit0proof()
     else: discard
 
 # ---------------------
