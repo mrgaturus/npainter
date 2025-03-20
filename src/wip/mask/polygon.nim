@@ -8,7 +8,8 @@ type
     x0, y0: int32
     x1, y1: int32
   # Polygon Line Segments
-  NPolyPoint* = tuple[x, y: float32]
+  NPolyPoint* = object
+    x*, y*: float32
   NPolyFix = tuple[x, y: int32]
   NPolySegment = tuple[a, b: NPolyFix]
   # -- Polygon Rasterizer: Lane --
