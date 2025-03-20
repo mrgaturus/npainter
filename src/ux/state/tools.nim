@@ -118,6 +118,9 @@ type
   CKPolygonRule* = enum
     ckruleNonZero
     ckruleOddEven
+  CKPolygonCurve* = enum
+    ckcurveBezier
+    ckcurveCatmull
   CKPolygonShape* = enum
     ckshapeRectangle
     ckshapeCircle
@@ -135,6 +138,7 @@ controller CXShape:
     {.public.}:
       rule: @ CKPolygonRule
       poly: @ CKPolygonShape
+      curve: @ int32
       # Blending Modes
       blend: @ NBlendMode
       mode: @ CKMaskMode
@@ -156,12 +160,12 @@ controller CXShape:
     # Configure Shape Values
     result.opacity = linear(0, 100)
     result.round = linear(0, 100)
-    result.inset = dual(-100, 0, 100)
+    result.inset = dual(-1.0, 0, 1.0)
     result.sides = linear(0, 32)
     # XXX: proof of concept values
     result.antialiasing.peek[] = true
     result.opacity.peek[].lerp(1.0)
-    result.inset.peek[].lerp(0.25)
+    result.inset.peek[].lerp(0.75)
     result.sides.peek[].lorp(8)
 
   proc prepare() =

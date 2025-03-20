@@ -103,14 +103,17 @@ controller CXSelectionDock:
     margin(4): form().child:
       field("Rule"): combobox(self.rule)
       field("Shape"): combobox(self.poly)
+      field("Inset"): dual0float(shape.inset, fmf2"%.2f")
       field("Sides"): slider(shape.sides)
       field("Round"): slider(shape.round)
-      field("Inset"): dual(shape.inset)
+      field(): horizontal().child:
+        radio("Bezier", ord ckcurveBezier, shape.curve)
+        radio("Catmull", ord ckcurveCatmull, shape.curve)
+      separator()
       field(): horizontal().child:
         button("1:1 Ratio", iconPivotSquare, shape.square)
         min: button(iconPivotCenter, shape.center)
         min: button(iconPivotRotate, shape.rotate)
-      separator()
       field("Mode"):
         horizontal().child:
           button(iconMaskBlit, mode, ord ckmaskBlit)
@@ -162,14 +165,17 @@ controller CXShapeDock:
     margin(4): form().child:
       field("Rule"): combobox(self.rule)
       field("Shape"): combobox(self.poly)
+      field("Inset"): dual0float(shape.inset, fmf2"%.2f")
       field("Sides"): slider(shape.sides)
       field("Round"): slider(shape.round)
-      field("Inset"): dual(shape.inset)
+      field(): horizontal().child:
+        radio("Bezier", ord ckcurveBezier, shape.curve)
+        radio("Catmull", ord ckcurveCatmull, shape.curve)
+      separator()
       field(): horizontal().child:
         button("1:1 Ratio", iconPivotSquare, shape.square)
         min: button(iconPivotCenter, shape.center)
         min: button(iconPivotRotate, shape.rotate)
-      separator()
       field("Mode"):
         horizontal().child:
           button("Blend", iconMaskBlit, mode, ord ckmaskBlit)
