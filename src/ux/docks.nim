@@ -11,7 +11,7 @@ import docks/[
   navigator/navigator,
   layers/layers,
   tools/bucket,
-  tools/selection
+  tools/shape
 ]
 
 # ------------------------------------------------

@@ -7,7 +7,7 @@ import nogui/ux/widgets/
 import nogui/ux/layouts/[form, misc]
 import nogui/ux/containers/[dock, scroll]
 # Import Bucket Data
-import ../../state/tools
+import ../../state/bucket
 
 proc separator(): UXLabel =
   label("", hoLeft, veMiddle)

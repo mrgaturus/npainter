@@ -466,14 +466,15 @@ widget UXBrushDispatch:
       brush0 {.cursor.} = self.brush
       brush = addr brush0.engine.brush
       c {.cursor.} = brush0.color
-      # Lookup Current Color
+      # Lookup Current Color as Fix8
       rgb = c.color.peek[].toRGB
-      glass = c.eraser.peek[]
-      # Unpack to Fix8
       r = cint(rgb.r * 255.0)
       g = cint(rgb.g * 255.0)
       b = cint(rgb.b * 255.0)
     # Configure Current Color
+    # XXX: hacky way to identify eraser
+    var glass = c.eraser.peek[]
+    glass = glass or brush0.engine.tool == stEraser
     brush[].color(r, g, b, glass)
 
   # -- Shape State -> Engine --

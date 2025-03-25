@@ -28,6 +28,7 @@ controller NCMainFrame:
     # Select Dock and Dispatch
     self.docks.select(tool)
     self.dispatch.select(tool)
+    self.state.engine.tool = tool
 
   proc createFrame: UXMainFrame =
     let

@@ -7,7 +7,7 @@ import nogui/ux/widgets/
 import nogui/ux/layouts/[box, form, misc]
 import nogui/ux/containers/[dock, scroll]
 # Import Shape Data
-import ../../state/tools
+import ../../state/shape
 import ../../state/layers
 import ../layers/item
 

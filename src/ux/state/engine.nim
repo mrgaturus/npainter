@@ -85,10 +85,10 @@ controller NPainterEngine:
   attributes: {.public.}:
     secure: NPainterSecure
     pivot: GUIStatePivot
+    tool: CKPainterTool
     # Engine Objects
     brush: NBrushStroke
     bucket: NBucketProof
-    shape: NPolygon
     # Engine Canvas
     man: NCanvasManager
     canvas: NCanvasImage

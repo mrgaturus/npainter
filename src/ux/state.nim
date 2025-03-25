@@ -3,12 +3,13 @@ import nogui/ux/values/dual
 import ../wip/undo
 # Import State Objects
 import ./state/[
-  color,
-  canvas,
   brush,
-  tools,
+  bucket,
+  canvas,
+  color,
   engine,
-  layers
+  layers,
+  shape
 ]
 
 # -------------------------
@@ -88,8 +89,9 @@ controller NPainterState:
 
 export
   CKPainterTool,
-  engine,
-  color,
-  canvas,
   brush,
-  tools
+  bucket,
+  canvas,
+  color,
+  engine,
+  shape
