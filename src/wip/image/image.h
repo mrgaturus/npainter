@@ -73,8 +73,9 @@ typedef struct {
 // --------------------------------
 
 // combine.c
-void combine_intersect(image_combine_t* co);
+void buffer_clip(image_buffer_t* src, const image_clip_t clip);
 void combine_clip(image_combine_t* co, image_clip_t clip);
+void combine_intersect(image_combine_t* co);
 void combine_clear(image_combine_t* co);
 void combine_copy(image_combine_t* co);
 void combine_pack(image_combine_t* co);

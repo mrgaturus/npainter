@@ -72,8 +72,9 @@ type
 {.push importc.}
 
 # combine.c
-proc combine_intersect*(co: ptr NImageCombine)
+proc buffer_clip*(co: ptr NImageBuffer, clip: NImageClip)
 proc combine_clip*(co: ptr NImageCombine, clip: NImageClip)
+proc combine_intersect*(co: ptr NImageCombine)
 proc combine_clear*(co: ptr NImageCombine)
 proc combine_copy*(co: ptr NImageCombine)
 proc combine_pack*(co: ptr NImageCombine)

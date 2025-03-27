@@ -3,7 +3,7 @@
 #include "image.h"
 #include <string.h>
 
-static void buffer_clip(image_buffer_t* src, const image_clip_t clip) {
+void buffer_clip(image_buffer_t* src, const image_clip_t clip) {
   int cx1 = clip.x + clip.w;
   int cy1 = clip.y + clip.h;
   // Buffer Region
@@ -31,6 +31,12 @@ static void buffer_clip(image_buffer_t* src, const image_clip_t clip) {
   src->h = y1 - y0;
 }
 
+void combine_clip(image_combine_t* co, image_clip_t clip) {
+  // Apply Buffer Clipping
+  buffer_clip(&co->src, clip);
+  buffer_clip(&co->dst, clip);
+}
+
 void combine_intersect(image_combine_t* co) {
   image_buffer_t* src = &co->src;
   image_buffer_t* dst = &co->dst;
@@ -41,12 +47,6 @@ void combine_intersect(image_combine_t* co) {
   // Apply Buffer Clipping
   buffer_clip(src, dst_clip);
   buffer_clip(dst, src_clip);
-}
-
-void combine_clip(image_combine_t* co, image_clip_t clip) {
-  // Apply Buffer Clipping
-  buffer_clip(&co->src, clip);
-  buffer_clip(&co->dst, clip);
 }
 
 // ---------------------
