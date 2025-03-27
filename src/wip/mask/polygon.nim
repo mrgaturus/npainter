@@ -26,8 +26,8 @@ type
     smooth: pointer
   # -- Polygon Rasterizer --
   NPolyRule* = enum
-    ruleOddEven
     ruleNonZero
+    ruleOddEven
   NPolygon* = object
     pool: NThreadPool
     buffer: NImageBuffer

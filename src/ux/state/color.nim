@@ -63,6 +63,17 @@ controller CXColor:
     let hsv = peek(self.color)
     hsv[].toRGB.toPacked
 
+  proc color64*: uint64 =
+    # TODO: move to nogui/values/chroma
+    let hsv = peek(self.color)
+    let rgb = hsv[].toRGB()
+    let # TODO: move this to values
+      r = uint64(rgb.r * 65535.0)
+      g = uint64(rgb.g * 65535.0)
+      b = uint64(rgb.b * 65535.0)
+    # Pack Color Channels to 32bit
+    r or (g shl 16) or (b shl 32) or (0xFFFF'u64 shl 48)
+
   # -- Color Controller Creation --
   new cxcolor():
     # TODO: make color settings saving

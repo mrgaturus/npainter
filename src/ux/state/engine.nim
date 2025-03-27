@@ -7,7 +7,6 @@ import nogui/data {.all.}
 import ../../wip/image/[context, proxy]
 import ../../wip/[undo, brush, texture, binary, canvas]
 from ../../wip/image import createLayer, selectLayer
-from ../../wip/mask/polygon import NPolygon
 # TODO: move to engine side
 import nogui/async/core as async
 import nogui/libs/gl

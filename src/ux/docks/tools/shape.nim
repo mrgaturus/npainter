@@ -158,6 +158,12 @@ controller CXShapeDock:
     {.public.}:
       dock: UXDockContent
 
+  callback cbUpdateModel:
+    let shape {.cursor.} = self.shape
+    shape.rule.peek[] = cast[CKPolygonRule](self.rule.selected.value)
+    shape.poly.peek[] = cast[CKPolygonShape](self.poly.selected.value)
+    shape.blend.peek[] = cast[NBlendMode](self.blend.selected.value)
+
   proc createWidget: GUIWidget =
     let shape {.cursor.} = self.shape
     let mode = cast[& int32](addr shape.mode)
@@ -228,6 +234,9 @@ controller CXShapeDock:
       comboitem("Non Zero", iconRuleNonZero, ord ckruleNonZero)
       comboitem("Odd Even", iconRuleOddEven, ord ckruleOddEven)
     # Create Dock Widget
+    self.poly.onchange = self.cbUpdateModel
+    self.rule.onchange = self.cbUpdateModel
+    self.blend.onchange = self.cbUpdateModel
     let w = scrollview self.createWidget()
     let dock = dockcontent("Shape Tool", iconShapes, w)
     self.dock = dock
