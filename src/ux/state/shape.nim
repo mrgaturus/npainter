@@ -90,7 +90,7 @@ controller CXShape:
     result.opacity = linear(0, 100)
     result.round = linear(0, 100)
     result.inset = dual(-1.0, 0, 1.0)
-    result.sides = linear(0, 32)
+    result.sides = linear(3, 32)
     # XXX: proof of concept values
     result.antialiasing.peek[] = true
     result.opacity.peek[].lerp(1.0)
@@ -171,7 +171,7 @@ widget UXShapeDispatch:
     if self.stage == stageCommit:
       self.stage = stagePivot
       proxy[].lod = 0
-      # proxy[].rasterize(0)
+      proxy[].rasterize()
       proxy[].commit()
     else: proxy[].rasterize()
     canvas.update()
@@ -225,13 +225,13 @@ widget UXShapeDispatch:
     elif state.kind == evCursorRelease:
       if not self.shape.rotate.peek[]:
         self.stage = stageCommit
-        force(self.cbRenderBasic)
+        relax(self.cbRenderBasic)
       else: self.stage = stageRotate
 
   proc stage0rotate(state: ptr GUIState) =
     if state.kind == evCursorRelease:
       self.stage = stageCommit
-      force(self.cbRenderBasic); return
+      relax(self.cbRenderBasic); return
     elif self.test(wGrab): return
     # Rotate Current Shape
     let p = NShapePoint(
