@@ -67,8 +67,8 @@ proc clip(bounds: var NPolyBounds, w, h: int32): bool =
   bounds.x1 = (bounds.x1 + 0x1FFF) and not 0x1FFF
   bounds.y1 = (bounds.y1 + 0x1FFF) and not 0x1FFF
   # Check if There are Bounds
-  bounds.x0 != bounds.x1 and
-  bounds.y0 != bounds.y1
+  bounds.x0 < bounds.x1 and
+  bounds.y0 < bounds.y1
 
 # ----------------------------
 # Polygon Rasterizer Configure
