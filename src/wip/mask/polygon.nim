@@ -21,7 +21,6 @@ type
     count, cap: int
     # Lane Temporal Buffers
     bucket: ptr NPolyGather
-    aux: ptr NPolyHits
     hits: ptr NPolyHits
     smooth: pointer
   # -- Polygon Rasterizer --
@@ -146,11 +145,9 @@ proc allocate(lane: ptr NPolyLane) =
     const bytesAux = 16384 * sizeof(NPolyFix)
     # Allocate Lane Buffers with Initial Capacity
     lane.bucket = cast[ptr NPolyGather](alloc bytes)
-    lane.aux = cast[ptr NPolyHits](alloc bytesAux)
     lane.hits = cast[ptr NPolyHits](alloc bytesAux)
     lane.cap = 16384
     return
-  dealloc(lane.aux)
   dealloc(lane.hits)
   # Expand Bucket Buffer with new Capacity
   let bytes = lane.cap * sizeof(NPolySegment) * 2
@@ -159,8 +156,7 @@ proc allocate(lane: ptr NPolyLane) =
   copyMem(buffer, lane.bucket, bytes shr 1)
   dealloc(lane.bucket)
   lane.bucket = buffer
-  # Expand Auxiliars
-  lane.aux = cast[ptr NPolyHits](alloc bytesAux)
+  # Expand Polygon Collision Buffer with new Capacity
   lane.hits = cast[ptr NPolyHits](alloc bytesAux)
   lane.cap *= 2
 
@@ -183,39 +179,38 @@ proc gather(lane: ptr NPolyLane, y0, y1: int32) =
 # Polygon Rasterizer Scanline: Collision
 # --------------------------------------
 
-proc merge(lane: ptr NPolyLane, i0, mid, i1: int) =
-  let hits = lane.hits
-  let aux = lane.aux
-  # Calculate Slice Sizes
-  let n0 = mid - i0 + 1
-  let n1 = i1 - mid
-  # Copy Data to Temporal Slices
-  const size = NPolyFix.sizeof
-  let s0 = cast[ptr NPolyHits](addr aux[0])
-  let s1 = cast[ptr NPolyHits](addr aux[n0])
-  copyMem(s0, addr hits[i0], n0 * size)
-  copyMem(s1, addr hits[mid + 1], n1 * size)
-  # Sort Slices and Merge to Original Array
-  var i = 0; var j = 0; var k = i0
-  while i < n0 and j < n1:
-    if s0[i].x <= s1[j].x:
-      hits[k] = s0[i]
+proc partition(hits: ptr NPolyHits, n0, n1: int): int =
+  let p = hits[n1]
+  var i = n0 - 1
+  # Sort Partition
+  var j = n0
+  while j < n1:
+    if hits[j].x < p.x:
+      swap hits[i + 1], hits[j]
       inc(i)
-    else:
-      hits[k] = s1[j]
-      inc(j)
-    inc(k)
-  # Merge Remain Slices
-  copyMem(addr hits[k], addr s0[i], (n0 - i) * size)
-  copyMem(addr hits[k + n0 - i], addr s1[j], (n1 - j) * size)
+    inc(j)
+  # Finalize Sort Partition
+  swap hits[i + 1], hits[n1]
+  return i + 1
 
-proc sort(lane: ptr NPolyLane, i0, i1: int) =
-  if i0 >= i1: return
-  let mid = i0 + (i1 - i0) shr 1
-  # Merge Sort Collisions
-  sort(lane, i0, mid)
-  sort(lane, mid + 1, i1)
-  merge(lane, i0, mid, i1)
+proc quicksort(hits: ptr NPolyHits, n0, n1: int) =
+  if n1 - n0 >= 16:
+    let m = partition(hits, n0, n1)
+    quicksort(hits, n0, m - 1)
+    quicksort(hits, m + 1, n1)
+
+proc insertsort(hits: ptr NPolyHits, n: int) =
+  for i in 1 ..< n:
+    let a = hits[i]
+    # Insertion Sort Pass
+    var j = i - 1
+    while j >= 0 and hits[j].x > a.x:
+      hits[j + 1] = hits[j]; dec(j)
+    hits[j + 1] = a
+
+proc sort(lane: ptr NPolyLane, n: int) =
+  quicksort(lane.hits, 0, n - 1)
+  insertsort(lane.hits, n)
 
 proc hit(s: NPolySegment, y: int32): NPolyFix =
   result = default(NPolyFix)
@@ -249,7 +244,7 @@ proc collide(lane: ptr NPolyLane, y: int32): int =
     inc(result)
   # Sort Collision Hits
   if result < 2: return 0
-  lane.sort(0, result - 1)
+  lane.sort(result)
 
 proc oddeven(lane: ptr NPolyLane, y: int32): int =
   let hits = lane.hits
@@ -297,7 +292,6 @@ proc nonzero(lane: ptr NPolyLane, y: int32): int =
 proc clear(lane: ptr NPolyLane) =
   if lane.cap > 0:
     dealloc(lane.bucket)
-    dealloc(lane.aux)
     dealloc(lane.hits)
   # Remove Coverage Buffer
   if not isNil(lane.smooth):
