@@ -172,7 +172,7 @@ void polygon_color_blit16(mask_combine_t* co) {
     unsigned char* dst = c.dst.buffer;
     int count = c.src.w;
 
-    while (count > 0) {
+    while (count >= 8) {
       // Unpack Mask to 4x[AAAA, AAAA]
       xmm0 = _mm_loadl_epi64((__m128i*) src);
       xmm0 = _mm_unpacklo_epi8(xmm0, xmm0);
@@ -188,40 +188,15 @@ void polygon_color_blit16(mask_combine_t* co) {
       xmm2 = _mm_mul_fix16(color, xmm2);
       xmm3 = _mm_mul_fix16(color, xmm3);
 
-      if (__builtin_expect(count >= 8, 1)) {
-        _mm_store_si128((__m128i*) dst + 0, xmm0);
-        _mm_store_si128((__m128i*) dst + 1, xmm1);
-        _mm_store_si128((__m128i*) dst + 2, xmm2);
-        _mm_store_si128((__m128i*) dst + 3, xmm3);
-        // Step 8 RGBA Pixels
-        src += 8;
-        dst += 64;
-        count -= 8;
-        continue;
-      }
-
-      if (count >= 4) {
-        _mm_store_si128((__m128i*) dst + 0, xmm0);
-        _mm_store_si128((__m128i*) dst + 1, xmm1);
-        xmm0 = xmm2;
-        xmm1 = xmm3;
-        // Step 4 RGBA Pixels
-        dst += 32;
-        count -= 4;
-      }
-
-      if (count >= 2) {
-        _mm_store_si128((__m128i*) dst, xmm0);
-        xmm0 = xmm1;
-        // Step 2 RGBA Pixels
-        dst += 16;
-        count -= 2;
-      }
-
-      if (count >= 1) {
-        _mm_storel_epi64((__m128i*) dst, xmm0);
-        count--;
-      }
+      // Store 8 RGBA 16-bit Pixels
+      _mm_store_si128((__m128i*) dst + 0, xmm0);
+      _mm_store_si128((__m128i*) dst + 1, xmm1);
+      _mm_store_si128((__m128i*) dst + 2, xmm2);
+      _mm_store_si128((__m128i*) dst + 3, xmm3);
+      // Step 8 RGBA Pixels
+      src += 8;
+      dst += 64;
+      count -= 8;
     }
 
     // Next Stride
@@ -323,7 +298,7 @@ static inline void polygon_color16(mask_combine_t* co, const int eraser) {
     unsigned char* dst = c.dst.buffer;
     int count = c.src.w;
 
-    while (count > 0) {
+    while (count >= 8) {
       mask0 = _mm_loadl_epi64((__m128i*) src);
       mask0 = _mm_xor_si128(mask0, ones);
 
@@ -366,40 +341,15 @@ static inline void polygon_color16(mask_combine_t* co, const int eraser) {
         xmm3 = _mm_mul_fix16(xmm3, mask3);
       }
 
-      if (__builtin_expect(count >= 8, 1)) {
-        _mm_store_si128((__m128i*) dst + 0, xmm0);
-        _mm_store_si128((__m128i*) dst + 1, xmm1);
-        _mm_store_si128((__m128i*) dst + 2, xmm2);
-        _mm_store_si128((__m128i*) dst + 3, xmm3);
-        // Step 8 RGBA Pixels
-        src += 8;
-        dst += 64;
-        count -= 8;
-        continue;
-      }
-
-      if (count >= 4) {
-        _mm_store_si128((__m128i*) dst + 0, xmm0);
-        _mm_store_si128((__m128i*) dst + 1, xmm1);
-        xmm0 = xmm2;
-        xmm1 = xmm3;
-        // Step 4 RGBA Pixels
-        dst += 32;
-        count -= 4;
-      }
-
-      if (count >= 2) {
-        _mm_store_si128((__m128i*) dst, xmm0);
-        xmm0 = xmm1;
-        // Step 2 RGBA Pixels
-        dst += 16;
-        count -= 2;
-      }
-
-      if (count >= 1) {
-        _mm_storel_epi64((__m128i*) dst, xmm0);
-        count--;
-      }
+      // Store 8 RGBA 16-bit Pixels
+      _mm_store_si128((__m128i*) dst + 0, xmm0);
+      _mm_store_si128((__m128i*) dst + 1, xmm1);
+      _mm_store_si128((__m128i*) dst + 2, xmm2);
+      _mm_store_si128((__m128i*) dst + 3, xmm3);
+      // Step 8 RGBA Pixels
+      src += 8;
+      dst += 64;
+      count -= 8;
     }
 
     // Next Stride
