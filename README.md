@@ -1,6 +1,8 @@
 # 🎨 NPainter
 fast and simple digital painting software, work in progress
 
+⚠️ **this project is not dead**, i'm rewriting the project to another language (not Rust...) but first i'm rewriting the gui tookit and making it ultimately better, powerful and easier than what is possible with Nim ⚠️
+
 ![Proof of Concept](https://raw.githubusercontent.com/mrgaturus/npainter/master/proof.png)
 
 ## 🛠️ Building
