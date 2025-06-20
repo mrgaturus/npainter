@@ -7,7 +7,7 @@ import nogui/ux/widgets/
 import nogui/ux/layouts/[form, misc]
 import nogui/ux/containers/[dock, scroll]
 # Import Bucket Data
-import ../../state/tools
+import ../../state/bucket
 
 proc separator(): UXLabel =
   label("", hoLeft, veMiddle)
@@ -38,7 +38,7 @@ controller CXBucketDock:
       separator() # Bucket Fill Parameters
       field("Threshold"): slider(bucket.threshold)
       field("Gap Closing"): slider(bucket.gap)
-      field(): checkbox("Antialiasing", bucket.antialiasing)
+      field(): checkbox("Anti-Aliasing", bucket.antialiasing)
       separator() # Bucket Fill Target
       radio("Canvas", ord bctCanvas, bucket.target)
       radio("Layer", ord bctLayer, bucket.target)

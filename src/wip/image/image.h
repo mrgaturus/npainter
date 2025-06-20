@@ -5,7 +5,7 @@
 #include <smmintrin.h>
 
 __attribute__((always_inline))
-static inline __m128i _mm_mul_color32(__m128i a, __m128i b) {
+static inline __m128i _mm_mul_fix32(__m128i a, __m128i b) {
   // Apply Alpha to Source
   a = _mm_mullo_epi32(a, b);
   a = _mm_add_epi32(a, b);
@@ -15,7 +15,7 @@ static inline __m128i _mm_mul_color32(__m128i a, __m128i b) {
 }
 
 __attribute__((always_inline))
-static inline __m128i _mm_mul_color16(__m128i a, __m128i b) {
+static inline __m128i _mm_mul_fix16(__m128i a, __m128i b) {
   __m128i xmm0 = _mm_mulhi_epu16(a, b);
   // Apply Alpha to Source
   a = _mm_or_si128(a, b);
@@ -23,6 +23,17 @@ static inline __m128i _mm_mul_color16(__m128i a, __m128i b) {
   b = _mm_adds_epu16(xmm0, a);
 
   return b;
+}
+
+__attribute__((always_inline))
+static inline __m128i _mm_alpha_mask16(__m128i xmm0, __m128i fract) {
+  const __m128i ones = _mm_cmpeq_epi16(fract, fract);
+  __m128i xmm1 = _mm_mul_fix16(xmm0, fract);
+  // ones - fract + fract * xmm0
+  fract = _mm_subs_epu16(ones, fract);
+  xmm0 = _mm_adds_epu16(fract, xmm1);
+
+  return xmm0;
 }
 
 // --------------------
@@ -62,8 +73,9 @@ typedef struct {
 // --------------------------------
 
 // combine.c
-void combine_intersect(image_combine_t* co);
+void buffer_clip(image_buffer_t* src, const image_clip_t clip);
 void combine_clip(image_combine_t* co, image_clip_t clip);
+void combine_intersect(image_combine_t* co);
 void combine_clear(image_combine_t* co);
 void combine_copy(image_combine_t* co);
 void combine_pack(image_combine_t* co);
@@ -99,7 +111,7 @@ void proxy_stream16(image_combine_t* co);
 void proxy_stream8(image_combine_t* co);
 void proxy_stream2(image_combine_t* co);
 void proxy_uniform_fill(image_combine_t* co);
-void proxy_uniform_check(image_combine_t* co);
+void proxy_uniform_stream(image_combine_t* co);
 
 // --------------------
 // Image Buffer blend.c

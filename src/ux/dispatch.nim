@@ -73,9 +73,15 @@ widget UXPainterDispatch:
     # Configure Dummy as Focus Stealer
     dummy.flags = {wVisible, wKeyboard}
     # Initialize Dispatch Widgets
-    self.tools[stBrush] = uxbrushdispatch(state.brush)
+    let uxShape = uxshapedispatch(state.shape)
+    let uxBrush = uxbrushdispatch(state.brush)
+    self.tools[stLasso] = uxShape
+    self.tools[stSelect] = uxShape
+    self.tools[stBrush] = uxBrush
+    self.tools[stEraser] = uxBrush
     self.tools[stFill] = uxbucketdispatch(state.bucket)
     self.tools[stCanvas] = uxcanvasdispatch(state.canvas)
+    self.tools[stShapes] = uxShape
     # Initialize State
     self.state = state
     self.engine = state.engine

@@ -4,51 +4,77 @@ import nogui/ux/pivot
 # XXX: This is a proof of concept
 import nogui/data {.all.}
 # Import NPainter Engine
-import ../../wip/[undo, brush, texture, binary, canvas]
 import ../../wip/image/[context, proxy]
+import ../../wip/[undo, brush, texture, binary, canvas]
 from ../../wip/image import createLayer, selectLayer
 # TODO: move to engine side
 import nogui/async/core as async
 import nogui/libs/gl
 import locks
 
+type
+  CKPainterTool* {.size: sizeof(int32).} = enum
+    stMove
+    stLasso
+    stSelect
+    stWand
+    # Painting Tools
+    stBrush
+    stEraser
+    stFill
+    stEyedrop
+    # Special Tools
+    stShapes
+    stGradient
+    stText
+    stCanvas
+
 cursors 16:
   basic *= "basic.svg" (0, 0)
 
-# ---------------------------
-# NPainter Engine Secure-Lock
-# ---------------------------
+# --------------------------
+# NPainter Engine: Threading
+# --------------------------
 
 type
-  NEngineSecure* = object
-    latch {.align: 64.}: uint64
+  NPainterSecure* = object
     pool: NThreadPool
+    mutex: Lock
 
-proc createSecure(pool: NThreadPool): NEngineSecure =
+proc `=destroy`(secure: NPainterSecure) =
+  deinitLock(secure.mutex)
+
+proc createSecure(pool: NThreadPool): NPainterSecure =
   result.pool = pool
+  initLock(result.mutex)
 
-proc acquire(s: var NEngineSecure) =
-  const e = high(uint64)
-  while true:
-    if atomicExchangeN(addr s.latch, e, ATOMIC_ACQUIRE) == 0: return
-    while atomicLoadN(addr s.latch, ATOMIC_RELAXED) == e:
-      cpuRelax()
+# -- Secure Thread Pool: Secure --
+proc startPool*(secure: var NPainterSecure) =
+  acquire(secure.mutex)
+  secure.pool.start()
 
-proc release(s: var NEngineSecure) =
-  atomicStoreN(addr s.latch, 0, ATOMIC_RELEASE)
+proc stopPool*(secure: var NPainterSecure) =
+  secure.pool.stop()
+  release(secure.mutex)
 
-proc start*(s: ptr NEngineSecure) =
-  s[].acquire()
-  s.pool.start()
+# -- Secure Thread Pool: Raw --
+proc rawStartPool*(secure: var NPainterSecure) =
+  secure.pool.start()
+  
+proc rawStopPool*(secure: var NPainterSecure) =
+  secure.pool.stop()
 
-proc stop*(s: ptr NEngineSecure) =
-  s.pool.stop()
-  s[].release()
+# -- Secure Mutex --
+proc acquire*(secure: var NPainterSecure) {.inline.} =
+  acquire(secure.mutex)
 
-template lock*(s: var NEngineSecure, body: untyped) =
-  block secure:
-    s.acquire(); body
-    s.release()
+proc release*(secure: var NPainterSecure) {.inline.} =
+  release(secure.mutex)
+
+template lock*(secure: var NPainterSecure, body: untyped) =
+  block secure_lock:
+    acquire(secure.mutex); body
+    release(secure.mutex)
 
 # --------------------------
 # NPainter Engine Controller
@@ -56,8 +82,9 @@ template lock*(s: var NEngineSecure, body: untyped) =
 
 controller NPainterEngine:
   attributes: {.public.}:
-    secure: NEngineSecure
+    secure: NPainterSecure
     pivot: GUIStatePivot
+    tool: CKPainterTool
     # Engine Objects
     brush: NBrushStroke
     bucket: NBucketProof
@@ -67,7 +94,7 @@ controller NPainterEngine:
     # XXX: Proof Textures
     [tex0, tex1, tex2]: NTexture
 
-  # TODO: prepare proxy at engine side
+  # TODO: prepare proxy at dispatch side
   proc proxyBrush0proof*: ptr NImageProxy =
     const bpp = cint(sizeof cushort)
     # Prepare Proxy
@@ -93,6 +120,7 @@ controller NPainterEngine:
     # Clear Brush Engine
     self.brush.clear()
 
+  # TODO: prepare proxy at dispatch side
   proc proxyBucket0proof*: ptr NImageProxy =
     const bpp = cint(sizeof cushort)
     # Prepare Proxy
@@ -115,6 +143,23 @@ controller NPainterEngine:
     # We need mark all buffer
     result[].mark(0, 0, ctx.w, ctx.h)
     result[].stream()
+
+  # TODO: commit proxy at dispatch side
+  proc commit0proof*() =
+    let
+      image = self.canvas.image
+      undo = self.canvas.undo
+      layer = image.target
+    self.canvas.update()
+    getWindow().fuse()
+    # Prepare Undo Step
+    let step = undo.push(ucLayerMark)
+    step.capture(layer)
+    # Commit Changes
+    commit(image.proxy)
+    clearAux(image.ctx)
+    step.capture(layer)
+    undo.flush()
 
   proc bindBackground0proof(checker: cint) =
     let info = addr self.canvas.image.info
@@ -147,22 +192,6 @@ controller NPainterEngine:
     a.angle = 0.0
     # Update Canvas
     canvas.transform()
-
-  proc commit0proof*() =
-    let
-      image = self.canvas.image
-      undo = self.canvas.undo
-      layer = image.target
-    self.canvas.update()
-    getWindow().fuse()
-    # Prepare Undo Step
-    let step = undo.push(ucLayerMark)
-    step.capture(layer)
-    # Commit Changes
-    commit(image.proxy)
-    clearAux(image.ctx)
-    step.capture(layer)
-    undo.flush()
 
   # -- NPainter Constructor - proof of concept --
   new npainterengine(proof_W, proof_H: cint, checker = 0'i32):

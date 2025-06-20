@@ -1,15 +1,8 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 # Copyright (c) 2023 Cristian Camilo Ruiz <mrgaturus>
 
-type
-  # Image Mapping
-  NImageMap* = object
-    w*, h*: cint
-    # Buffer Properties
-    stride*, bpp*: cint
-    buffer*: pointer
-  # Image Context
-  NImageContext* = object
+from ffi import NImageBuffer
+type NImageContext* = object
     w*, h*: cint
     # Image Padded
     w32*, h32*: cint
@@ -59,11 +52,12 @@ proc destroy*(ctx: var NImageContext) =
 # Image Buffer Manipulation
 # -------------------------
 
-proc mapFlat*(ctx: var NImageContext, level = 0): NImageMap =
+proc mapFlat*(ctx: var NImageContext, level = 0): NImageBuffer =
   let
     i = clamp(level, 0, 5)
     s32 = ctx.s32 shr i
   # Reduce Buffer Size
+  result = default(NImageBuffer)
   result.w = max(ctx.w32 shr i, 1)
   result.h = max(ctx.h32 shr i, 1)
   # Configure Buffer Atributtes
@@ -71,14 +65,15 @@ proc mapFlat*(ctx: var NImageContext, level = 0): NImageMap =
   result.bpp = sizeof(uint8) shl 2
   result.buffer = ctx.flat[i]
 
-proc mapAux*(ctx: var NImageContext, bpp: cint): NImageMap =
+proc mapAux*(ctx: var NImageContext, bpp: cint): NImageBuffer =
   let
     w = ctx.w32
     h = ctx.h32
-    # Allocate New Buffer
+    # Allocate Buffer
     s = w * bpp
     b = alloc(s * h)
   # Add Buffer Auxiliar
+  result = default(NImageBuffer)
   ctx.aux.add(b)
   # Dimensions
   result.w = w

@@ -234,17 +234,20 @@ void proxy_uniform_fill(image_combine_t* co) {
   }
 }
 
-void proxy_uniform_check(image_combine_t* co) {
+void proxy_uniform_stream(image_combine_t* co) {
   // Load Buffer Pointers
   unsigned char *src_x, *src_y;
+  unsigned char *dst_x, *dst_y;
   src_y = co->src.buffer;
+  dst_y = co->dst.buffer;
 
   // Load Region
   int w = co->src.w;
   int h = co->src.h;
   // Load Strides
-  int s_src = co->src.stride;
-  int s_bpp = co->src.bpp;
+  const int s_src = co->src.stride;
+  const int s_dst = co->dst.stride;
+  const int s_bpp = co->src.bpp;
 
   // Source Pixel Values
   __m128i xmm0, xmm1, xmm2, xmm3;
@@ -252,7 +255,7 @@ void proxy_uniform_check(image_combine_t* co) {
   // Load First Pixel from Buffer
   __m128i pixel = _mm_load_si128((__m128i*) src_y);
   __m128i check = _mm_cmpeq_epi32(pixel, pixel);
-  __m128i mask = _mm_cmpeq_epi32(pixel, pixel);
+  const __m128i ones = _mm_set1_epi16(1);
   
   // Prepare Mask and Pixel
   switch (s_bpp) {
@@ -260,7 +263,9 @@ void proxy_uniform_check(image_combine_t* co) {
       pixel = _mm_unpacklo_epi16(pixel, pixel);
       pixel = _mm_unpacklo_epi32(pixel, pixel);
       pixel = _mm_unpacklo_epi64(pixel, pixel);
-      mask = _mm_slli_epi16(mask, 4); // TODO: remove this
+      // Remove Ones from Fast Operations
+      xmm0 = _mm_cmpeq_epi16(pixel, ones);
+      pixel = _mm_andnot_si128(xmm0, pixel);
       break;
     case 4: // RGBA 8-bit
       pixel = _mm_unpacklo_epi32(pixel, pixel);
@@ -268,13 +273,15 @@ void proxy_uniform_check(image_combine_t* co) {
       break;
     case 8: // RGBA 16-bit
       pixel = _mm_unpacklo_epi64(pixel, pixel);
-      mask = _mm_slli_epi16(mask, 4); // TODO: remove this
+      xmm0 = _mm_cmpeq_epi16(pixel, ones);
+      pixel = _mm_andnot_si128(xmm0, pixel);
+      break;
   }
 
-  pixel = _mm_and_si128(pixel, mask);
   for (int y = 0; y < h; y++) {
     int count = w * s_bpp;
     src_x = src_y;
+    dst_x = dst_y;
 
     // Check Region Uniform
     while (count > 0) {
@@ -282,55 +289,56 @@ void proxy_uniform_check(image_combine_t* co) {
       xmm1 = _mm_load_si128((__m128i*) src_x + 1);
       xmm2 = _mm_load_si128((__m128i*) src_x + 2);
       xmm3 = _mm_load_si128((__m128i*) src_x + 3);
-      xmm4 = _mm_load_si128((__m128i*) src_x + 4);
-      xmm5 = _mm_load_si128((__m128i*) src_x + 5);
-      xmm6 = _mm_load_si128((__m128i*) src_x + 6);
-      xmm7 = _mm_load_si128((__m128i*) src_x + 7);
-      // Lower Pixel Precision
-      xmm0 = _mm_and_si128(xmm0, mask);
-      xmm1 = _mm_and_si128(xmm1, mask);
-      xmm2 = _mm_and_si128(xmm2, mask);
-      xmm3 = _mm_and_si128(xmm3, mask);
-      xmm4 = _mm_and_si128(xmm4, mask);
-      xmm5 = _mm_and_si128(xmm5, mask);
-      xmm6 = _mm_and_si128(xmm6, mask);
-      xmm7 = _mm_and_si128(xmm7, mask);
+
+      // Remove Ones from Fast Operations
+      if (s_bpp != 4) {
+        xmm4 = _mm_cmpeq_epi16(xmm0, ones);
+        xmm5 = _mm_cmpeq_epi16(xmm1, ones);
+        xmm6 = _mm_cmpeq_epi16(xmm2, ones);
+        xmm7 = _mm_cmpeq_epi16(xmm3, ones);
+        xmm0 = _mm_andnot_si128(xmm4, xmm0);
+        xmm1 = _mm_andnot_si128(xmm5, xmm1);
+        xmm2 = _mm_andnot_si128(xmm6, xmm2);
+        xmm3 = _mm_andnot_si128(xmm7, xmm3);
+      }
+
+      // Store Pixels to Destination
+      _mm_stream_si128((__m128i*) dst_x + 0, xmm0);
+      _mm_stream_si128((__m128i*) dst_x + 1, xmm1);
+      _mm_stream_si128((__m128i*) dst_x + 2, xmm2);
+      _mm_stream_si128((__m128i*) dst_x + 3, xmm3);
+
       // Check Match with Pixel
       xmm0 = _mm_cmpeq_epi16(xmm0, pixel);
       xmm1 = _mm_cmpeq_epi16(xmm1, pixel);
       xmm2 = _mm_cmpeq_epi16(xmm2, pixel);
       xmm3 = _mm_cmpeq_epi16(xmm3, pixel);
-      xmm4 = _mm_cmpeq_epi16(xmm4, pixel);
-      xmm5 = _mm_cmpeq_epi16(xmm5, pixel);
-      xmm6 = _mm_cmpeq_epi16(xmm6, pixel);
-      xmm7 = _mm_cmpeq_epi16(xmm7, pixel);
       // Combine Match with Pixel
       xmm0 = _mm_and_si128(xmm0, xmm1);
       xmm2 = _mm_and_si128(xmm2, xmm3);
-      xmm4 = _mm_and_si128(xmm4, xmm5);
-      xmm6 = _mm_and_si128(xmm6, xmm7);
-      xmm0 = _mm_and_si128(xmm0, xmm2);
-      xmm1 = _mm_and_si128(xmm4, xmm6);
       check = _mm_and_si128(check, xmm0);
-      check = _mm_and_si128(check, xmm1);
+      check = _mm_and_si128(check, xmm2);
 
       // Step Buffer
-      src_x += 128;
-      count -= 128;
+      src_x += 64;
+      dst_x += 64;
+      count -= 64;
     }
 
     // Step Y Buffer
     src_y += s_src;
+    dst_y += s_dst;
   }
 
-  // Change Buffer to Uniform if pass
+  // Change Buffer to Uniform
   xmm1 = _mm_cmpeq_epi32(check, check);
   if (_mm_testc_si128(check, xmm1) == 1) {
-    co->src.stride = s_bpp;
+    co->dst.stride = s_bpp;
+    co->dst.bpp = s_bpp;
 
     // Store Pixel Uniform
     if (s_bpp == 4)
       pixel = _mm_unpacklo_epi8(pixel, pixel);
-    _mm_store_si128((__m128i*) co->src.buffer, pixel);
+    _mm_store_si128((__m128i*) co->dst.buffer, pixel);
   }
 }

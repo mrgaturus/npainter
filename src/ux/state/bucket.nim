@@ -1,13 +1,15 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+# Copyright (c) 2024 Cristian Camilo Ruiz <mrgaturus>
+import nogui/ux/values/linear
 import nogui/ux/prelude
 import nogui/builder
-# Import Values
+# Import Engine State
 import ../../wip/canvas/matrix
-import nogui/ux/values/linear
 import engine, color
 
-# ----------------------
-# Bucket Tool Controller
-# ----------------------
+# -----------------------
+# Bucket Tool: Controller
+# -----------------------
 
 type
   CKBucketMode* = enum
@@ -49,9 +51,9 @@ controller CXBucket:
     result.threshold = liBasic
     result.gap = liBasic
 
-# --------------------
-# Bucket Tool Dispatch
-# --------------------
+# -------------------
+# Bucket Tool: Widget
+# -------------------
 
 widget UXBucketDispatch:
   attributes: {.cursor.}:

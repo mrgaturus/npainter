@@ -107,7 +107,9 @@ controller CXLayers:
     # Default Layer Properties
     var flags = {lpVisible}
     if kind == lkMask:
-      flags.incl(lpClipping)
+      if target.kind != lkMask or
+      lpClipping in target.props.flags:
+        flags.incl(lpClipping)
       layer.props.mode = bmMask
     layer.props.opacity = 1.0
     layer.props.flags = flags

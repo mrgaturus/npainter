@@ -1,15 +1,13 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
-# Copyright (c) 2024 Cristian Camilo Ruiz <mrgaturus>
+# Copyright (c) 2025 Cristian Camilo Ruiz <mrgaturus>
 
 type
   NTileStatus* {.pure, size: 4.} = enum
     tsInvalid, tsZero, tsColor, tsBuffer
+  NTileCells = ptr UncheckedArray[NTileCell]
   NTileCell* {.union.} = object
     color*: uint64
     buffer*: pointer
-  # Tile Grid Pointers
-  NTileCells = ptr UncheckedArray[NTileCell]
-  NTileBits = ptr UncheckedArray[uint32]
   # -- Tiled Grid --
   NTileReserved* = object
     x*, y*, w*, h*: cint
@@ -19,9 +17,7 @@ type
   NTileGrid = object
     ox, oy: cint
     w, h, len: cint
-    # Grid Buffers
     cells: NTileCells
-    bits: NTileBits
   # -- Tiled Image --
   NTileDepth* {.pure size: 4.} = enum
     depth0bpp
@@ -43,45 +39,38 @@ type
     data*: ptr NTileCell
     grid: ptr NTileGrid
 
-# ------------------------
-# Tile Image Grid Creation
-# ------------------------
+# -------------------------
+# Tile Image Grid: Creation
+# -------------------------
+
+# XXX: only works for 48-bit virtual pointers
+const POINTER_MASK = 0xFFFFFFFFFFFF'u64
+const ALPHA_MASK = not POINTER_MASK
 
 proc createTileGrid(w, h: cint): NTileGrid =
-  let
-    l0 = w * h
-    l1 = (l0 + 0x1F) shr 5
-    # Grid Buffers
-    cells = alloc0(l0 * NTileCell.sizeof)
-    bits = alloc0(l1 * uint32.sizeof)
-  # Store Buffer Pointers
+  let count = w * h
+  let cells = alloc0(NTileCell.sizeof * count)
   result.cells = cast[NTileCells](cells)
-  result.bits = cast[NTileBits](bits)
   # Store Dimensions
   result.w = w
   result.h = h
-  result.len = l0
+  result.len = count
 
 proc destroy(grid: var NTileGrid) =
-  # Destroy Allocated Buffers
-  let
-    l = grid.len
-    cells = grid.cells
-    bits = grid.bits
-  for i in 0 ..< l:
-    let
-      tile = cells[i]
-      bit = bits[i shr 5] shr (i and 0x1F)
-    # Allocated Buffer?
-    if (bit and 1) > 0:
-      dealloc(tile.buffer)
+  let cells = grid.cells
+  let l = grid.len  
   # Dealloc Buffers
+  for i in 0 ..< l:
+    var cell = cells[i]
+    if (cell.color and ALPHA_MASK) == 0:
+      if not isNil(cell.buffer):
+        dealloc(cell.buffer)
+  # Dealloc Grid Buffer
   dealloc(cells)
-  dealloc(bits)
 
-# ------------------------
-# Tile Image Grid Bounding
-# ------------------------
+# -------------------------
+# Tile Image Grid: Bounding
+# -------------------------
 
 proc region(grid: var NTileGrid, x, y: cint): NTileRegion =
   result.w = grid.w
@@ -119,11 +108,11 @@ proc bounds(grid: var NTileGrid): NTileRegion =
   result.w = x1 - x0
   result.h = y1 - y0
 
-# -------------------------
-# Tile Image Grid Migration
-# -------------------------
+# ----------------------
+# Tile Image Grid: Cells
+# ----------------------
 
-proc copyCells(src, dst: var NTileGrid, r: NTileRegion) =
+proc migrate(src, dst: var NTileGrid, r: NTileRegion) =
   let
     s0 = src.w
     s1 = dst.w
@@ -138,46 +127,11 @@ proc copyCells(src, dst: var NTileGrid, r: NTileRegion) =
     idx0 = r.y * s0 + r.x
     idx1 = r.oy * s1 + r.ox
   for _ in 0 ..< rows:
-    # Copy Source Row to Destination Row
-    copyMem(addr cells1[idx1], addr cells0[idx0], bytes)
+    copyMem(addr cells1[idx1],
+      addr cells0[idx0], bytes)
     # Next Row
     idx0 += s0
     idx1 += s1
-
-proc copyBits(src, dst: var NTileGrid, r: NTileRegion) =
-  let 
-    s0 = src.w
-    s1 = dst.w
-    # Bit Buffers
-    bits0 = src.bits
-    bits1 = dst.bits
-  var
-    sdx0, idx0: int32
-    sdx1, idx1: int32
-  # Locate Index
-  sdx0 = r.y * s0 + r.x
-  sdx1 = r.oy * s1 + r.ox
-  # Migrate Bit Rows
-  for _ in 0 ..< r.h:
-    idx0 = sdx0
-    idx1 = sdx1
-    # Migrate Lane
-    for _ in 0 ..< r.w:
-      # Nim Integer Inference is Annoying
-      {.emit: "unsigned int bit = `idx0` & 0x1F;".}
-      {.emit: "bit = `bits0`[`idx0` >> 5] >> bit & 1;".}
-      {.emit: "bit = bit << (`idx1` & 0x1F);".}
-      {.emit: "`bits1`[`idx1` >> 5] |= bit;".}
-      # Next Index
-      inc(idx0)
-      inc(idx1)
-    # Next Row
-    sdx0 += s0
-    sdx1 += s1
-
-# ---------------------
-# Tile Image Grid Cells
-# ---------------------
 
 proc index(grid: var NTileGrid, x, y: cint): cint =
   let
@@ -193,34 +147,6 @@ proc index(grid: var NTileGrid, x, y: cint): cint =
   if check0 and check1:
     y0 * w + x0
   else: grid.len
-
-# --------------------
-# Tile Image Grid Bits
-# --------------------
-
-# -- Bit Manipulation --
-proc mark(grid: var NTileGrid, cell: ptr NTileCell) =
-  let
-    cells = grid.cells
-    bits = grid.bits
-  # Nim Integer Inference is Annoying
-  {.emit: "int idx = `cell` - `cells`;".}
-  {.emit: "unsigned int bit = 1 << (`idx` & 0x1F);".}
-  {.emit: "`bits`[`idx` >> 5] |= bit;".}
-
-proc blank(grid: var NTileGrid, cell: ptr NTileCell) =
-  let
-    cells = grid.cells
-    bits = grid.bits
-  # Nim Integer Inference is Annoying
-  {.emit: "int idx = `cell` - `cells`;".}
-  {.emit: "unsigned int bit = 1 << (`idx` & 0x1F);".}
-  {.emit: "`bits`[`idx` >> 5] &= ~bit;".}
-
-# -- Bit Lookup --
-proc mask(grid: var NTileGrid, idx: cint): uint32 =
-  result = grid.bits[idx shr 5]
-  result = result shr (idx and 0x1F) and 1
 
 # -------------------
 # Tile Image Creation
@@ -269,11 +195,8 @@ proc ensure*(tiles: var NTileImage, x, y, w, h: cint) =
   elif w0 > src.w or h0 > src.h:
     var dst = createTileGrid(w0, h0)
     # Migrate to Destination
-    src[].copyCells(dst, r)
-    src[].copyBits(dst, r)
-    # Deallocate Source
+    src[].migrate(dst, r)
     dealloc(src.cells)
-    dealloc(src.bits)
     # Adjust Offsets
     dst.ox = src.ox - r.ox
     dst.oy = src.oy - r.oy
@@ -287,18 +210,13 @@ proc shrink*(tiles: var NTileImage) =
   # Deallocate Grid if there is nothing
   if (r.w or r.h) <= 0 and src.len > 0:
     dealloc(src.cells)
-    dealloc(src.bits)
-    # Restore to Default
     src[] = default(NTileGrid)
   # Create Shrunk Grid
   elif r.w < src.w or r.h < src.h:
     var dst = createTileGrid(r.w, r.h)
     # Migrate to Destination
-    src[].copyCells(dst, r)
-    src[].copyBits(dst, r)
-    # Deallocate Source
+    src[].migrate(dst, r)
     dealloc(src.cells)
-    dealloc(src.bits)
     # Adjust Offsets
     dst.ox = src.ox + r.x
     dst.oy = src.oy + r.y
@@ -320,8 +238,10 @@ proc lookup(tiles: var NTileImage, idx: cint): NTile {.inline.} =
   # Tile Content
   if test > 0:
     result.data = addr grid.cells[idx]
-    test += uint32 result.data.color > 0
-    test += uint32 grid[].mask(idx) > 0
+    let color = result.data.color
+    test += uint32 color > 0
+    test += uint32 color > 0 and
+      (color and ALPHA_MASK) == 0
   result.status = cast[NTileStatus](test)
 
 proc find*(tiles: var NTileImage, x, y: cint): NTile =
@@ -362,27 +282,24 @@ iterator items*(tiles: var NTileImage): var NTile =
 
 proc toColor*(tile: var NTile, color: uint64) =
   let data = tile.data
-  let grid = tile.grid
-  let status = tile.status
-  assert status > tsInvalid
+  assert not isNil(data) and not isNil(tile.grid)
+  assert not (color > 0 and (color and ALPHA_MASK) == 0)
   # Deallocate Previous Buffer
-  if status == tsBuffer:
-    deallocShared(data.buffer)
-    grid[].blank(data)
+  if (data.color and ALPHA_MASK) == 0:
+    if not isNil(data.buffer):
+      deallocShared(data.buffer)
   # Update Tile Data
   data.color = color
-  const test = [false: tsZero, true: tsColor]
-  tile.status = test[color > 0]
+  let test = uint32(tsZero) + uint32(color > 0)
+  tile.status = cast[NTileStatus](test)
 
 proc toBuffer*(tile: var NTile) =
   let data = tile.data
-  let grid = tile.grid
-  let status = tile.status
-  assert status > tsInvalid
-  # Allocate Buffer
-  if status == tsBuffer: return
-  let p = allocShared(tile.bytes shl 1)
-  data.buffer = p
-  grid[].mark(data)
+  assert not isNil(data)
+  assert not isNil(tile.grid)
+  # Allocate Tile Buffer
+  if isNil(data.buffer) or (data.color and ALPHA_MASK) > 0:
+    let p = allocShared(tile.bytes shl 1)
+    data.buffer = p
   # Update Tile Data
   tile.status = tsBuffer

@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 # Copyright (c) 2023 Cristian Camilo Ruiz <mrgaturus>
 import nogui/bst
+import ./mask/ffi
 import ./image/[
   context,
   layer,
@@ -29,6 +30,7 @@ type
     # Image Layering
     t0*, t1*, t2*: uint32
     owner*: NLayerOwner
+    mask*: NLayer
     root*: NLayer
     # Image Proxy
     test*: NLayer
@@ -66,14 +68,14 @@ proc configure(img: NImage) =
 proc createImage*(w, h: cint): NImage =
   result = create(result[].typeof)
   result.owner.configure()
-  # Create Image Root Layer
+  # Create Image Root Layers
   let root = createLayer(lkFolder)
-  if result.owner.insert(addr root.code):
-    result.root = root
+  let mask = createLayer(lkMask)
+  if result.owner.insert(addr root.code): result.root = root
+  if result.owner.register(addr mask.code): result.mask = mask
   # Create Image Context and Status
   result.ctx = createImageContext(w, h)
   result.status = createImageStatus(w, h)
-  # Configure Image
   result.configure()
 
 proc destroy*(img: NImage) =
@@ -261,9 +263,86 @@ proc copyLayer*(img: NImage, layer: NLayer): NLayer =
       result.attachInside(la)
       la0 = la0.prev
 
-# -----------------
-# Image Layer Merge
-# -----------------
+# ----------------------------
+# Image Layer Merge: Composite
+# ----------------------------
+
+type
+  NMergeProc = proc(m: ptr NImageMerge, src, dst: NTile): bool {.nimcall.}
+  NMergeMaskProc = proc (co: ptr NMaskCombine) {.nimcall.}
+  NImageMerge = object
+    co: NImageComposite
+    fn: NMergeProc
+    # Combine Opacity
+    alpha0: uint32
+    alpha1: uint32
+
+proc mergeRGBA(m: ptr NImageMerge, src, dst: NTile): bool =
+  result = dst.status > tsZero or src.status > tsZero
+  if not result: return result
+  let coco = cast[ptr NImageCombine](addr m.co)
+  m.co.src = m.co.dst
+  combine_clear(coco)
+  # Prepare Destination Pixels
+  if dst.status > tsZero:
+    var co = m.co
+    co.src = dst.chunk()
+    co.alpha = m.alpha1
+    co.fn = blend_procs[bmNormal]
+    co.clip = 0; blendChunk(addr co)
+  # Combine Source Pixels
+  if src.status > tsZero:
+    m.co.src = src.chunk()
+    m.co.alpha = m.alpha0
+    blendChunk(addr m.co)
+
+proc mergeMask(m: ptr NImageMerge, src, dst: NTile): bool =
+  result = dst.status > tsZero or src.status > tsZero
+  if not result: return result
+  # Prepare Mask Merge
+  var mo {.noinit.}: NMaskCombine
+  mo.co.src = dst.chunk()
+  mo.co.dst = m.co.dst
+  mo.co.dst.bpp = dst.bpp
+  # Prepare Destination Pixels
+  if dst.status == tsColor:
+    var co = combine(mo.co.src, m.co.ext)
+    proxy_uniform_fill(addr co)
+    mo.co.src = m.co.ext
+  mo.alpha = m.alpha1
+  combine_clear(addr mo.co)
+  if dst.status > tsZero:
+    combine_mask_union(addr mo)
+  # Combine Source Pixels
+  mo.co.src = src.chunk()
+  if src.status == tsColor:
+    var co = combine(mo.co.src, m.co.ext)
+    proxy_uniform_fill(addr co)
+    mo.co.src = m.co.ext
+  mo.alpha = m.alpha0
+  if src.status > tsZero:
+    let fn = cast[NMergeMaskProc](m.co.fn)
+    fn(addr mo)
+
+proc mergePack(m: ptr NImageMerge, tile: var NTile) =
+  var co {.noinit.}: NImageCombine
+  co.src = m.co.dst
+  if tile.bpp == 4:
+    co.dst = co.src
+    mipmap_pack8(addr co)
+  # Prepare Tile Buffer
+  tile.toBuffer()
+  co.dst = tile.chunk()
+  co.src.bpp = tile.bpp
+  # Check Pixel Uniform
+  proxy_uniform_stream(addr co)
+  if co.dst.stride == co.dst.bpp:
+    tile.toColor(co.dst.pixel)
+  else: tile.mipmaps()
+
+# --------------------------
+# Image Layer Merge: Prepare
+# --------------------------
 
 proc mergeRegion(src, dst: NLayer): NTileReserved =
   var
@@ -278,100 +357,82 @@ proc mergeRegion(src, dst: NLayer): NTileReserved =
   result.w = max(r0.w, r1.w)
   result.h = max(r0.h, r1.h)
 
-proc mergeComposite(src, dst: NLayer): NImageComposite =
+proc mergePrepare(src, dst: NLayer): NImageMerge =
   let flags = src.props.flags - dst.props.flags
-  let props = addr src.props
-  var mode = props.mode
+  let clip = lpClipping in flags
+  let mode = src.props.mode
   # Configure Layer Blending
-  result = default(NImageComposite)
-  result.alpha = cuint(props.opacity * 65535.0)
-  result.clip = cast[cuint](lpClipping in flags)
-  result.fn = blend_procs[mode]
-  # Configure Layer Blending: Mask
+  result = default(NImageMerge)
+  result.alpha0 = uint32(src.props.opacity * 65535.0)
+  result.alpha1 = uint32(dst.props.opacity * 65535.0)
+  let co = addr result.co
+  co.fn = blend_procs[mode]
+  co.clip = cast[cuint](clip)
+  if clip: result.alpha1 = 65535
+  # Configure Temporal Buffers
+  let chunk = NImageBuffer(
+    x: 32, y: 32,
+    w: 32, h: 32,
+    bpp: 8, stride: 256)
+  co.dst = chunk; co.ext = chunk
+  co.dst.buffer = alloc(chunk.stride * chunk.h)
+  co.ext.buffer = alloc(chunk.stride * chunk.h)
+  # Configure Layer Masking
+  result.fn = mergeRGBA
   if src.kind == lkMask:
-    result.clip = cast[cuint](mode == bmStencil)
-    result.fn = composite_mask
-  # Configure Destination Auxiliar
-  let tile = NTile(bpp: 8)
-  var dst = tile.chunk()
-  dst.stride = dst.bpp * dst.w
-  dst.buffer = alloc(dst.stride * dst.h)
-  result.ext = dst
-  result.dst = dst
+    co.clip = cast[cuint](mode == bmStencil)
+    if dst.kind != lkMask:
+      co.fn = composite_mask
+      return
+    # Mask-Mask Merge
+    result.fn = mergeMask
+    co.fn = if not clip:
+      combine_mask_union
+    else: combine_mask_exclude
+    co.dst.bpp = 2
+    co.ext.bpp = 2
 
-proc mergeTile(co: ptr NImageComposite, src, dst: NTile): bool =
-  result =
-    src.status >= tsColor or
-    dst.status >= tsColor
-  if not result: return result
-  # Optimize Uniform Destination
-  let check = src.status >= tsColor or
-    (src.bpp == 2 and co.clip != 0)
-  if dst.status == tsColor and not check:
-    co.dst = co.ext
-    co.dst.stride = co.dst.bpp
-    # Copy Uniform Pixel to Data
-    pixel(co.dst, dst.data.color)
-    return result
-  # Unpack Destination Pixels
-  var c = combine(dst.chunk, co.ext)
-  if dst.status < tsColor: combine_clear(addr c)
-  elif dst.status == tsColor: proxy_uniform_fill(addr c)
-  elif dst.bpp == 8: proxy_stream16(addr c)
-  elif dst.bpp == 4: proxy_stream8(addr c)
-  # Blend Source Pixels
-  if not check: return
-  co.dst = co.ext
-  co.src = src.chunk()
-  # Check Zero Pixel
-  var zero {.align: 16.}: uint64 = 0
-  if isNil(co.src.buffer):
-    co.src.buffer = addr zero
-  # Blend Source Pixel
-  blendChunk(co)
+# -----------------
+# Image Layer Merge
+# -----------------
 
-proc packTile(co: ptr NImageComposite, tile: var NTile) =
-  if co.dst.bpp == co.dst.stride:
-    tile.toColor(co.dst.pixel)
-    co.dst = co.ext
-    return
-  # Prepare Buffer Check
-  var c = combine(co.ext, co.ext)
-  c.dst.stride = tile.bpp * c.dst.w
-  c.dst.bpp = tile.bpp
-  # Pack Pixels and Check Uniform
-  if tile.bpp == 4: mipmap_pack8(addr c)
-  c.src = c.dst; proxy_uniform_check(addr c)
-  if c.src.bpp == c.src.stride:
-    tile.toColor(c.src.pixel)
-    return
-  # Copy Buffer to Tile
-  tile.toBuffer()
-  c.dst = tile.chunk()
-  combine_copy(addr c)
-  tile.mipmaps()
+proc mergeCheck(src, dst: NLayer): bool =
+  let props0 = addr src.props
+  let props1 = addr dst.props
+  let clip0 = lpClipping in props0.flags
+  let clip1 = lpClipping in props1.flags
+  result = (src.kind != lkFolder and dst.kind != lkFolder) and
+    (dst.kind != lkMask and (src.kind != lkMask or clip0))
+  # Check Mask Blending
+  if not result: result =
+    (src.kind == lkMask and dst.kind == lkMask) and
+    (props0.mode != bmStencil and props1.mode != bmStencil)
+  result = result and (clip0 or not clip1)
+
+proc mergeBase(img: NImage, src, dst: NLayer): NLayer =
+  result = img.copyLayerBase(dst)
+  # Prepare Layer Attributes
+  if lpClipping notin src.props.flags:
+    result.props.opacity = 1.0
+  if src.kind == lkColor16:
+    result.tiles = createTileImage(depth8bpp)
+    result.kind = lkColor16
 
 proc mergeLayer*(img: NImage, src, dst: NLayer): NLayer =
   result = default(NLayer)
-  # Avoid Merge Invalid Cases
-  let clip = lpClipping in src.props.flags
-  if src.kind == lkFolder or
-    (src.kind == lkMask and not clip) or
-    dst.kind > lkColor8:
-      return result
-  # Create New Layer Base
-  result = img.copyLayerBase(dst)
-  if src.kind == lkColor16:
-    dst.kind = lkColor16
-  # Ensure Layer Tiles
+  if not mergeCheck(src, dst):
+    return result
+  # Prepare Merge Layer
   let r = mergeRegion(src, dst)
+  result = mergeBase(img, src, dst)
   result.tiles.ensure(r.x, r.y,
     r.w - r.x, r.h - r.y)
   # Perpare Merge Composite
   let g0 = addr src.tiles
   let g1 = addr dst.tiles
   let g2 = addr result.tiles
-  var co = mergeComposite(src, dst)
+  var m = mergePrepare(src, dst)
+  let co = addr m.co
   # Merge Layer Tiles
   for y in r.y ..< r.h:
     for x in r.x ..< r.w:
@@ -381,9 +442,10 @@ proc mergeLayer*(img: NImage, src, dst: NLayer): NLayer =
       co.ext.x = x shl 5
       co.ext.y = y shl 5
       # Merge Layer Tile
-      if mergeTile(addr co, t0, t1):
+      if m.fn(addr m, t0, t1):
         t0 = g2[].find(x, y)
-        packTile(addr co, t0)
-  # Dealloc Temporal Buffer
+        mergePack(addr m, t0)
+  # Dealloc Temporal Buffers
+  dealloc(co.dst.buffer)
   dealloc(co.ext.buffer)
   result.tiles.shrink()

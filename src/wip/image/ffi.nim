@@ -72,8 +72,9 @@ type
 {.push importc.}
 
 # combine.c
-proc combine_intersect*(co: ptr NImageCombine)
+proc buffer_clip*(co: ptr NImageBuffer, clip: NImageClip)
 proc combine_clip*(co: ptr NImageCombine, clip: NImageClip)
+proc combine_intersect*(co: ptr NImageCombine)
 proc combine_clear*(co: ptr NImageCombine)
 proc combine_copy*(co: ptr NImageCombine)
 proc combine_pack*(co: ptr NImageCombine)
@@ -105,7 +106,7 @@ proc proxy_stream16*(co: ptr NImageCombine)
 proc proxy_stream8*(co: ptr NImageCombine)
 proc proxy_stream2*(co: ptr NImageCombine)
 proc proxy_uniform_fill*(co: ptr NImageCombine)
-proc proxy_uniform_check*(co: ptr NImageCombine)
+proc proxy_uniform_stream*(co: ptr NImageCombine)
 
 {.pop.} # importc
 {.pop.} # image.h
