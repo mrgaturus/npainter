@@ -175,9 +175,9 @@ proc gather(lane: ptr NPolyLane, y0, y1: int32) =
     if s.inside(y0, y1):
       lane.gather(s)
 
-# --------------------------------------
-# Polygon Rasterizer Scanline: Collision
-# --------------------------------------
+# ------------------------------------
+# Polygon Rasterizer Scanline: Sorting
+# ------------------------------------
 
 proc partition(hits: ptr NPolyHits, n0, n1: int): int =
   let p = hits[n1]
@@ -207,6 +207,10 @@ proc insertsort(hits: ptr NPolyHits, n: int) =
     while j >= 0 and hits[j].x > a.x:
       hits[j + 1] = hits[j]; dec(j)
     hits[j + 1] = a
+
+# --------------------------------------
+# Polygon Rasterizer Scanline: Collision
+# --------------------------------------
 
 proc sort(lane: ptr NPolyLane, n: int) =
   quicksort(lane.hits, 0, n - 1)

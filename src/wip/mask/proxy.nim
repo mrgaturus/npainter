@@ -36,7 +36,7 @@ type
     color*: uint64
     smooth*: bool
     lod*: int32
-    lox: int32
+    lox: int32 # <- remove this when rework NImageStatus
 
 proc clip32(co: var NPolygonCombine, x, y, lod: int32): NImageCombine =
   result = combine(co.dst, co.dst).clip32(x, y, lod)
@@ -101,17 +101,15 @@ proc srcColor(state: ptr NCompositorState): NImageBuffer =
   mc.co.dst = result
   mc.alpha = proxy.alpha
   mc.color = proxy.color
-  # Unpack Polygon Mask to Color
+  # Prepare Unpack Polygon Clipping
   buffer_clip(addr mc.co.src, clip)
+  copyMem(addr result, addr mc.co.src, sizeof NImageClip)
+  mc.co.src.w = max(mc.co.src.w, 8)
+  # Unpack Polygon Mask to Color
   if proxy.mode != modeColorBlend:
     result.bpp = sizeof(uint16) * 1
     polygon_mask_blit(addr mc)
   else: polygon_color_blit16(addr mc)
-  # Locate Buffer Clip
-  result.x = mc.co.src.x
-  result.y = mc.co.src.y
-  result.w = mc.co.src.w
-  result.h = mc.co.src.h
 
 proc prepareColor(state: ptr NCompositorState): NImageBuffer =
   let proxy = cast[ptr NPolygonProxy](state.ext)
@@ -140,8 +138,14 @@ proc prepareColor(state: ptr NCompositorState): NImageBuffer =
 
 proc blendColor(state: ptr NCompositorState) =
   var raw = state.prepareColor()
-  state.blendRaw(raw)
-  # Remove Temporal Buffers
+  if state.step.cmd == cmBlendMask:
+    var co0 = combine(raw, raw)
+    # Pack Grayscale to Mask
+    for tx, ty in state.scan():
+      let co = co0.clip32(tx, ty)
+      mipmap_pack2(addr co)
+  # Blend and Remove Temporal Buffers
+  state.blendRaw(raw)    
   popBuffer(state.stack)
   popBuffer(state.stack)
 
@@ -185,11 +189,6 @@ proc prepare*(proxy: var NPolygonProxy, layer: NLayer) =
 # Polygon Proxy Composite: Rasterize
 # ----------------------------------
 
-proc push*(proxy: var NPolygonProxy, x, y: float32) =
-  let scale = 1.0 / float32(1 shl proxy.lod)
-  proxy.rast.push NPolyPoint(
-    x: x * scale, y: y * scale)
-
 proc mark(proxy: var NPolygonProxy) =
   let mask = addr proxy.mask
   if mask.w == 0 or mask.h == 0: return
@@ -204,6 +203,11 @@ proc mark(proxy: var NPolygonProxy) =
   proxy.status.clip.expand(m.x0, m.y0,
     m.x1 - m.x0, m.y1 - m.y0)
   proxy.status[].mark(m)
+
+proc push*(proxy: var NPolygonProxy, x, y: float32) =
+  let scale = 1.0 / float32(1 shl proxy.lod)
+  proxy.rast.push NPolyPoint(
+    x: x * scale, y: y * scale)
 
 proc rasterize*(proxy: var NPolygonProxy) =
   let rast = addr proxy.rast
@@ -221,7 +225,10 @@ proc rasterize*(proxy: var NPolygonProxy) =
 # Polygon Proxy Composite: Commit
 # -------------------------------
 
+# IMPORTANT TODO: multithreading
 proc commit*(proxy: var NPolygonProxy) =
+  let mask = proxy.mask
+  # Clear Buffer Auxiliar and Layer Hook
   proxy.layer.hook = default(NLayerHook)
   proxy.ctx[].clearAux()
   # Remove Mappings
